@@ -39,6 +39,7 @@ const systemPrompt = process.env.OPENAI_SYSTEM_PROMPT ?? DEFAULT_SYSTEM_PROMPT;
 const timeoutMs = Number(process.env.OPENAI_TIMEOUT_MS ?? "30000");
 const debug = process.env.OPENAI_DEBUG === "1";
 const effectiveTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 30000;
+const disableThinking = /gpt-5/i.test(model ?? "");
 
 if (!apiKey) {
   console.error("Missing API key. Set OPENAI_API_KEY or OPENAI_API_KEY_ENV");
@@ -66,15 +67,47 @@ if (debug) {
   console.error(`Requesting: ${endpoint}`);
   console.error(`Model: ${model}`);
   console.error(`Timeout: ${effectiveTimeoutMs}ms`);
+  if (disableThinking) {
+    console.error("Thinking: minimal");
+  }
+  console.error("Messages:");
+  for (const message of messages) {
+    console.error(`[${message.role}]`);
+    console.error(message.content);
+  }
 }
 
-let completion: Awaited<ReturnType<typeof client.chat.completions.create>>;
-
 try {
-  completion = await client.chat.completions.create({
+  const request: Parameters<typeof client.chat.completions.create>[0] = {
     model,
-    messages
-  });
+    messages,
+    stream: true
+  };
+
+  if (disableThinking) {
+    (request as Record<string, unknown>).reasoning_effort = "minimal";
+  }
+
+  const stream = await client.chat.completions.create(request);
+
+  let hasOutput = false;
+
+  for await (const chunk of stream) {
+    const content = chunk.choices?.[0]?.delta?.content;
+
+    if (typeof content === "string" && content.length > 0) {
+      process.stdout.write(content);
+      hasOutput = true;
+    }
+  }
+
+  if (!hasOutput) {
+    console.error("No text content found in model response");
+    process.exit(1);
+  }
+
+  process.stdout.write("\n");
+  process.exit(0);
 } catch (error) {
   const status =
     typeof error === "object" && error !== null && "status" in error
@@ -98,25 +131,3 @@ try {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
 }
-const firstContent = completion.choices?.[0]?.message?.content;
-
-if (typeof firstContent === "string") {
-  console.log(firstContent.trim());
-  process.exit(0);
-}
-
-if (Array.isArray(firstContent)) {
-  const text = firstContent
-    .filter((part) => part.type === "text" && typeof part.text === "string")
-    .map((part) => part.text)
-    .join("\n")
-    .trim();
-
-  if (text) {
-    console.log(text);
-    process.exit(0);
-  }
-}
-
-console.error("No text content found in model response");
-process.exit(1);
