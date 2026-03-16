@@ -24,7 +24,6 @@ export OPENAI_API_KEY="your_real_key"
    - Optional `OPENAI_API_KEY` to set key directly (without indirection)
    - Optional `OPENAI_SYSTEM_PROMPT` to override built-in default poetic system prompt
    - Optional `OPENAI_TIMEOUT_MS` request timeout in ms (default `30000`)
-   - Optional `OPENAI_MAX_RETRIES` retries for transient errors (default `2`)
    - Optional `OPENAI_DEBUG=1` to print endpoint/model/timeout to stderr
 
 ## Usage

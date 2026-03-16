@@ -1,22 +1,5 @@
 import OpenAI from "openai";
 
-const withTimeout = async <T>(promise: Promise<T>, timeout: number, label: string): Promise<T> => {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeout}ms`)), timeout);
-      })
-    ]);
-  } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
-  }
-};
-
 const prompt = Bun.argv.slice(2).join(" ").trim();
 
 const DEFAULT_SYSTEM_PROMPT = `You are a poetic assistant.
@@ -54,10 +37,8 @@ const model = process.env.OPENAI_MODEL;
 const baseUrl = (process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1").replace(/\/$/, "");
 const systemPrompt = process.env.OPENAI_SYSTEM_PROMPT ?? DEFAULT_SYSTEM_PROMPT;
 const timeoutMs = Number(process.env.OPENAI_TIMEOUT_MS ?? "30000");
-const maxRetries = Number(process.env.OPENAI_MAX_RETRIES ?? "2");
 const debug = process.env.OPENAI_DEBUG === "1";
 const effectiveTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 30000;
-const effectiveMaxRetries = Number.isFinite(maxRetries) && maxRetries >= 0 ? Math.floor(maxRetries) : 2;
 
 if (!apiKey) {
   console.error("Missing API key. Set OPENAI_API_KEY or OPENAI_API_KEY_ENV");
@@ -78,40 +59,27 @@ const client = new OpenAI({
   apiKey,
   baseURL: baseUrl,
   timeout: effectiveTimeoutMs,
-  maxRetries: effectiveMaxRetries
+  maxRetries: 0
 });
 
 if (debug) {
   console.error(`Requesting: ${endpoint}`);
   console.error(`Model: ${model}`);
   console.error(`Timeout: ${effectiveTimeoutMs}ms`);
-  console.error(`Retries: ${effectiveMaxRetries}`);
 }
 
 let completion: Awaited<ReturnType<typeof client.chat.completions.create>>;
 
 try {
-  completion = await withTimeout(
-    client.chat.completions.create({
-      model,
-      messages
-    }),
-    effectiveTimeoutMs,
-    "Request"
-  );
+  completion = await client.chat.completions.create({
+    model,
+    messages
+  });
 } catch (error) {
   const status =
     typeof error === "object" && error !== null && "status" in error
       ? Number((error as { status?: number }).status)
       : undefined;
-
-  const retryAfter =
-    typeof error === "object" &&
-    error !== null &&
-    "headers" in error &&
-    (error as { headers?: unknown }).headers instanceof Headers
-      ? (error as { headers: Headers }).headers.get("retry-after")
-      : null;
 
   if ((error as Error).name === "AbortError" || (error instanceof Error && error.message.toLowerCase().includes("timed out"))) {
     console.error(`Request timed out after ${effectiveTimeoutMs}ms`);
@@ -121,10 +89,7 @@ try {
 
   if (status === 429) {
     console.error("Rate limit reached (HTTP 429)");
-    if (retryAfter) {
-      console.error(`Retry-After: ${retryAfter} seconds`);
-    }
-    console.error("Increase OPENAI_MAX_RETRIES or switch model/provider");
+    console.error("Switch model/provider or wait before the next request");
     console.error("Also check account quota/credits on the provider side");
     process.exit(1);
   }
