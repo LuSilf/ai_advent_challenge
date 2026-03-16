@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import type { Response, ResponseCreateParams } from "openai/resources/responses/responses";
+import pc from "picocolors";
 
 const prompt = Bun.argv.slice(2).join(" ").trim();
 
@@ -150,17 +151,38 @@ function formatMs(value: number | undefined): string {
 }
 
 function debugPrintHeader(title: string): void {
-  console.error("\n\n");
-  console.error(`========== ${title} ==========`);
+  const line = "=".repeat(62);
+  console.error(pc.dim(line));
+  console.error(pc.bold(pc.cyan(`  ${title}`)));
+  console.error(pc.dim(line));
 }
 
 function debugPrintFooter(): void {
-  console.error("==============================");
-  console.error("\n\n");
+  console.error(pc.dim("=".repeat(62)));
 }
 
 function debugPrintField(label: string, value: string | number): void {
-  console.error(`${label.padEnd(24)}: ${value}`);
+  console.error(`${pc.bold(pc.blue(label.padEnd(24)))} ${pc.dim(":")} ${value}`);
+}
+
+function debugPrintSection(title: string): void {
+  console.error(pc.bold(pc.magenta(`[${title}]`)));
+}
+
+function debugPrintPromptBlock(title: string, content: string): void {
+  const rule = pc.dim("-".repeat(62));
+  console.error(rule);
+  console.error(pc.bold(pc.green(`  ${title}`)));
+  console.error(rule);
+  console.error(content);
+}
+
+function debugPrintNote(message: string): void {
+  console.error(pc.yellow(`Note: ${message}`));
+}
+
+function debugPrintOutputMarker(): void {
+  console.error(pc.bold(pc.green("[Model output]")));
 }
 
 function extractReasoningSummaries(response: Response): string[] {
@@ -209,7 +231,7 @@ function printDebugResponseStats(response: Response, startedAtMs: number, fallba
     const cachedInputTokens = usage.input_tokens_details.cached_tokens;
     const reasoningTokens = usage.output_tokens_details.reasoning_tokens;
 
-    console.error("-- Token usage --");
+    debugPrintSection("Token usage");
     debugPrintField("Input tokens", inputTokens);
     debugPrintField("Output tokens", outputTokens);
     debugPrintField("Total tokens", totalTokens);
@@ -221,19 +243,19 @@ function printDebugResponseStats(response: Response, startedAtMs: number, fallba
       debugPrintField("Output throughput", `${outputTps.toFixed(2)} tok/s`);
     }
   } else {
-    console.error("-- Token usage --");
+    debugPrintSection("Token usage");
     debugPrintField("Availability", "(not returned by provider)");
   }
 
   const summaries = extractReasoningSummaries(response);
   const effectiveSummaries = summaries.length > 0 ? summaries : fallbackSummaries ?? [];
   if (effectiveSummaries.length > 0) {
-    console.error("-- Reasoning summary --");
+    debugPrintSection("Reasoning summary");
     for (const summary of effectiveSummaries) {
       console.error(`- ${summary}`);
     }
   } else {
-    console.error("-- Reasoning summary --");
+    debugPrintSection("Reasoning summary");
     debugPrintField("Availability", "(not returned)");
   }
 
@@ -298,7 +320,7 @@ const model = getEnv("OPENAI_MODEL");
 const baseUrl = (getEnv("OPENAI_BASE_URL") ?? "https://api.openai.com/v1").replace(/\/$/, "");
 const systemPrompt = process.env.OPENAI_SYSTEM_PROMPT ?? DEFAULT_SYSTEM_PROMPT;
 const timeoutMs = Number(process.env.OPENAI_TIMEOUT_MS ?? String(DEFAULT_TIMEOUT_MS));
-const debug = process.env.OPENAI_DEBUG === "1" || process.env.OPENAI_DEBUG?.toLowerCase() === "true";
+const debug = parseBooleanEnv("OPENAI_DEBUG", false);
 const useStreaming = parseBooleanEnv("OPENAI_STREAM", true);
 const effectiveTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_TIMEOUT_MS;
 const reasoningEffort = parseReasoningEffort(getEnv("OPENAI_REASONING_EFFORT"));
@@ -340,18 +362,18 @@ if (debug) {
   debugPrintField("Presence penalty", formatOptional(presencePenalty));
   debugPrintField("Frequency penalty", formatOptional(frequencyPenalty));
   if (n !== undefined) {
-    console.error("Note: OPENAI_N is not supported by Responses API and will be ignored");
+    debugPrintNote("OPENAI_N is not supported by Responses API and will be ignored");
   }
   if (presencePenalty !== undefined) {
-    console.error("Note: OPENAI_PRESENCE_PENALTY is not supported by Responses API and will be ignored");
+    debugPrintNote("OPENAI_PRESENCE_PENALTY is not supported by Responses API and will be ignored");
   }
   if (frequencyPenalty !== undefined) {
-    console.error("Note: OPENAI_FREQUENCY_PENALTY is not supported by Responses API and will be ignored");
+    debugPrintNote("OPENAI_FREQUENCY_PENALTY is not supported by Responses API and will be ignored");
   }
-  console.error("-- Instructions --");
-  console.error(systemPrompt);
-  console.error("-- Input --");
-  console.error(prompt);
+  debugPrintSection("Prompts");
+  debugPrintPromptBlock("System prompt", systemPrompt);
+  console.error("");
+  debugPrintPromptBlock("User prompt", prompt);
   debugPrintFooter();
 }
 
@@ -388,12 +410,18 @@ try {
 
   const startedAtMs = Date.now();
 
+  let wroteOutputNewline = false;
+
   if (useStreaming) {
     const stream = await client.responses.create({ ...request, stream: true });
 
     let hasOutput = false;
     let completedResponse: Response | undefined;
     const reasoningSummaryParts: string[] = [];
+
+    if (debug) {
+      debugPrintOutputMarker();
+    }
 
     for await (const event of stream) {
       if (event.type === "response.output_text.delta" && event.delta.length > 0) {
@@ -423,6 +451,8 @@ try {
     }
 
     if (debug && completedResponse) {
+      process.stdout.write("\n");
+      wroteOutputNewline = true;
       printDebugResponseStats(completedResponse, startedAtMs, reasoningSummaryParts);
     }
   } else {
@@ -434,14 +464,22 @@ try {
       fail("No text content found in model response");
     }
 
+    if (debug) {
+      debugPrintOutputMarker();
+    }
+
     process.stdout.write(content);
 
     if (debug) {
+      process.stdout.write("\n");
+      wroteOutputNewline = true;
       printDebugResponseStats(response, startedAtMs);
     }
   }
 
-  process.stdout.write("\n");
+  if (!wroteOutputNewline) {
+    process.stdout.write("\n");
+  }
   process.exit(0);
 } catch (error) {
   const status = getHttpStatus(error);

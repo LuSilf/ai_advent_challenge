@@ -25,7 +25,7 @@ export OPENAI_API_KEY="your_real_key"
    - Опционально `OPENAI_SYSTEM_PROMPT` для переопределения встроенного системного промпта
    - Опционально `OPENAI_TIMEOUT_MS` таймаут запроса в мс (по умолчанию `30000`)
    - Опционально `OPENAI_STREAM` включает/выключает streaming (по умолчанию включен)
-    - Опционально `OPENAI_DEBUG=1` для вывода endpoint/model/параметров в stderr
+    - Опционально `OPENAI_DEBUG` (`1|0|true|false|yes|no|on|off`) для вывода endpoint/model/параметров в stderr
       и расширенной статистики ответа (токены, время, статус, reasoning summary)
    - Опциональные параметры генерации (подробности ниже):
      - `OPENAI_TEMPERATURE`
