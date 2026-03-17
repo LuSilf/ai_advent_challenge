@@ -1,6 +1,9 @@
 # AI Avent Challenge
 
-Простой CLI-инструмент на Bun: отправляет промпт в любой OpenAI-совместимый LLM endpoint и печатает ответ в терминал.
+Простой Bun-инструмент с двумя режимами:
+
+- CLI: отправляет промпт в любой OpenAI-совместимый LLM endpoint и печатает ответ в терминал.
+- Web GUI на HTMX: дает чат-интерфейс и форму со всеми теми же настройками запроса.
 
 ## Настройка
 
@@ -106,3 +109,20 @@ bun run start "Объясни рекурсию одним предложение
 ```bash
 OPENAI_BASE_URL=http://localhost:1234/v1 OPENAI_MODEL=local-model bun run start "Привет"
 ```
+
+## Web GUI
+
+Запуск сервера:
+
+```bash
+bun run start:web
+```
+
+Опционально можно переопределить порт:
+
+```bash
+PORT=3001 bun run start:web
+```
+
+После запуска откройте `http://localhost:3000` или указанный `PORT`.
+Веб-интерфейс отправляет запросы на локальный сервер, а тот уже вызывает тот же OpenAI-compatible Responses API, что и CLI.

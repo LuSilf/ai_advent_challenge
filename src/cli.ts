@@ -1,122 +1,52 @@
-import OpenAI from "openai";
-import type { Response } from "openai/resources/responses/responses";
-
 import { loadConfig } from "./config";
-import { printOutputMarker, printRequestDebug, printResponseDebug } from "./debug-logger";
-import { buildResponseRequest } from "./request";
+import {
+  printOutputMarker,
+  printRequestDebug,
+  printResponseDebug,
+} from "./debug-logger";
+import { loadDotEnv } from "./env";
+import {
+  getHttpStatus,
+  isTimeoutError,
+  runResponseRequest,
+} from "./request-runner";
 
 function fail(message: string): never {
   console.error(message);
   process.exit(1);
 }
 
-function getHttpStatus(error: unknown): number | undefined {
-  if (typeof error !== "object" || error === null || !("status" in error)) {
-    return undefined;
-  }
-
-  const status = Number((error as { status?: number }).status);
-  return Number.isFinite(status) ? status : undefined;
-}
-
-function isTimeoutError(error: unknown): boolean {
-  if (typeof error !== "object" || error === null) {
-    return false;
-  }
-
-  if ("name" in error && error.name === "AbortError") {
-    return true;
-  }
-
-  if (!("message" in error) || typeof error.message !== "string") {
-    return false;
-  }
-
-  return error.message.toLowerCase().includes("timed out");
-}
-
+await loadDotEnv();
 const config = loadConfig(Bun.argv.slice(2).join(" "), fail);
-
-const client = new OpenAI({
-  apiKey: config.apiKey,
-  baseURL: config.baseUrl,
-  timeout: config.effectiveTimeoutMs,
-  maxRetries: 0
-});
 
 if (config.debug) {
   printRequestDebug(config);
+  printOutputMarker();
 }
 
 try {
-  const request = buildResponseRequest(config);
-  const startedAtMs = Date.now();
-
+  let hasOutput = false;
   let wroteOutputNewline = false;
 
-  if (config.useStreaming) {
-    const stream = await client.responses.create({ ...request, stream: true });
-
-    let hasOutput = false;
-    let completedResponse: Response | undefined;
-    const reasoningSummaryParts: string[] = [];
-
-    if (config.debug) {
-      printOutputMarker();
-    }
-
-    for await (const event of stream) {
-      if (event.type === "response.output_text.delta" && event.delta.length > 0) {
-        process.stdout.write(event.delta);
-        hasOutput = true;
-      }
-
-      if (event.type === "response.reasoning_summary_text.done") {
-        const text = event.text.trim();
-        if (text) {
-          reasoningSummaryParts.push(text);
-        }
-      }
-
-      if (event.type === "response.completed") {
-        completedResponse = event.response;
-      }
-    }
-
-    if (!hasOutput && completedResponse?.output_text) {
-      process.stdout.write(completedResponse.output_text);
+  const result = await runResponseRequest(config, {
+    onOutputTextDelta(delta) {
+      process.stdout.write(delta);
       hasOutput = true;
-    }
+    },
+  });
 
-    if (!hasOutput) {
-      fail("No text content found in model response");
-    }
+  if (!hasOutput) {
+    fail("No text content found in model response");
+  }
 
-    if (config.debug && completedResponse) {
-      process.stdout.write("\n");
-      wroteOutputNewline = true;
-      printResponseDebug(completedResponse, startedAtMs, reasoningSummaryParts);
-    }
-  } else {
-    const response = await client.responses.create({ ...request, stream: false });
-
-    const content = response.output_text;
-
-    if (typeof content !== "string" || content.length === 0) {
-      fail("No text content found in model response");
-    }
-
-    if (config.debug) {
-      printOutputMarker();
-    }
-
-    process.stdout.write(content);
-
-    if (config.debug) {
-      process.stdout.write("\n");
-      wroteOutputNewline = true;
-      printResponseDebug(response, startedAtMs);
-    }
+  if (config.debug && result.response) {
+    process.stdout.write("\n");
+    wroteOutputNewline = true;
+    printResponseDebug(
+      result.response,
+      result.startedAtMs,
+      result.reasoningSummaryParts,
+    );
   }
 
   if (!wroteOutputNewline) {

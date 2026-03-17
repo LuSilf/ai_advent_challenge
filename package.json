@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "bun run src/cli.ts"
+    "start": "bun run src/cli.ts",
+    "start:cli": "bun run src/cli.ts",
+    "start:web": "bun run src/web.ts"
   },
   "dependencies": {
     "openai": "^6.29.0",

@@ -1,9 +1,17 @@
 const DEFAULT_TIMEOUT_MS = 30_000;
 
-const REASONING_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh"] as const;
+export const REASONING_EFFORTS = [
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+] as const;
+export const REASONING_SUMMARIES = ["auto", "concise", "detailed"] as const;
 
 type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
-type ReasoningSummaryMode = "auto" | "concise" | "detailed";
+type ReasoningSummaryMode = (typeof REASONING_SUMMARIES)[number];
 
 export type AppConfig = {
   prompt: string;
@@ -24,36 +32,73 @@ export type AppConfig = {
   frequencyPenalty?: number;
 };
 
-const DEFAULT_SYSTEM_PROMPT = `You are a poetic assistant.
-All responses must be written as poetry in Russian.
+export type ConfigInputValues = {
+  prompt?: string;
+  apiKey?: string;
+  model?: string;
+  baseUrl?: string;
+  systemPrompt?: string;
+  timeoutMs?: string;
+  debug?: string;
+  useStreaming?: string;
+  reasoningEffort?: string;
+  reasoningSummary?: string;
+  temperature?: string;
+  topP?: string;
+  n?: string;
+  maxCompletionTokens?: string;
+  presencePenalty?: string;
+  frequencyPenalty?: string;
+};
 
-Poetry specification:
+const DEFAULT_SYSTEM_PROMPT = `
+  You are a poetic assistant.
 
-Language: Russian
-Poetic form: two quatrains (2 stanzas, 4 lines each)
-Meter: iambic tetrameter
-Rhyme scheme: ABAB
-Line length: approximately 8-9 syllables
-Rhythm: strict and consistent
-Style: humorous
-Lexicon: elevated / high literary vocabulary
+  Always answer in Russian verse.
 
-Rules:
+  Poetry parameters:
 
-* The response must contain exactly two quatrains.
-* Maintain a clear rhyme scheme ABAB in each quatrain.
-* Preserve a consistent iambic rhythm across lines.
-* Use humorous imagery or witty tone.
-* Use elevated vocabulary and literary expressions.
-* Do not include prose explanations or commentary.
-* If the structure or rhythm breaks, rewrite the poem internally before answering.`;
+  * Stanza type: quatrain
+  * Number of stanzas: 2
+  * Meter: iambic tetrameter
+  * Rhyme scheme: ABAB
+  * Rhythm: strict
+  * Style: humorous
+  * Lexicon: elevated literary language
 
-function getEnv(name: string): string | undefined {
-  return process.env[name]?.trim() || undefined;
+  Rules:
+
+  * Each stanza must contain exactly four lines.
+  * Follow the rhyme scheme and meter as closely as possible.
+  * Do not add explanations or prose.
+  * Output only the poem.
+
+`;
+
+function trimToUndefined(value: string | undefined): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function parseNumberEnv(name: string, fail: (message: string) => never): number | undefined {
-  const value = getEnv(name);
+function getEnv(name: string): string | undefined {
+  return trimToUndefined(process.env[name]);
+}
+
+function getRawEnv(name: string): string | undefined {
+  const value = process.env[name];
+  return value === undefined ? undefined : value;
+}
+
+function parseNumber(
+  rawValue: string | undefined,
+  name: string,
+  fail: (message: string) => never,
+): number | undefined {
+  const value = trimToUndefined(rawValue);
   if (!value) {
     return undefined;
   }
@@ -66,26 +111,75 @@ function parseNumberEnv(name: string, fail: (message: string) => never): number 
   return parsed;
 }
 
-function parseBooleanEnv(name: string, defaultValue: boolean, fail: (message: string) => never): boolean {
-  const value = getEnv(name);
+function parseBoolean(
+  rawValue: string | undefined,
+  name: string,
+  defaultValue: boolean,
+  fail: (message: string) => never,
+): boolean {
+  const value = trimToUndefined(rawValue);
   if (!value) {
     return defaultValue;
   }
 
   const normalized = value.toLowerCase();
-  if (normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on") {
+  if (
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "on"
+  ) {
     return true;
   }
 
-  if (normalized === "0" || normalized === "false" || normalized === "no" || normalized === "off") {
+  if (
+    normalized === "0" ||
+    normalized === "false" ||
+    normalized === "no" ||
+    normalized === "off"
+  ) {
     return false;
   }
 
   fail(`Invalid ${name} value: ${value}. Use 1|0|true|false|yes|no|on|off`);
 }
 
-function parseIntegerEnv(name: string, fail: (message: string) => never): number | undefined {
-  const parsed = parseNumberEnv(name, fail);
+function normalizeBooleanString(
+  rawValue: string | undefined,
+): string | undefined {
+  const value = trimToUndefined(rawValue);
+  if (!value) {
+    return undefined;
+  }
+
+  const normalized = value.toLowerCase();
+  if (
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "on"
+  ) {
+    return "true";
+  }
+
+  if (
+    normalized === "0" ||
+    normalized === "false" ||
+    normalized === "no" ||
+    normalized === "off"
+  ) {
+    return "false";
+  }
+
+  return value;
+}
+
+function parseInteger(
+  rawValue: string | undefined,
+  name: string,
+  fail: (message: string) => never,
+): number | undefined {
+  const parsed = parseNumber(rawValue, name, fail);
   if (parsed === undefined) {
     return undefined;
   }
@@ -97,8 +191,14 @@ function parseIntegerEnv(name: string, fail: (message: string) => never): number
   return parsed;
 }
 
-function parseBoundedNumber(name: string, min: number, max: number, fail: (message: string) => never): number | undefined {
-  const parsed = parseNumberEnv(name, fail);
+function parseBoundedNumber(
+  rawValue: string | undefined,
+  name: string,
+  min: number,
+  max: number,
+  fail: (message: string) => never,
+): number | undefined {
+  const parsed = parseNumber(rawValue, name, fail);
   if (parsed === undefined) {
     return undefined;
   }
@@ -110,8 +210,13 @@ function parseBoundedNumber(name: string, min: number, max: number, fail: (messa
   return parsed;
 }
 
-function parseMinInteger(name: string, min: number, fail: (message: string) => never): number | undefined {
-  const parsed = parseIntegerEnv(name, fail);
+function parseMinInteger(
+  rawValue: string | undefined,
+  name: string,
+  min: number,
+  fail: (message: string) => never,
+): number | undefined {
+  const parsed = parseInteger(rawValue, name, fail);
   if (parsed === undefined) {
     return undefined;
   }
@@ -123,68 +228,156 @@ function parseMinInteger(name: string, min: number, fail: (message: string) => n
   return parsed;
 }
 
-function parseReasoningEffort(rawValue: string | undefined, fail: (message: string) => never): ReasoningEffort | undefined {
-  if (!rawValue) {
+function parseReasoningEffort(
+  rawValue: string | undefined,
+  fail: (message: string) => never,
+): ReasoningEffort | undefined {
+  const normalized = trimToUndefined(rawValue)?.toLowerCase();
+  if (!normalized) {
     return undefined;
   }
 
-  const normalized = rawValue.toLowerCase();
   if ((REASONING_EFFORTS as readonly string[]).includes(normalized)) {
     return normalized as ReasoningEffort;
   }
 
-  fail(`Invalid OPENAI_REASONING_EFFORT value: ${rawValue}. Use none|minimal|low|medium|high|xhigh`);
+  fail(
+    `Invalid OPENAI_REASONING_EFFORT value: ${rawValue}. Use none|minimal|low|medium|high|xhigh`,
+  );
 }
 
-function parseReasoningSummary(rawValue: string | undefined, fail: (message: string) => never): ReasoningSummaryMode | undefined {
-  if (!rawValue) {
+function parseReasoningSummary(
+  rawValue: string | undefined,
+  fail: (message: string) => never,
+): ReasoningSummaryMode | undefined {
+  const normalized = trimToUndefined(rawValue)?.toLowerCase();
+  if (!normalized) {
     return undefined;
   }
 
-  const normalized = rawValue.toLowerCase();
-  if (normalized === "auto" || normalized === "concise" || normalized === "detailed") {
-    return normalized;
+  if ((REASONING_SUMMARIES as readonly string[]).includes(normalized)) {
+    return normalized as ReasoningSummaryMode;
   }
 
-  fail(`Invalid OPENAI_REASONING_SUMMARY value: ${rawValue}. Use auto|concise|detailed`);
+  fail(
+    `Invalid OPENAI_REASONING_SUMMARY value: ${rawValue}. Use auto|concise|detailed`,
+  );
 }
 
-export function loadConfig(rawPrompt: string, fail: (message: string) => never): AppConfig {
-  const prompt = rawPrompt.trim();
+export function loadConfigInputDefaults(): ConfigInputValues {
+  const apiKeyEnvName = getEnv("OPENAI_API_KEY_ENV");
+
+  return {
+    apiKey:
+      getEnv("OPENAI_API_KEY") ||
+      (apiKeyEnvName ? getEnv(apiKeyEnvName) : undefined),
+    model: getEnv("OPENAI_MODEL"),
+    baseUrl: getEnv("OPENAI_BASE_URL") ?? "https://api.openai.com/v1",
+    systemPrompt: getRawEnv("OPENAI_SYSTEM_PROMPT") ?? DEFAULT_SYSTEM_PROMPT,
+    timeoutMs: process.env.OPENAI_TIMEOUT_MS ?? String(DEFAULT_TIMEOUT_MS),
+    debug: normalizeBooleanString(getEnv("OPENAI_DEBUG")) ?? "false",
+    useStreaming: normalizeBooleanString(getEnv("OPENAI_STREAM")) ?? "true",
+    reasoningEffort: parseReasoningEffort(
+      getEnv("OPENAI_REASONING_EFFORT"),
+      (message) => {
+        throw new Error(message);
+      },
+    ),
+    reasoningSummary: getEnv("OPENAI_REASONING_SUMMARY"),
+    temperature: getEnv("OPENAI_TEMPERATURE"),
+    topP: getEnv("OPENAI_TOP_P"),
+    n: getEnv("OPENAI_N"),
+    maxCompletionTokens: getEnv("OPENAI_MAX_COMPLETION_TOKENS"),
+    presencePenalty: getEnv("OPENAI_PRESENCE_PENALTY"),
+    frequencyPenalty: getEnv("OPENAI_FREQUENCY_PENALTY"),
+  };
+}
+
+export function resolveConfig(
+  input: ConfigInputValues,
+  fail: (message: string) => never,
+): AppConfig {
+  const prompt = input.prompt?.trim() ?? "";
   if (!prompt) {
-    fail('Usage: bun run src/cli.ts "Your prompt"');
+    fail("Prompt is required");
   }
 
-  const apiKeyEnvName = getEnv("OPENAI_API_KEY_ENV");
-  const apiKey = getEnv("OPENAI_API_KEY") || (apiKeyEnvName ? getEnv(apiKeyEnvName) : undefined);
-  const model = getEnv("OPENAI_MODEL");
+  const apiKey = trimToUndefined(input.apiKey);
+  const model = trimToUndefined(input.model);
 
   if (!apiKey) {
-    fail("Missing API key. Set OPENAI_API_KEY or OPENAI_API_KEY_ENV");
+    fail(
+      "Missing API key. Set OPENAI_API_KEY / OPENAI_API_KEY_ENV or fill it in the form",
+    );
   }
 
   if (!model) {
-    fail("Missing OPENAI_MODEL environment variable");
+    fail("Missing model. Set OPENAI_MODEL or fill it in the form");
   }
 
-  const timeoutMs = Number(process.env.OPENAI_TIMEOUT_MS ?? String(DEFAULT_TIMEOUT_MS));
+  const timeoutMs = parseNumber(input.timeoutMs, "OPENAI_TIMEOUT_MS", fail);
 
   return {
     prompt,
     apiKey,
     model,
-    baseUrl: (getEnv("OPENAI_BASE_URL") ?? "https://api.openai.com/v1").replace(/\/$/, ""),
-    systemPrompt: process.env.OPENAI_SYSTEM_PROMPT ?? DEFAULT_SYSTEM_PROMPT,
-    effectiveTimeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_TIMEOUT_MS,
-    debug: parseBooleanEnv("OPENAI_DEBUG", false, fail),
-    useStreaming: parseBooleanEnv("OPENAI_STREAM", true, fail),
-    reasoningEffort: parseReasoningEffort(getEnv("OPENAI_REASONING_EFFORT"), fail),
-    reasoningSummary: parseReasoningSummary(getEnv("OPENAI_REASONING_SUMMARY"), fail),
-    temperature: parseBoundedNumber("OPENAI_TEMPERATURE", 0, 2, fail),
-    topP: parseBoundedNumber("OPENAI_TOP_P", 0, 1, fail),
-    n: parseMinInteger("OPENAI_N", 1, fail),
-    maxCompletionTokens: parseMinInteger("OPENAI_MAX_COMPLETION_TOKENS", 1, fail),
-    presencePenalty: parseBoundedNumber("OPENAI_PRESENCE_PENALTY", -2, 2, fail),
-    frequencyPenalty: parseBoundedNumber("OPENAI_FREQUENCY_PENALTY", -2, 2, fail)
+    baseUrl: (
+      trimToUndefined(input.baseUrl) ?? "https://api.openai.com/v1"
+    ).replace(/\/$/, ""),
+    systemPrompt: input.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
+    effectiveTimeoutMs:
+      timeoutMs !== undefined && timeoutMs > 0 ? timeoutMs : DEFAULT_TIMEOUT_MS,
+    debug: parseBoolean(input.debug, "OPENAI_DEBUG", false, fail),
+    useStreaming: parseBoolean(input.useStreaming, "OPENAI_STREAM", true, fail),
+    reasoningEffort: parseReasoningEffort(input.reasoningEffort, fail),
+    reasoningSummary: parseReasoningSummary(input.reasoningSummary, fail),
+    temperature: parseBoundedNumber(
+      input.temperature,
+      "OPENAI_TEMPERATURE",
+      0,
+      2,
+      fail,
+    ),
+    topP: parseBoundedNumber(input.topP, "OPENAI_TOP_P", 0, 1, fail),
+    n: parseMinInteger(input.n, "OPENAI_N", 1, fail),
+    maxCompletionTokens: parseMinInteger(
+      input.maxCompletionTokens,
+      "OPENAI_MAX_COMPLETION_TOKENS",
+      1,
+      fail,
+    ),
+    presencePenalty: parseBoundedNumber(
+      input.presencePenalty,
+      "OPENAI_PRESENCE_PENALTY",
+      -2,
+      2,
+      fail,
+    ),
+    frequencyPenalty: parseBoundedNumber(
+      input.frequencyPenalty,
+      "OPENAI_FREQUENCY_PENALTY",
+      -2,
+      2,
+      fail,
+    ),
   };
+}
+
+export function loadConfig(
+  rawPrompt: string,
+  fail: (message: string) => never,
+): AppConfig {
+  return resolveConfig(
+    {
+      ...loadConfigInputDefaults(),
+      prompt: rawPrompt,
+    },
+    (message) => {
+      if (message === "Prompt is required") {
+        fail('Usage: bun run src/cli.ts "Your prompt"');
+      }
+
+      fail(message);
+    },
+  );
 }
