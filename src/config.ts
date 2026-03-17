@@ -26,10 +26,7 @@ export type AppConfig = {
   reasoningSummary?: ReasoningSummaryMode;
   temperature?: number;
   topP?: number;
-  n?: number;
   maxCompletionTokens?: number;
-  presencePenalty?: number;
-  frequencyPenalty?: number;
 };
 
 export type ConfigInputValues = {
@@ -45,10 +42,7 @@ export type ConfigInputValues = {
   reasoningSummary?: string;
   temperature?: string;
   topP?: string;
-  n?: string;
   maxCompletionTokens?: string;
-  presencePenalty?: string;
-  frequencyPenalty?: string;
 };
 
 const DEFAULT_SYSTEM_PROMPT = `
@@ -286,10 +280,7 @@ export function loadConfigInputDefaults(): ConfigInputValues {
     reasoningSummary: getEnv("OPENAI_REASONING_SUMMARY"),
     temperature: getEnv("OPENAI_TEMPERATURE"),
     topP: getEnv("OPENAI_TOP_P"),
-    n: getEnv("OPENAI_N"),
     maxCompletionTokens: getEnv("OPENAI_MAX_COMPLETION_TOKENS"),
-    presencePenalty: getEnv("OPENAI_PRESENCE_PENALTY"),
-    frequencyPenalty: getEnv("OPENAI_FREQUENCY_PENALTY"),
   };
 }
 
@@ -339,25 +330,10 @@ export function resolveConfig(
       fail,
     ),
     topP: parseBoundedNumber(input.topP, "OPENAI_TOP_P", 0, 1, fail),
-    n: parseMinInteger(input.n, "OPENAI_N", 1, fail),
     maxCompletionTokens: parseMinInteger(
       input.maxCompletionTokens,
       "OPENAI_MAX_COMPLETION_TOKENS",
       1,
-      fail,
-    ),
-    presencePenalty: parseBoundedNumber(
-      input.presencePenalty,
-      "OPENAI_PRESENCE_PENALTY",
-      -2,
-      2,
-      fail,
-    ),
-    frequencyPenalty: parseBoundedNumber(
-      input.frequencyPenalty,
-      "OPENAI_FREQUENCY_PENALTY",
-      -2,
-      2,
       fail,
     ),
   };

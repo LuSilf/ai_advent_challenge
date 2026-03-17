@@ -1,3 +1,4 @@
+import { Hono } from "hono";
 import type { Response as OpenAIResponse } from "openai/resources/responses/responses";
 
 import {
@@ -5,8 +6,8 @@ import {
   REASONING_SUMMARIES,
   loadConfigInputDefaults,
   resolveConfig,
-  type ConfigInputValues,
   type AppConfig,
+  type ConfigInputValues,
 } from "./config";
 import { loadDotEnv } from "./env";
 import {
@@ -20,9 +21,25 @@ type ChatMessage = {
   content: string;
 };
 
+type StreamPayload =
+  | { type: "delta"; text: string }
+  | {
+      type: "done";
+      assistantMessage: string;
+      history: ChatMessage[];
+      debugHtml: string;
+    }
+  | {
+      type: "error";
+      message: string;
+      status: number;
+    };
+
 await loadDotEnv();
+
 const defaults = loadConfigInputDefaults();
 const serverPort = Number(process.env.PORT ?? "3000");
+const app = new Hono();
 
 function escapeHtml(value: string): string {
   return value
@@ -59,15 +76,16 @@ function renderSelectOptions(
   return items.join("");
 }
 
-function renderMessage(message: ChatMessage, debugHtml = ""): string {
-  const roleLabel = message.role === "user" ? "You" : "Assistant";
-  const messageClass =
-    message.role === "user" ? "message-user" : "message-assistant";
+function renderMessage(message: ChatMessage): string {
+  const isUser = message.role === "user";
+  const roleLabel = isUser ? "You" : "Assistant";
+  const wrapperClasses = isUser
+    ? "ml-auto theme-user-bubble"
+    : "mr-auto theme-assistant-bubble";
 
-  return `<article class="message ${messageClass}">
-    <header>${roleLabel}</header>
-    <pre>${escapeHtml(message.content)}</pre>
-    ${debugHtml}
+  return `<article class="max-w-3xl rounded-[28px] border px-5 py-4 shadow-[0_18px_60px_rgba(15,23,42,0.16)] backdrop-blur ${wrapperClasses}">
+    <header class="theme-text-muted mb-2 text-[11px] font-semibold uppercase tracking-[0.28em]">${roleLabel}</header>
+    <pre class="theme-text whitespace-pre-wrap break-words font-['IBM_Plex_Serif'] text-[15px] leading-7">${escapeHtml(message.content)}</pre>
   </article>`;
 }
 
@@ -140,30 +158,9 @@ function renderDebugInfo(
   );
   lines.push(`Temperature: ${formatOptional(config.temperature)}`);
   lines.push(`Top-p: ${formatOptional(config.topP)}`);
-  lines.push(`N: ${formatOptional(config.n)}`);
   lines.push(
     `Max completion tokens: ${formatOptional(config.maxCompletionTokens)}`,
   );
-  lines.push(`Presence penalty: ${formatOptional(config.presencePenalty)}`);
-  lines.push(`Frequency penalty: ${formatOptional(config.frequencyPenalty)}`);
-
-  if (config.n !== undefined) {
-    lines.push(
-      "Note: OPENAI_N is not supported by Responses API and will be ignored",
-    );
-  }
-
-  if (config.presencePenalty !== undefined) {
-    lines.push(
-      "Note: OPENAI_PRESENCE_PENALTY is not supported by Responses API and will be ignored",
-    );
-  }
-
-  if (config.frequencyPenalty !== undefined) {
-    lines.push(
-      "Note: OPENAI_FREQUENCY_PENALTY is not supported by Responses API and will be ignored",
-    );
-  }
 
   lines.push("");
   lines.push("[Prompts]");
@@ -234,21 +231,24 @@ function renderDebugInfo(
     lines.push(`Response error: ${response.error.message}`);
   }
 
-  return `<details class="debug-box">
-    <summary>Debug</summary>
-    <pre>${escapeHtml(lines.join("\n"))}</pre>
+  return `<details class="theme-debug mt-4 rounded-2xl border">
+    <summary class="theme-text-muted cursor-pointer px-4 py-3 text-xs font-semibold uppercase tracking-[0.24em]">Debug</summary>
+    <pre class="theme-text overflow-x-auto border-t px-4 py-4 whitespace-pre-wrap break-words text-xs leading-6" style="border-color: var(--line);">${escapeHtml(lines.join("\n"))}</pre>
   </details>`;
 }
 
-function renderChatLog(history: ChatMessage[]): string {
+function renderMessages(history: ChatMessage[]): string {
   if (history.length === 0) {
-    return `<section id="chat-empty" class="empty-state">
-      <h2>Chat is empty</h2>
-      <p>Fill in the settings, write a prompt, and the server will call the same Responses API path as the CLI.</p>
+    return `<section id="empty-state" class="theme-empty grid min-h-full place-items-center rounded-[32px] border border-dashed p-10 text-center">
+      <div class="max-w-xl">
+        <p class="theme-accent text-xs font-semibold uppercase tracking-[0.34em]">Ready</p>
+        <h2 class="theme-title mt-3 font-['Space_Grotesk'] text-3xl font-semibold">Streaming chat поверх Responses API</h2>
+        <p class="theme-text-muted mt-4 text-sm leading-7">Слева параметры запроса, справа диалог. При включенном streaming ответ рисуется токенами по мере прихода.</p>
+      </div>
     </section>`;
   }
 
-  return `<section id="chat-empty"></section>`;
+  return history.map((message) => renderMessage(message)).join("");
 }
 
 function buildConversationPrompt(
@@ -300,445 +300,15 @@ function formValue(formData: FormData, name: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-function renderPage(history: ChatMessage[], values: ConfigInputValues): string {
-  const historyJson = JSON.stringify(history);
-
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>HTMX LLM Chat</title>
-    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
-    <style>
-      :root {
-        --bg: #f5efe3;
-        --surface: rgba(255, 251, 245, 0.88);
-        --surface-strong: #fff9f0;
-        --ink: #1d1d1b;
-        --muted: #65594d;
-        --accent: #0e6b62;
-        --accent-2: #b65c3a;
-        --line: rgba(29, 29, 27, 0.12);
-        --shadow: 0 24px 80px rgba(70, 44, 24, 0.12);
-      }
-
-      * { box-sizing: border-box; }
-      body {
-        margin: 0;
-        min-height: 100vh;
-        font-family: "Georgia", "Times New Roman", serif;
-        color: var(--ink);
-        background:
-          radial-gradient(circle at top left, rgba(182, 92, 58, 0.18), transparent 32%),
-          radial-gradient(circle at top right, rgba(14, 107, 98, 0.22), transparent 28%),
-          linear-gradient(180deg, #f9f2e7 0%, #f1e6d6 100%);
-      }
-
-      .shell {
-        width: min(1400px, calc(100vw - 32px));
-        margin: 24px auto;
-        display: grid;
-        grid-template-columns: 360px 1fr;
-        gap: 20px;
-      }
-
-      .panel, .chat-panel {
-        background: var(--surface);
-        backdrop-filter: blur(10px);
-        border: 1px solid var(--line);
-        border-radius: 24px;
-        box-shadow: var(--shadow);
-      }
-
-      .panel {
-        padding: 20px;
-        align-self: start;
-        position: sticky;
-        top: 24px;
-      }
-
-      .chat-panel {
-        display: grid;
-        grid-template-rows: auto 1fr auto;
-        min-height: calc(100vh - 48px);
-        overflow: hidden;
-      }
-
-      .hero {
-        padding: 24px 28px 16px;
-        border-bottom: 1px solid var(--line);
-      }
-
-      .hero h1, .panel h2 {
-        margin: 0;
-        font-size: 1.5rem;
-        line-height: 1.1;
-      }
-
-      .hero p, .field-hint, .meta-note, .empty-state p {
-        color: var(--muted);
-      }
-
-      .hero p {
-        margin: 10px 0 0;
-        max-width: 60ch;
-      }
-
-      .settings {
-        display: grid;
-        gap: 14px;
-      }
-
-      .field {
-        display: grid;
-        gap: 6px;
-      }
-
-      .grid-2 {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 12px;
-      }
-
-      label {
-        font-size: 0.9rem;
-        font-weight: 700;
-        letter-spacing: 0.02em;
-      }
-
-      input, select, textarea, button {
-        width: 100%;
-        border-radius: 14px;
-        border: 1px solid rgba(29, 29, 27, 0.15);
-        padding: 12px 14px;
-        font: inherit;
-        color: var(--ink);
-        background: rgba(255, 255, 255, 0.72);
-      }
-
-      textarea {
-        resize: vertical;
-        min-height: 110px;
-      }
-
-      .messages {
-        padding: 24px 28px;
-        overflow: auto;
-        display: grid;
-        gap: 16px;
-        align-content: start;
-      }
-
-      .message {
-        max-width: min(80ch, 92%);
-        border-radius: 22px;
-        padding: 16px 18px;
-        border: 1px solid var(--line);
-        background: var(--surface-strong);
-      }
-
-      .message-user {
-        margin-left: auto;
-        background: linear-gradient(135deg, rgba(14, 107, 98, 0.18), rgba(14, 107, 98, 0.08));
-      }
-
-      .message-assistant {
-        background: linear-gradient(135deg, rgba(182, 92, 58, 0.14), rgba(255, 249, 240, 0.95));
-      }
-
-      .message-error {
-        border-color: rgba(182, 32, 32, 0.3);
-        background: rgba(182, 32, 32, 0.08);
-      }
-
-      .message header {
-        font-size: 0.78rem;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        color: var(--muted);
-        margin-bottom: 10px;
-      }
-
-      .message pre, .debug-box pre {
-        margin: 0;
-        white-space: pre-wrap;
-        word-break: break-word;
-        font-family: "Georgia", "Times New Roman", serif;
-        line-height: 1.6;
-      }
-
-      .composer {
-        padding: 18px 24px 24px;
-        border-top: 1px solid var(--line);
-        background: linear-gradient(180deg, rgba(255, 251, 245, 0.3), rgba(255, 251, 245, 0.88));
-      }
-
-      .composer-row {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        gap: 12px;
-        align-items: end;
-      }
-
-      button {
-        width: auto;
-        min-width: 150px;
-        cursor: pointer;
-        border: none;
-        color: #fff;
-        font-weight: 700;
-        background: linear-gradient(135deg, var(--accent), var(--accent-2));
-      }
-
-      button:disabled {
-        opacity: 0.6;
-        cursor: wait;
-      }
-
-      .status {
-        min-height: 24px;
-        padding-top: 8px;
-        font-size: 0.92rem;
-        color: var(--muted);
-      }
-
-      .spinner {
-        display: none;
-      }
-
-      .htmx-request .spinner,
-      .htmx-request.spinner {
-        display: inline;
-      }
-
-      .debug-box {
-        margin-top: 12px;
-      }
-
-      .debug-box summary {
-        cursor: pointer;
-        color: var(--muted);
-      }
-
-      .empty-state {
-        min-height: 100%;
-        display: grid;
-        place-items: center;
-        text-align: center;
-        padding: 48px 24px;
-      }
-
-      @media (max-width: 980px) {
-        .shell {
-          width: min(100vw - 24px, 1400px);
-          margin: 12px auto;
-          grid-template-columns: 1fr;
-        }
-
-        .panel {
-          position: static;
-        }
-
-        .chat-panel {
-          min-height: 70vh;
-        }
-
-        .grid-2,
-        .composer-row {
-          grid-template-columns: 1fr;
-        }
-
-        button {
-          width: 100%;
-        }
-      }
-    </style>
-  </head>
-  <body>
-    <form
-      class="shell"
-      hx-post="/chat"
-      hx-target="#chat-items"
-      hx-swap="beforeend"
-      hx-indicator="#request-spinner"
-      hx-disabled-elt="#send-button"
-    >
-      <aside class="panel">
-        <h2>Settings</h2>
-        <p class="meta-note">All request parameters come from the current form, so the web UI can mirror the CLI without separate env edits.</p>
-        <div class="settings">
-          <div class="field">
-            <label for="model">Model</label>
-            <select id="model" name="model">
-              ${renderSelectOptions(values.model, ["openai/gpt-5-nano"], "Select", false)}
-            </select>
-          </div>
-          <div class="grid-2">
-            <div class="field">
-              <label for="timeout-ms">Timeout ms</label>
-              <input id="timeout-ms" name="timeoutMs" inputmode="numeric" value="${escapeHtml(toTextValue(values.timeoutMs))}" />
-            </div>
-            <div class="field">
-              <label for="use-streaming">Streaming mode</label>
-              <select id="use-streaming" name="useStreaming">
-                ${renderSelectOptions(values.useStreaming, ["true", "false"], "Select")}
-              </select>
-            </div>
-          </div>
-          <div class="grid-2">
-            <div class="field">
-              <label for="debug">Debug</label>
-              <select id="debug" name="debug">
-                ${renderSelectOptions(values.debug, ["true", "false"], "Select")}
-              </select>
-            </div>
-            <div class="field">
-              <label for="reasoning-effort">Reasoning effort</label>
-              <select id="reasoning-effort" name="reasoningEffort">
-                ${renderSelectOptions(values.reasoningEffort, REASONING_EFFORTS, "Not set")}
-              </select>
-            </div>
-          </div>
-          <div class="field">
-            <label for="reasoning-summary">Reasoning summary</label>
-            <select id="reasoning-summary" name="reasoningSummary">
-              ${renderSelectOptions(values.reasoningSummary, REASONING_SUMMARIES, "Not set")}
-            </select>
-          </div>
-          <div class="grid-2">
-            <div class="field">
-              <label for="temperature">Temperature</label>
-              <input id="temperature" name="temperature" value="${escapeHtml(toTextValue(values.temperature))}" />
-            </div>
-            <div class="field">
-              <label for="top-p">Top P</label>
-              <input id="top-p" name="topP" value="${escapeHtml(toTextValue(values.topP))}" />
-            </div>
-          </div>
-          <div class="grid-2">
-            <div class="field">
-              <label for="n">N</label>
-              <input id="n" name="n" value="${escapeHtml(toTextValue(values.n))}" />
-              <div class="field-hint">Ignored by Responses API, kept for parity with CLI.</div>
-            </div>
-            <div class="field">
-              <label for="max-completion-tokens">Max completion tokens</label>
-              <input id="max-completion-tokens" name="maxCompletionTokens" value="${escapeHtml(toTextValue(values.maxCompletionTokens))}" />
-            </div>
-          </div>
-          <div class="grid-2">
-            <div class="field">
-              <label for="presence-penalty">Presence penalty</label>
-              <input id="presence-penalty" name="presencePenalty" value="${escapeHtml(toTextValue(values.presencePenalty))}" />
-              <div class="field-hint">Ignored by Responses API, like in CLI.</div>
-            </div>
-            <div class="field">
-              <label for="frequency-penalty">Frequency penalty</label>
-              <input id="frequency-penalty" name="frequencyPenalty" value="${escapeHtml(toTextValue(values.frequencyPenalty))}" />
-              <div class="field-hint">Ignored by Responses API, like in CLI.</div>
-            </div>
-          </div>
-          <div class="field">
-            <label for="system-prompt">System prompt</label>
-            <textarea id="system-prompt" name="systemPrompt" rows="10">${escapeHtml(toTextValue(values.systemPrompt))}</textarea>
-          </div>
-        </div>
-      </aside>
-
-      <main class="chat-panel">
-        <section class="hero">
-          <h1>HTMX Chat</h1>
-          <p>Each submit hits the server, the server calls the same OpenAI-compatible Responses API path as the CLI, and the result is appended to the chat.</p>
-        </section>
-
-        <section id="chat-log" class="messages">
-          ${renderChatLog(history)}
-          <div id="chat-items">${history.map((message) => renderMessage(message)).join("")}</div>
-        </section>
-
-        <section class="composer">
-          <input id="history-json" type="hidden" name="historyJson" value="${escapeHtml(historyJson)}" />
-          <div class="composer-row">
-            <div class="field">
-              <label for="prompt-input">Message</label>
-              <textarea id="prompt-input" name="prompt" placeholder="Write the next user message here">${escapeHtml(toTextValue(values.prompt))}</textarea>
-            </div>
-            <button id="send-button" type="submit">Send</button>
-          </div>
-          <div id="request-status" class="status">
-            <span id="request-spinner" class="spinner">Request in progress...</span>
-          </div>
-        </section>
-      </main>
-    </form>
-
-    <script>
-      document.body.addEventListener("htmx:afterSwap", function (event) {
-        if (event.target && event.target.id === "chat-items") {
-          var chatLog = document.getElementById("chat-log");
-          if (chatLog) {
-            chatLog.scrollTop = chatLog.scrollHeight;
-          }
-          var prompt = document.getElementById("prompt-input");
-          if (prompt) prompt.focus();
-        }
-      });
-    </script>
-  </body>
-</html>`;
-}
-
-function htmlResponse(body: string, status = 200): Response {
-  return new Response(body, {
-    status,
-    headers: {
-      "content-type": "text/html; charset=utf-8",
-    },
-  });
-}
-
-function renderStatusSwap(text: string): string {
-  return `<div id="request-status" class="status" hx-swap-oob="true">${escapeHtml(text)}</div>`;
-}
-
-function renderPromptReset(promptValue = ""): string {
-  return `<textarea id="prompt-input" name="prompt" placeholder="Write the next user message here" hx-swap-oob="true">${escapeHtml(promptValue)}</textarea>`;
-}
-
-function renderHistorySwap(history: ChatMessage[]): string {
-  return `<input id="history-json" type="hidden" name="historyJson" value="${escapeHtml(JSON.stringify(history))}" hx-swap-oob="true" />`;
-}
-
-function renderEmptyStateSwap(): string {
-  return `<section id="chat-empty" hx-swap-oob="true"></section>`;
-}
-
-function renderErrorFragment(
-  message: string,
-  promptValue: string,
-  status = 400,
-): Response {
-  const body = `${renderMessage({ role: "assistant", content: message }, "")}
-${renderEmptyStateSwap()}
-${renderPromptReset(promptValue)}
-${renderStatusSwap("Request failed")}`;
-  return htmlResponse(body, status);
-}
-
-async function handleChat(request: Request): Promise<Response> {
-  const formData = await request.formData();
-  const history = parseHistory(formValue(formData, "historyJson"));
-  const prompt = formValue(formData, "prompt")?.trim() ?? "";
-
-  if (!prompt) {
-    return renderErrorFragment("Message is required.", "");
-  }
-
-  const configInput: ConfigInputValues = {
+function buildConfigInput(
+  formData: FormData,
+  history: ChatMessage[],
+  prompt: string,
+): ConfigInputValues {
+  return {
     ...defaults,
     model: formValue(formData, "model") ?? defaults.model,
-    baseUrl: defaults.baseUrl,
+    baseUrl: formValue(formData, "baseUrl") ?? defaults.baseUrl,
     systemPrompt: formValue(formData, "systemPrompt") ?? defaults.systemPrompt,
     timeoutMs: formValue(formData, "timeoutMs") ?? defaults.timeoutMs,
     debug: formValue(formData, "debug") ?? defaults.debug,
@@ -749,93 +319,856 @@ async function handleChat(request: Request): Promise<Response> {
       formValue(formData, "reasoningSummary") ?? defaults.reasoningSummary,
     temperature: formValue(formData, "temperature") ?? defaults.temperature,
     topP: formValue(formData, "topP") ?? defaults.topP,
-    n: formValue(formData, "n") ?? defaults.n,
     maxCompletionTokens:
       formValue(formData, "maxCompletionTokens") ??
       defaults.maxCompletionTokens,
-    presencePenalty:
-      formValue(formData, "presencePenalty") ?? defaults.presencePenalty,
-    frequencyPenalty:
-      formValue(formData, "frequencyPenalty") ?? defaults.frequencyPenalty,
     prompt: buildConversationPrompt(history, prompt),
   };
+}
 
-  let config;
-  try {
-    config = resolveConfig(configInput, (message) => {
-      throw new Error(message);
-    });
-  } catch (error) {
-    return renderErrorFragment(
-      error instanceof Error ? error.message : String(error),
-      prompt,
-    );
+function jsonResponse(payload: unknown, status = 200): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+    },
+  });
+}
+
+function createStreamResponse(
+  build: (send: (payload: StreamPayload) => Promise<void>) => Promise<void>,
+): Response {
+  const encoder = new TextEncoder();
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = async (payload: StreamPayload) => {
+        controller.enqueue(encoder.encode(`${JSON.stringify(payload)}\n`));
+      };
+
+      try {
+        await build(send);
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "content-type": "application/x-ndjson; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+    },
+  });
+}
+
+function renderPage(history: ChatMessage[], values: ConfigInputValues): string {
+  return `<!doctype html>
+<html lang="en" class="h-full bg-slate-950">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Responses Chat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ["Space Grotesk", "ui-sans-serif", "system-ui"],
+              serif: ["IBM Plex Serif", "ui-serif", "Georgia"]
+            },
+            colors: {
+              ink: "#e5eef8"
+            },
+            boxShadow: {
+              glow: "0 32px 120px rgba(34, 211, 238, 0.16)"
+            }
+          }
+        }
+      };
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@400;500;600&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --bg:
+          radial-gradient(circle at top left, rgba(34, 211, 238, 0.18), transparent 28%),
+          radial-gradient(circle at top right, rgba(244, 114, 182, 0.16), transparent 24%),
+          linear-gradient(180deg, #020617 0%, #0f172a 45%, #111827 100%);
+        --panel: rgba(15, 23, 42, 0.72);
+        --panel-strong: rgba(2, 6, 23, 0.42);
+        --surface: rgba(255, 255, 255, 0.08);
+        --surface-muted: rgba(255, 255, 255, 0.05);
+        --surface-strong: rgba(2, 6, 23, 0.72);
+        --line: rgba(255, 255, 255, 0.1);
+        --line-strong: rgba(255, 255, 255, 0.16);
+        --text: #e5eef8;
+        --text-soft: #cbd5e1;
+        --text-muted: #94a3b8;
+        --accent: #67e8f9;
+        --accent-soft: rgba(34, 211, 238, 0.12);
+        --accent-line: rgba(34, 211, 238, 0.2);
+        --accent-strong: #0f172a;
+        --accent-2: #f0abfc;
+        --user-bubble: rgba(16, 185, 129, 0.12);
+        --user-line: rgba(16, 185, 129, 0.3);
+        --assistant-bubble: rgba(255, 255, 255, 0.08);
+        --assistant-line: rgba(255, 255, 255, 0.12);
+        --input-bg: rgba(2, 6, 23, 0.72);
+        --button-bg: linear-gradient(90deg, #22d3ee 0%, #38bdf8 50%, #e879f9 100%);
+        --shadow: 0 32px 120px rgba(34, 211, 238, 0.16);
+      }
+
+      body[data-theme="cappuccino"] {
+        --bg:
+          radial-gradient(circle at top left, rgba(214, 152, 111, 0.28), transparent 28%),
+          radial-gradient(circle at top right, rgba(120, 77, 60, 0.18), transparent 22%),
+          linear-gradient(180deg, #f8efe4 0%, #eadbc8 48%, #d9c0aa 100%);
+        --panel: rgba(255, 248, 240, 0.72);
+        --panel-strong: rgba(255, 251, 246, 0.42);
+        --surface: rgba(255, 255, 255, 0.48);
+        --surface-muted: rgba(255, 255, 255, 0.28);
+        --surface-strong: rgba(255, 250, 244, 0.88);
+        --line: rgba(115, 77, 57, 0.14);
+        --line-strong: rgba(115, 77, 57, 0.22);
+        --text: #3f2b22;
+        --text-soft: #5c4337;
+        --text-muted: #7a5f53;
+        --accent: #9a5a37;
+        --accent-soft: rgba(154, 90, 55, 0.1);
+        --accent-line: rgba(154, 90, 55, 0.18);
+        --accent-strong: #fffaf4;
+        --accent-2: #6f8f6b;
+        --user-bubble: rgba(111, 143, 107, 0.16);
+        --user-line: rgba(111, 143, 107, 0.32);
+        --assistant-bubble: rgba(255, 255, 255, 0.55);
+        --assistant-line: rgba(115, 77, 57, 0.12);
+        --input-bg: rgba(255, 252, 248, 0.84);
+        --button-bg: linear-gradient(90deg, #9a5a37 0%, #c4845a 50%, #6f8f6b 100%);
+        --shadow: 0 30px 90px rgba(115, 77, 57, 0.16);
+      }
+
+      body[data-theme="darkula"] {
+        --bg:
+          radial-gradient(circle at top left, rgba(189, 147, 249, 0.16), transparent 28%),
+          radial-gradient(circle at top right, rgba(255, 121, 198, 0.12), transparent 22%),
+          linear-gradient(180deg, #282a36 0%, #1f2230 54%, #191a21 100%);
+        --panel: rgba(40, 42, 54, 0.8);
+        --panel-strong: rgba(24, 25, 33, 0.46);
+        --surface: rgba(68, 71, 90, 0.4);
+        --surface-muted: rgba(68, 71, 90, 0.24);
+        --surface-strong: rgba(30, 31, 41, 0.78);
+        --line: rgba(248, 248, 242, 0.1);
+        --line-strong: rgba(248, 248, 242, 0.16);
+        --text: #f8f8f2;
+        --text-soft: #e2def1;
+        --text-muted: #b8b5c9;
+        --accent: #8be9fd;
+        --accent-soft: rgba(139, 233, 253, 0.12);
+        --accent-line: rgba(139, 233, 253, 0.2);
+        --accent-strong: #282a36;
+        --accent-2: #ff79c6;
+        --user-bubble: rgba(80, 250, 123, 0.12);
+        --user-line: rgba(80, 250, 123, 0.24);
+        --assistant-bubble: rgba(68, 71, 90, 0.4);
+        --assistant-line: rgba(248, 248, 242, 0.1);
+        --input-bg: rgba(24, 25, 33, 0.78);
+        --button-bg: linear-gradient(90deg, #8be9fd 0%, #bd93f9 50%, #ff79c6 100%);
+        --shadow: 0 32px 120px rgba(189, 147, 249, 0.18);
+      }
+
+      body[data-theme="light"] {
+        --bg:
+          radial-gradient(circle at top left, rgba(59, 130, 246, 0.16), transparent 28%),
+          radial-gradient(circle at top right, rgba(16, 185, 129, 0.12), transparent 24%),
+          linear-gradient(180deg, #f8fafc 0%, #eef2ff 45%, #e2e8f0 100%);
+        --panel: rgba(255, 255, 255, 0.72);
+        --panel-strong: rgba(255, 255, 255, 0.44);
+        --surface: rgba(255, 255, 255, 0.62);
+        --surface-muted: rgba(255, 255, 255, 0.38);
+        --surface-strong: rgba(255, 255, 255, 0.88);
+        --line: rgba(15, 23, 42, 0.08);
+        --line-strong: rgba(15, 23, 42, 0.14);
+        --text: #0f172a;
+        --text-soft: #334155;
+        --text-muted: #64748b;
+        --accent: #2563eb;
+        --accent-soft: rgba(37, 99, 235, 0.1);
+        --accent-line: rgba(37, 99, 235, 0.16);
+        --accent-strong: #eff6ff;
+        --accent-2: #0f766e;
+        --user-bubble: rgba(16, 185, 129, 0.12);
+        --user-line: rgba(16, 185, 129, 0.22);
+        --assistant-bubble: rgba(255, 255, 255, 0.72);
+        --assistant-line: rgba(15, 23, 42, 0.08);
+        --input-bg: rgba(255, 255, 255, 0.86);
+        --button-bg: linear-gradient(90deg, #2563eb 0%, #38bdf8 50%, #0f766e 100%);
+        --shadow: 0 30px 110px rgba(37, 99, 235, 0.12);
+      }
+
+      body[data-theme="forest"] {
+        --bg:
+          radial-gradient(circle at top left, rgba(74, 222, 128, 0.16), transparent 28%),
+          radial-gradient(circle at top right, rgba(251, 191, 36, 0.12), transparent 22%),
+          linear-gradient(180deg, #0b1f19 0%, #102a22 46%, #1f3b2e 100%);
+        --panel: rgba(9, 30, 23, 0.76);
+        --panel-strong: rgba(7, 21, 17, 0.44);
+        --surface: rgba(255, 255, 255, 0.08);
+        --surface-muted: rgba(255, 255, 255, 0.04);
+        --surface-strong: rgba(8, 24, 18, 0.8);
+        --line: rgba(187, 247, 208, 0.12);
+        --line-strong: rgba(187, 247, 208, 0.18);
+        --text: #ecfdf5;
+        --text-soft: #d1fae5;
+        --text-muted: #a7c9b9;
+        --accent: #4ade80;
+        --accent-soft: rgba(74, 222, 128, 0.12);
+        --accent-line: rgba(74, 222, 128, 0.2);
+        --accent-strong: #052e16;
+        --accent-2: #fbbf24;
+        --user-bubble: rgba(251, 191, 36, 0.12);
+        --user-line: rgba(251, 191, 36, 0.24);
+        --assistant-bubble: rgba(255, 255, 255, 0.06);
+        --assistant-line: rgba(187, 247, 208, 0.12);
+        --input-bg: rgba(7, 21, 17, 0.82);
+        --button-bg: linear-gradient(90deg, #4ade80 0%, #22c55e 50%, #fbbf24 100%);
+        --shadow: 0 30px 110px rgba(74, 222, 128, 0.12);
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      .theme-panel {
+        background: var(--panel);
+        border-color: var(--line);
+        box-shadow: var(--shadow);
+      }
+
+      .theme-panel-strong {
+        background: var(--panel-strong);
+        border-color: var(--line);
+        box-shadow: var(--shadow);
+      }
+
+      .theme-surface {
+        background: var(--surface);
+        border-color: var(--line);
+      }
+
+      .theme-surface-muted {
+        background: var(--surface-muted);
+        border-color: var(--line);
+      }
+
+      .theme-input {
+        background: var(--input-bg);
+        border-color: var(--line);
+        color: var(--text);
+      }
+
+      .theme-input::placeholder {
+        color: var(--text-muted);
+      }
+
+      .theme-input:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px var(--accent-soft);
+      }
+
+      .theme-title,
+      .theme-text {
+        color: var(--text);
+      }
+
+      .theme-text-soft {
+        color: var(--text-soft);
+      }
+
+      .theme-text-muted {
+        color: var(--text-muted);
+      }
+
+      .theme-accent {
+        color: var(--accent);
+      }
+
+      .theme-accent-2 {
+        color: var(--accent-2);
+      }
+
+      .theme-chip {
+        border-color: var(--accent-line);
+        background: var(--accent-soft);
+        color: var(--text);
+      }
+
+      .theme-button {
+        background: var(--button-bg);
+        color: var(--accent-strong);
+      }
+
+      .theme-user-bubble {
+        background: var(--user-bubble);
+        border-color: var(--user-line);
+      }
+
+      .theme-assistant-bubble {
+        background: var(--assistant-bubble);
+        border-color: var(--assistant-line);
+      }
+
+      .theme-debug {
+        background: var(--surface-strong);
+        border-color: var(--line-strong);
+      }
+
+      .theme-empty {
+        background: var(--surface-muted);
+        border-color: var(--line);
+      }
+    </style>
+  </head>
+  <body data-theme="dark" class="min-h-full">
+    <div class="mx-auto flex min-h-screen w-full max-w-[1600px] flex-col gap-6 px-4 py-4 md:px-6 lg:flex-row lg:px-8">
+      <aside class="theme-panel w-full shrink-0 rounded-[32px] border p-5 backdrop-blur xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:w-[390px] xl:overflow-auto">
+        <div class="mb-5 flex justify-end">
+          <div class="w-[150px] space-y-2">
+            <label for="theme-select" class="theme-text-muted text-[11px] font-semibold uppercase tracking-[0.24em]">Theme</label>
+            <select id="theme-select" class="theme-input w-full rounded-2xl border px-4 py-3 text-sm outline-none transition">
+              <option value="dark">Dark</option>
+              <option value="darkula">Darkula</option>
+              <option value="cappuccino">Cappuccino</option>
+              <option value="light">Light</option>
+              <option value="forest">Forest</option>
+            </select>
+          </div>
+        </div>
+
+        <form id="chat-form" class="space-y-5">
+          <input id="history-json" type="hidden" name="historyJson" value="${escapeHtml(JSON.stringify(history))}" />
+
+          <div class="space-y-2">
+            <label for="system-prompt" class="theme-text-muted text-xs font-semibold uppercase tracking-[0.22em]">System prompt</label>
+            <textarea id="system-prompt" name="systemPrompt" rows="10" class="theme-input w-full rounded-[24px] border px-4 py-3 text-sm leading-7 outline-none transition">${escapeHtml(toTextValue(values.systemPrompt))}</textarea>
+          </div>
+
+          <div class="space-y-2">
+            <label for="model" class="theme-text-muted text-xs font-semibold uppercase tracking-[0.22em]">Model</label>
+            <input id="model" name="model" value="${escapeHtml(toTextValue(values.model))}" class="theme-input w-full rounded-2xl border px-4 py-3 text-sm outline-none transition" />
+          </div>
+
+          <div class="space-y-2">
+            <label for="base-url" class="theme-text-muted text-xs font-semibold uppercase tracking-[0.22em]">Base URL</label>
+            <input id="base-url" name="baseUrl" value="${escapeHtml(toTextValue(values.baseUrl))}" class="theme-input w-full rounded-2xl border px-4 py-3 text-sm outline-none transition" />
+          </div>
+
+          <div class="grid gap-4 md:grid-cols-2">
+            <div class="space-y-2">
+              <label for="timeout-ms" class="theme-text-muted text-xs font-semibold uppercase tracking-[0.22em]">Timeout ms</label>
+              <input id="timeout-ms" name="timeoutMs" inputmode="numeric" value="${escapeHtml(toTextValue(values.timeoutMs))}" class="theme-input w-full rounded-2xl border px-4 py-3 text-sm outline-none transition" />
+            </div>
+            <div class="space-y-2">
+              <label for="use-streaming" class="theme-text-muted text-xs font-semibold uppercase tracking-[0.22em]">Streaming</label>
+              <select id="use-streaming" name="useStreaming" class="theme-input w-full rounded-2xl border px-4 py-3 text-sm outline-none transition">
+                ${renderSelectOptions(values.useStreaming, ["true", "false"], "Select")}
+              </select>
+            </div>
+          </div>
+
+          <div class="grid gap-4 md:grid-cols-2">
+            <div class="space-y-2">
+              <label for="debug" class="theme-text-muted text-xs font-semibold uppercase tracking-[0.22em]">Debug</label>
+              <select id="debug" name="debug" class="theme-input w-full rounded-2xl border px-4 py-3 text-sm outline-none transition">
+                ${renderSelectOptions(values.debug, ["true", "false"], "Select")}
+              </select>
+            </div>
+            <div class="space-y-2">
+              <label for="reasoning-effort" class="theme-text-muted text-xs font-semibold uppercase tracking-[0.22em]">Reasoning effort</label>
+              <select id="reasoning-effort" name="reasoningEffort" class="theme-input w-full rounded-2xl border px-4 py-3 text-sm outline-none transition">
+                ${renderSelectOptions(values.reasoningEffort, REASONING_EFFORTS, "Not set")}
+              </select>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <label for="reasoning-summary" class="theme-text-muted text-xs font-semibold uppercase tracking-[0.22em]">Reasoning summary</label>
+            <select id="reasoning-summary" name="reasoningSummary" class="theme-input w-full rounded-2xl border px-4 py-3 text-sm outline-none transition">
+              ${renderSelectOptions(values.reasoningSummary, REASONING_SUMMARIES, "Not set")}
+            </select>
+          </div>
+
+          <div class="grid gap-4 md:grid-cols-2">
+            <div class="space-y-2">
+              <label for="temperature" class="theme-text-muted text-xs font-semibold uppercase tracking-[0.22em]">Temperature</label>
+              <input id="temperature" name="temperature" value="${escapeHtml(toTextValue(values.temperature))}" class="theme-input w-full rounded-2xl border px-4 py-3 text-sm outline-none transition" />
+            </div>
+            <div class="space-y-2">
+              <label for="top-p" class="theme-text-muted text-xs font-semibold uppercase tracking-[0.22em]">Top P</label>
+              <input id="top-p" name="topP" value="${escapeHtml(toTextValue(values.topP))}" class="theme-input w-full rounded-2xl border px-4 py-3 text-sm outline-none transition" />
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <label for="max-completion-tokens" class="theme-text-muted text-xs font-semibold uppercase tracking-[0.22em]">Max completion tokens</label>
+            <input id="max-completion-tokens" name="maxCompletionTokens" value="${escapeHtml(toTextValue(values.maxCompletionTokens))}" class="theme-input w-full rounded-2xl border px-4 py-3 text-sm outline-none transition" />
+            <p class="theme-text-muted text-xs leading-5">Ограничение на число output tokens для Responses API.</p>
+          </div>
+        </form>
+      </aside>
+
+      <main class="theme-panel-strong flex min-h-[78vh] flex-1 flex-col overflow-hidden rounded-[36px] border backdrop-blur">
+        <section class="border-b px-6 py-6 md:px-8" style="border-color: var(--line);">
+          <div class="flex justify-end">
+            <div id="request-status" class="theme-chip rounded-full border px-4 py-2 text-sm">Ready</div>
+          </div>
+        </section>
+
+        <section id="chat-log" class="flex-1 space-y-4 overflow-y-auto px-4 py-4 md:px-6 md:py-6">
+          ${renderMessages(history)}
+        </section>
+
+        <section class="border-t px-4 py-4 md:px-6 md:py-6" style="border-color: var(--line); background: var(--panel-strong);">
+          <div class="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
+            <div class="space-y-2">
+              <label for="prompt-input" class="theme-text-muted text-xs font-semibold uppercase tracking-[0.22em]">Message</label>
+              <textarea id="prompt-input" name="prompt" form="chat-form" rows="4" placeholder="Напиши следующее сообщение" class="theme-input w-full rounded-[28px] border px-5 py-4 text-sm leading-7 outline-none transition">${escapeHtml(toTextValue(values.prompt))}</textarea>
+            </div>
+            <button id="send-button" type="submit" form="chat-form" class="theme-button inline-flex h-14 items-center justify-center rounded-full px-8 text-sm font-semibold transition hover:scale-[1.01] disabled:cursor-wait disabled:opacity-60">Send message</button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      (function () {
+        var form = document.getElementById("chat-form");
+        var chatLog = document.getElementById("chat-log");
+        var promptInput = document.getElementById("prompt-input");
+        var historyInput = document.getElementById("history-json");
+        var sendButton = document.getElementById("send-button");
+        var statusNode = document.getElementById("request-status");
+        var themeSelect = document.getElementById("theme-select");
+        var requestInFlight = false;
+        var availableThemes = ["dark", "darkula", "cappuccino", "light", "forest"];
+
+        function scrollChat() {
+          if (chatLog) {
+            chatLog.scrollTop = chatLog.scrollHeight;
+          }
+        }
+
+        function setStatus(text, tone) {
+          if (!statusNode) return;
+          statusNode.textContent = text;
+          statusNode.className =
+            "rounded-full border px-4 py-2 text-sm " +
+            (tone === "error"
+              ? ""
+              : tone === "busy"
+                ? ""
+                : "theme-chip");
+          if (tone === "error") {
+            statusNode.style.borderColor = "rgba(244, 63, 94, 0.28)";
+            statusNode.style.background = "rgba(244, 63, 94, 0.12)";
+            statusNode.style.color = "var(--text)";
+          } else if (tone === "busy") {
+            statusNode.style.borderColor = "rgba(245, 158, 11, 0.28)";
+            statusNode.style.background = "rgba(245, 158, 11, 0.12)";
+            statusNode.style.color = "var(--text)";
+          } else {
+            statusNode.style.borderColor = "";
+            statusNode.style.background = "";
+            statusNode.style.color = "";
+          }
+        }
+
+        function setBusy(busy) {
+          requestInFlight = busy;
+          if (sendButton) sendButton.disabled = busy;
+        }
+
+        function getHistory() {
+          if (!historyInput || !historyInput.value.trim()) return [];
+          try {
+            var parsed = JSON.parse(historyInput.value);
+            return Array.isArray(parsed) ? parsed : [];
+          } catch (error) {
+            return [];
+          }
+        }
+
+        function setHistory(history) {
+          if (historyInput) {
+            historyInput.value = JSON.stringify(history);
+          }
+        }
+
+        function removeEmptyState() {
+          var empty = document.getElementById("empty-state");
+          if (empty) empty.remove();
+        }
+
+        function createMessage(role, content) {
+          removeEmptyState();
+          var article = document.createElement("article");
+          article.className =
+            "max-w-3xl rounded-[28px] border px-5 py-4 shadow-[0_18px_60px_rgba(15,23,42,0.16)] backdrop-blur " +
+            (role === "user"
+              ? "ml-auto theme-user-bubble"
+              : "mr-auto theme-assistant-bubble");
+
+          var header = document.createElement("header");
+          header.className =
+            "theme-text-muted mb-2 text-[11px] font-semibold uppercase tracking-[0.28em]";
+          header.textContent = role === "user" ? "You" : "Assistant";
+
+          var pre = document.createElement("pre");
+          pre.className =
+            "theme-text whitespace-pre-wrap break-words font-['IBM_Plex_Serif'] text-[15px] leading-7";
+          pre.textContent = content || "";
+
+          article.appendChild(header);
+          article.appendChild(pre);
+          if (chatLog) {
+            chatLog.appendChild(article);
+          }
+
+          return { article: article, pre: pre };
+        }
+
+        function appendDebug(article, debugHtml) {
+          if (article && debugHtml) {
+            article.insertAdjacentHTML("beforeend", debugHtml);
+          }
+        }
+
+        function collectFormData() {
+          return new FormData(form);
+        }
+
+        function applyTheme(theme) {
+          var nextTheme = availableThemes.indexOf(theme) === -1 ? "dark" : theme;
+          document.body.setAttribute("data-theme", nextTheme);
+          if (themeSelect) {
+            themeSelect.value = nextTheme;
+          }
+          try {
+            localStorage.setItem("chat-theme", nextTheme);
+          } catch (error) {}
+        }
+
+        async function runNonStreaming(promptValue) {
+          var response = await fetch("/api/chat", {
+            method: "POST",
+            body: collectFormData()
+          });
+          var payload = await response.json();
+          if (!response.ok) {
+            throw new Error(payload.message || "Request failed.");
+          }
+
+          var userNode = createMessage("user", promptValue);
+          var assistantNode = createMessage("assistant", payload.assistantMessage || "");
+          appendDebug(assistantNode.article, payload.debugHtml || "");
+          setHistory(payload.history || []);
+        }
+
+        async function runStreaming(promptValue) {
+          var userNode = createMessage("user", promptValue);
+          var assistantNode = createMessage("assistant", "");
+          var response = await fetch("/api/chat/stream", {
+            method: "POST",
+            body: collectFormData()
+          });
+
+          if (!response.ok || !response.body) {
+            userNode.article.remove();
+            assistantNode.article.remove();
+            throw new Error("Streaming request failed.");
+          }
+
+          var reader = response.body.getReader();
+          var decoder = new TextDecoder();
+          var buffer = "";
+
+          function applyPayload(payload) {
+            if (payload.type === "delta" && payload.text) {
+              assistantNode.pre.textContent += payload.text;
+              scrollChat();
+              return;
+            }
+
+            if (payload.type === "done") {
+              if (!assistantNode.pre.textContent && payload.assistantMessage) {
+                assistantNode.pre.textContent = payload.assistantMessage;
+              }
+              appendDebug(assistantNode.article, payload.debugHtml || "");
+              setHistory(payload.history || []);
+              return;
+            }
+
+            if (payload.type === "error") {
+              userNode.article.remove();
+              assistantNode.article.remove();
+              throw new Error(payload.message || "Streaming request failed.");
+            }
+          }
+
+          while (true) {
+            var result = await reader.read();
+            if (result.done) break;
+            buffer += decoder.decode(result.value, { stream: true });
+            var lines = buffer.split("\\n");
+            buffer = lines.pop() || "";
+
+            for (var i = 0; i < lines.length; i += 1) {
+              if (!lines[i].trim()) continue;
+              applyPayload(JSON.parse(lines[i]));
+            }
+          }
+
+          if (buffer.trim()) {
+            applyPayload(JSON.parse(buffer));
+          }
+        }
+
+        if (form) {
+          form.addEventListener("submit", async function (event) {
+            event.preventDefault();
+            if (requestInFlight) return;
+
+            var promptValue = promptInput ? promptInput.value.trim() : "";
+            if (!promptValue) {
+              setStatus("Message is required", "error");
+              return;
+            }
+
+            setBusy(true);
+            setStatus("Request in progress...", "busy");
+
+            try {
+              var streamingMode = form.elements.namedItem("useStreaming");
+              var useStreaming = streamingMode && streamingMode.value === "true";
+              if (useStreaming) await runStreaming(promptValue);
+              else await runNonStreaming(promptValue);
+
+              if (promptInput) promptInput.value = "";
+              setStatus("Ready", "ready");
+            } catch (error) {
+              setStatus(error instanceof Error ? error.message : String(error), "error");
+            } finally {
+              setBusy(false);
+              scrollChat();
+              if (promptInput) promptInput.focus();
+            }
+          });
+        }
+
+        if (themeSelect) {
+          themeSelect.addEventListener("change", function () {
+            applyTheme(themeSelect.value);
+          });
+        }
+
+        try {
+          applyTheme(localStorage.getItem("chat-theme") || "dark");
+        } catch (error) {
+          applyTheme("dark");
+        }
+
+        scrollChat();
+        if (promptInput) promptInput.focus();
+      })();
+    </script>
+  </body>
+</html>`;
+}
+
+async function handleChatForm(formData: FormData): Promise<{
+  history: ChatMessage[];
+  assistantMessage: string;
+  debugHtml: string;
+}> {
+  const history = parseHistory(formValue(formData, "historyJson"));
+  const prompt = formValue(formData, "prompt")?.trim() ?? "";
+
+  if (!prompt) {
+    throw new Error("Message is required.");
   }
 
-  try {
-    const result = await runResponseRequest(config);
-    const assistantMessage: ChatMessage = {
-      role: "assistant",
-      content: result.outputText,
-    };
-    const userMessage: ChatMessage = { role: "user", content: prompt };
-    const updatedHistory = [...history, userMessage, assistantMessage];
-    const debugHtml = config.debug
+  const configInput = buildConfigInput(formData, history, prompt);
+  const config = resolveConfig(configInput, (message) => {
+    throw new Error(message);
+  });
+
+  const result = await runResponseRequest(config);
+  const assistantMessage = result.outputText;
+  const updatedHistory = [
+    ...history,
+    { role: "user" as const, content: prompt },
+    { role: "assistant" as const, content: assistantMessage },
+  ];
+
+  return {
+    history: updatedHistory,
+    assistantMessage,
+    debugHtml: config.debug
       ? renderDebugInfo(
           config,
           result.response,
           result.startedAtMs,
           result.reasoningSummaryParts,
         )
-      : "";
-    const fragment = `${renderMessage(userMessage)}
-${renderMessage(assistantMessage, debugHtml)}
-${renderEmptyStateSwap()}
-${renderHistorySwap(updatedHistory)}
-${renderPromptReset("")}
-${renderStatusSwap("Ready")}`;
-
-    return htmlResponse(fragment);
-  } catch (error) {
-    if (isTimeoutError(error)) {
-      return renderErrorFragment(
-        `Request timed out after ${config.effectiveTimeoutMs}ms. Check base URL and connectivity.`,
-        prompt,
-        504,
-      );
-    }
-
-    if (getHttpStatus(error) === 429) {
-      return renderErrorFragment(
-        "Rate limit reached (HTTP 429). Switch provider/model or retry later.",
-        prompt,
-        429,
-      );
-    }
-
-    return renderErrorFragment(
-      error instanceof Error ? error.message : String(error),
-      prompt,
-      500,
-    );
-  }
+      : "",
+  };
 }
+
+function toErrorResponse(
+  error: unknown,
+  timeoutMs?: number,
+): {
+  status: number;
+  message: string;
+} {
+  if (isTimeoutError(error)) {
+    return {
+      status: 504,
+      message: `Request timed out after ${timeoutMs ?? defaults.timeoutMs ?? "the configured timeout"}ms. Check base URL and connectivity.`,
+    };
+  }
+
+  if (getHttpStatus(error) === 429) {
+    return {
+      status: 429,
+      message:
+        "Rate limit reached (HTTP 429). Switch provider/model or retry later.",
+    };
+  }
+
+  return {
+    status: 500,
+    message: error instanceof Error ? error.message : String(error),
+  };
+}
+
+app.get("/", (c) => c.html(renderPage([], { ...defaults, prompt: "" })));
+
+app.post("/api/chat", async (c) => {
+  const formData = await c.req.formData();
+
+  try {
+    const payload = await handleChatForm(formData);
+    return jsonResponse(payload);
+  } catch (error) {
+    let timeoutMs: number | undefined;
+
+    try {
+      const history = parseHistory(formValue(formData, "historyJson"));
+      const prompt = formValue(formData, "prompt")?.trim() ?? "";
+      const config = resolveConfig(
+        buildConfigInput(formData, history, prompt),
+        (message) => {
+          throw new Error(message);
+        },
+      );
+      timeoutMs = config.effectiveTimeoutMs;
+    } catch {
+      timeoutMs = undefined;
+    }
+
+    const result = toErrorResponse(error, timeoutMs);
+    return jsonResponse({ message: result.message }, result.status);
+  }
+});
+
+app.post("/api/chat/stream", async (c) => {
+  const formData = await c.req.formData();
+  const history = parseHistory(formValue(formData, "historyJson"));
+  const prompt = formValue(formData, "prompt")?.trim() ?? "";
+
+  if (!prompt) {
+    return createStreamResponse(async (send) => {
+      await send({
+        type: "error",
+        message: "Message is required.",
+        status: 400,
+      });
+    });
+  }
+
+  let config: AppConfig;
+  try {
+    config = resolveConfig(
+      buildConfigInput(formData, history, prompt),
+      (message) => {
+        throw new Error(message);
+      },
+    );
+  } catch (error) {
+    return createStreamResponse(async (send) => {
+      await send({
+        type: "error",
+        message: error instanceof Error ? error.message : String(error),
+        status: 400,
+      });
+    });
+  }
+
+  return createStreamResponse(async (send) => {
+    try {
+      const result = await runResponseRequest(
+        { ...config, useStreaming: true },
+        {
+          onOutputTextDelta: (delta) => {
+            if (delta.length > 0) {
+              void send({ type: "delta", text: delta });
+            }
+          },
+        },
+      );
+
+      const assistantMessage = result.outputText;
+      const updatedHistory = [
+        ...history,
+        { role: "user" as const, content: prompt },
+        { role: "assistant" as const, content: assistantMessage },
+      ];
+
+      await send({
+        type: "done",
+        assistantMessage,
+        history: updatedHistory,
+        debugHtml: config.debug
+          ? renderDebugInfo(
+              { ...config, useStreaming: true },
+              result.response,
+              result.startedAtMs,
+              result.reasoningSummaryParts,
+            )
+          : "",
+      });
+    } catch (error) {
+      const result = toErrorResponse(error, config.effectiveTimeoutMs);
+      await send({
+        type: "error",
+        message: result.message,
+        status: result.status,
+      });
+    }
+  });
+});
+
+app.notFound(() => new Response("Not found", { status: 404 }));
 
 const server = Bun.serve({
   port: Number.isFinite(serverPort) ? serverPort : 3000,
-  async fetch(request) {
-    const url = new URL(request.url);
-
-    if (request.method === "GET" && url.pathname === "/") {
-      return htmlResponse(renderPage([], { ...defaults, prompt: "" }));
-    }
-
-    if (request.method === "POST" && url.pathname === "/chat") {
-      return handleChat(request);
-    }
-
-    return new Response("Not found", { status: 404 });
-  },
+  fetch: app.fetch,
 });
 
-console.log(`HTMX chat server listening on http://localhost:${server.port}`);
+console.log(`Web chat server listening on http://localhost:${server.port}`);

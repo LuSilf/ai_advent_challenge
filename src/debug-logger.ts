@@ -3,7 +3,9 @@ import pc from "picocolors";
 
 import type { AppConfig } from "./config";
 
-function formatOptional(value: string | number | boolean | undefined | null): string {
+function formatOptional(
+  value: string | number | boolean | undefined | null,
+): string {
   return value === undefined || value === null ? "(not set)" : String(value);
 }
 
@@ -40,7 +42,9 @@ function debugPrintFooter(): void {
 }
 
 function debugPrintField(label: string, value: string | number): void {
-  console.error(`${pc.bold(pc.blue(label.padEnd(24)))} ${pc.dim(":")} ${value}`);
+  console.error(
+    `${pc.bold(pc.blue(label.padEnd(24)))} ${pc.dim(":")} ${value}`,
+  );
 }
 
 function debugPrintSection(title: string): void {
@@ -89,25 +93,16 @@ export function printRequestDebug(config: AppConfig): void {
   debugPrintField("Timeout", `${config.effectiveTimeoutMs}ms`);
   debugPrintField("Stream", config.useStreaming ? "enabled" : "disabled");
   debugPrintField("Reasoning effort", formatOptional(config.reasoningEffort));
-  debugPrintField("Reasoning summary mode", formatOptional(config.reasoningSummary));
+  debugPrintField(
+    "Reasoning summary mode",
+    formatOptional(config.reasoningSummary),
+  );
   debugPrintField("Temperature", formatOptional(config.temperature));
   debugPrintField("Top-p", formatOptional(config.topP));
-  debugPrintField("N", formatOptional(config.n));
-  debugPrintField("Max completion tokens", formatOptional(config.maxCompletionTokens));
-  debugPrintField("Presence penalty", formatOptional(config.presencePenalty));
-  debugPrintField("Frequency penalty", formatOptional(config.frequencyPenalty));
-
-  if (config.n !== undefined) {
-    debugPrintNote("OPENAI_N is not supported by Responses API and will be ignored");
-  }
-
-  if (config.presencePenalty !== undefined) {
-    debugPrintNote("OPENAI_PRESENCE_PENALTY is not supported by Responses API and will be ignored");
-  }
-
-  if (config.frequencyPenalty !== undefined) {
-    debugPrintNote("OPENAI_FREQUENCY_PENALTY is not supported by Responses API and will be ignored");
-  }
+  debugPrintField(
+    "Max completion tokens",
+    formatOptional(config.maxCompletionTokens),
+  );
 
   debugPrintSection("Prompts");
   debugPrintPromptBlock("System prompt", config.systemPrompt);
@@ -116,9 +111,17 @@ export function printRequestDebug(config: AppConfig): void {
   debugPrintFooter();
 }
 
-export function printResponseDebug(response: Response, startedAtMs: number, fallbackSummaries?: string[]): void {
-  const completedAtMsFromApi = response.completed_at ? response.completed_at * 1000 : undefined;
-  const createdAtMsFromApi = response.created_at ? response.created_at * 1000 : undefined;
+export function printResponseDebug(
+  response: Response,
+  startedAtMs: number,
+  fallbackSummaries?: string[],
+): void {
+  const completedAtMsFromApi = response.completed_at
+    ? response.completed_at * 1000
+    : undefined;
+  const createdAtMsFromApi = response.created_at
+    ? response.created_at * 1000
+    : undefined;
 
   const wallTimeMs = Date.now() - startedAtMs;
   const queueToCompletionMs =
@@ -160,7 +163,8 @@ export function printResponseDebug(response: Response, startedAtMs: number, fall
   }
 
   const summaries = extractReasoningSummaries(response);
-  const effectiveSummaries = summaries.length > 0 ? summaries : fallbackSummaries ?? [];
+  const effectiveSummaries =
+    summaries.length > 0 ? summaries : (fallbackSummaries ?? []);
   if (effectiveSummaries.length > 0) {
     debugPrintSection("Reasoning summary");
     for (const summary of effectiveSummaries) {

@@ -9,6 +9,7 @@
     "start:web": "bun run src/web.ts"
   },
   "dependencies": {
+    "hono": "^4.12.8",
     "openai": "^6.29.0",
     "picocolors": "^1.1.1"
   },
