@@ -112,7 +112,7 @@ const METHODS: MethodId[] = ["direct", "step_by_step", "meta_prompt", "experts"]
 const FIXED_BEHAVIOR_TASK: TaskCase = {
   id: "CUSTOM",
   prompt:
-    "Есть граф маршрутов между A, B, C, D, E. Ребра с весами: A-B=4, A-C=2, B-C=1, B-D=5, C-D=8, C-E=10, D-E=2. Найди оптимальный маршрут из A в E с минимальной стоимостью и объясни, почему он оптимален."
+    "Я работаю в стабильной компании, все нормально, но иногда думаю, что хочу попробовать свое дело. Не потому что все плохо, а просто хочется больше смысла и интереса. При этом страшно потерять стабильность и ошибиться. Помоги спокойно разобрать, как принимать такое решение: по каким критериям сравнить варианты и как сделать аккуратный переход без резких шагов."
 };
 
 function fail(message: string): never {
@@ -217,8 +217,7 @@ function buildPrompt(method: MethodId, task: TaskCase): string {
     return [
       task.prompt,
       "",
-      "Ограничь ответ 20 строками максимум.",
-      "В конце дай краткий итог отдельной строкой."
+      "Ограничь ответ 20 строками максимум."
     ].join("\n");
   }
 
@@ -227,8 +226,7 @@ function buildPrompt(method: MethodId, task: TaskCase): string {
       task.prompt,
       "",
       "Решай пошагово.",
-      "Ограничь ответ 20 строками максимум.",
-      "В конце дай краткий итог отдельной строкой."
+      "Ограничь ответ 20 строками максимум."
     ].join("\n");
   }
 
@@ -244,30 +242,43 @@ function buildMetaPrompt(task: TaskCase): string {
     "Write the best short prompt to solve the task accurately.",
     "The generated prompt must include the exact task text.",
     "The generated prompt must request a concise response limited to 20 lines maximum.",
-    "The generated prompt must ask for a short final conclusion line.",
     "Return only the generated prompt.",
     "",
     `Task: ${task.prompt}`
   ].join("\n");
 }
 
-function buildSingleExpertPrompt(role: "analyst" | "engineer" | "critic", task: TaskCase): string {
-  if (role === "analyst") {
+function buildSingleExpertPrompt(
+  role: "critic" | "psychologist" | "teacher" | "biologist",
+  task: TaskCase
+): string {
+  if (role === "critic") {
     return [
-      "You are an Analyst.",
-      "Solve the task and explain the logic briefly.",
-      "Finish with a line: Final answer: <number>",
+      "You are a Critic.",
+      "Challenge weak assumptions and point out blind spots.",
+      "Give practical cautions and what could go wrong.",
       "Ограничь ответ 20 строками максимум.",
       "",
       `Task: ${task.prompt}`
     ].join("\n");
   }
 
-  if (role === "engineer") {
+  if (role === "psychologist") {
     return [
-      "You are an Engineer.",
-      "Solve the task with explicit calculations.",
-      "Finish with a line: Final answer: <number>",
+      "You are a Psychologist.",
+      "Focus on emotions, anxiety, internal conflict, and decision fatigue.",
+      "Offer a grounded self-check framework and coping steps.",
+      "Ограничь ответ 20 строками максимум.",
+      "",
+      `Task: ${task.prompt}`
+    ].join("\n");
+  }
+
+  if (role === "teacher") {
+    return [
+      "You are a Teacher.",
+      "Explain clearly in simple language and structure advice step by step.",
+      "Give a short action plan for the next 2 weeks.",
       "Ограничь ответ 20 строками максимум.",
       "",
       `Task: ${task.prompt}`
@@ -275,9 +286,9 @@ function buildSingleExpertPrompt(role: "analyst" | "engineer" | "critic", task: 
   }
 
   return [
-    "You are a Critic.",
-    "Solve the task independently and also mention likely pitfalls.",
-    "Finish with a line: Final answer: <number>",
+    "You are a Biologist.",
+    "Explain how stress, uncertainty, and reward systems can bias decisions.",
+    "Suggest biologically informed habits that improve judgment.",
     "Ограничь ответ 20 строками максимум.",
     "",
     `Task: ${task.prompt}`
@@ -437,9 +448,10 @@ async function runMethodForTask(
     output = finalResponse.output;
   } else if (method === "experts") {
     const expertPrompts: Array<{ label: string; prompt: string }> = [
-      { label: "analyst", prompt: buildSingleExpertPrompt("analyst", task) },
-      { label: "engineer", prompt: buildSingleExpertPrompt("engineer", task) },
-      { label: "critic", prompt: buildSingleExpertPrompt("critic", task) }
+      { label: "critic", prompt: buildSingleExpertPrompt("critic", task) },
+      { label: "psychologist", prompt: buildSingleExpertPrompt("psychologist", task) },
+      { label: "teacher", prompt: buildSingleExpertPrompt("teacher", task) },
+      { label: "biologist", prompt: buildSingleExpertPrompt("biologist", task) }
     ];
 
     for (const expert of expertPrompts) {
@@ -535,18 +547,6 @@ function printMethodDetails(result: MethodRun): void {
     );
   }
 
-  const parsed = result.parsedAnswer === null ? "n/a" : String(result.parsedAnswer);
-  if (typeof result.expected === "number") {
-    console.log(
-      pc.bold(
-        pc.white(
-          `      final: answer=${parsed}, expected=${result.expected}, correct=${result.isCorrect ? "yes" : "no"}, api_calls=${result.apiCalls}`
-        )
-      )
-    );
-  } else {
-    console.log(pc.bold(pc.white(`      final: answer=${parsed}, api_calls=${result.apiCalls}`)));
-  }
   console.log(pc.dim(`    ${rule}`));
 }
 
