@@ -1,6 +1,13 @@
 const DEFAULT_TIMEOUT_MS = 30_000;
 
-const REASONING_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh"] as const;
+const REASONING_EFFORTS = [
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+] as const;
 
 type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
 type ReasoningSummaryMode = "auto" | "concise" | "detailed";
@@ -18,10 +25,7 @@ export type AppConfig = {
   reasoningSummary?: ReasoningSummaryMode;
   temperature?: number;
   topP?: number;
-  n?: number;
   maxCompletionTokens?: number;
-  presencePenalty?: number;
-  frequencyPenalty?: number;
 };
 
 const DEFAULT_SYSTEM_PROMPT = `You are a poetic assistant.
@@ -52,7 +56,10 @@ function getEnv(name: string): string | undefined {
   return process.env[name]?.trim() || undefined;
 }
 
-function parseNumberEnv(name: string, fail: (message: string) => never): number | undefined {
+function parseNumberEnv(
+  name: string,
+  fail: (message: string) => never,
+): number | undefined {
   const value = getEnv(name);
   if (!value) {
     return undefined;
@@ -66,25 +73,42 @@ function parseNumberEnv(name: string, fail: (message: string) => never): number 
   return parsed;
 }
 
-function parseBooleanEnv(name: string, defaultValue: boolean, fail: (message: string) => never): boolean {
+function parseBooleanEnv(
+  name: string,
+  defaultValue: boolean,
+  fail: (message: string) => never,
+): boolean {
   const value = getEnv(name);
   if (!value) {
     return defaultValue;
   }
 
   const normalized = value.toLowerCase();
-  if (normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on") {
+  if (
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "on"
+  ) {
     return true;
   }
 
-  if (normalized === "0" || normalized === "false" || normalized === "no" || normalized === "off") {
+  if (
+    normalized === "0" ||
+    normalized === "false" ||
+    normalized === "no" ||
+    normalized === "off"
+  ) {
     return false;
   }
 
   fail(`Invalid ${name} value: ${value}. Use 1|0|true|false|yes|no|on|off`);
 }
 
-function parseIntegerEnv(name: string, fail: (message: string) => never): number | undefined {
+function parseIntegerEnv(
+  name: string,
+  fail: (message: string) => never,
+): number | undefined {
   const parsed = parseNumberEnv(name, fail);
   if (parsed === undefined) {
     return undefined;
@@ -97,7 +121,12 @@ function parseIntegerEnv(name: string, fail: (message: string) => never): number
   return parsed;
 }
 
-function parseBoundedNumber(name: string, min: number, max: number, fail: (message: string) => never): number | undefined {
+function parseBoundedNumber(
+  name: string,
+  min: number,
+  max: number,
+  fail: (message: string) => never,
+): number | undefined {
   const parsed = parseNumberEnv(name, fail);
   if (parsed === undefined) {
     return undefined;
@@ -110,7 +139,11 @@ function parseBoundedNumber(name: string, min: number, max: number, fail: (messa
   return parsed;
 }
 
-function parseMinInteger(name: string, min: number, fail: (message: string) => never): number | undefined {
+function parseMinInteger(
+  name: string,
+  min: number,
+  fail: (message: string) => never,
+): number | undefined {
   const parsed = parseIntegerEnv(name, fail);
   if (parsed === undefined) {
     return undefined;
@@ -123,7 +156,10 @@ function parseMinInteger(name: string, min: number, fail: (message: string) => n
   return parsed;
 }
 
-function parseReasoningEffort(rawValue: string | undefined, fail: (message: string) => never): ReasoningEffort | undefined {
+function parseReasoningEffort(
+  rawValue: string | undefined,
+  fail: (message: string) => never,
+): ReasoningEffort | undefined {
   if (!rawValue) {
     return undefined;
   }
@@ -133,30 +169,46 @@ function parseReasoningEffort(rawValue: string | undefined, fail: (message: stri
     return normalized as ReasoningEffort;
   }
 
-  fail(`Invalid OPENAI_REASONING_EFFORT value: ${rawValue}. Use none|minimal|low|medium|high|xhigh`);
+  fail(
+    `Invalid OPENAI_REASONING_EFFORT value: ${rawValue}. Use none|minimal|low|medium|high|xhigh`,
+  );
 }
 
-function parseReasoningSummary(rawValue: string | undefined, fail: (message: string) => never): ReasoningSummaryMode | undefined {
+function parseReasoningSummary(
+  rawValue: string | undefined,
+  fail: (message: string) => never,
+): ReasoningSummaryMode | undefined {
   if (!rawValue) {
     return undefined;
   }
 
   const normalized = rawValue.toLowerCase();
-  if (normalized === "auto" || normalized === "concise" || normalized === "detailed") {
+  if (
+    normalized === "auto" ||
+    normalized === "concise" ||
+    normalized === "detailed"
+  ) {
     return normalized;
   }
 
-  fail(`Invalid OPENAI_REASONING_SUMMARY value: ${rawValue}. Use auto|concise|detailed`);
+  fail(
+    `Invalid OPENAI_REASONING_SUMMARY value: ${rawValue}. Use auto|concise|detailed`,
+  );
 }
 
-export function loadConfig(rawPrompt: string, fail: (message: string) => never): AppConfig {
+export function loadConfig(
+  rawPrompt: string,
+  fail: (message: string) => never,
+): AppConfig {
   const prompt = rawPrompt.trim();
   if (!prompt) {
     fail('Usage: bun run src/cli.ts "Your prompt"');
   }
 
   const apiKeyEnvName = getEnv("OPENAI_API_KEY_ENV");
-  const apiKey = getEnv("OPENAI_API_KEY") || (apiKeyEnvName ? getEnv(apiKeyEnvName) : undefined);
+  const apiKey =
+    getEnv("OPENAI_API_KEY") ||
+    (apiKeyEnvName ? getEnv(apiKeyEnvName) : undefined);
   const model = getEnv("OPENAI_MODEL");
 
   if (!apiKey) {
@@ -167,24 +219,39 @@ export function loadConfig(rawPrompt: string, fail: (message: string) => never):
     fail("Missing OPENAI_MODEL environment variable");
   }
 
-  const timeoutMs = Number(process.env.OPENAI_TIMEOUT_MS ?? String(DEFAULT_TIMEOUT_MS));
+  const timeoutMs = Number(
+    process.env.OPENAI_TIMEOUT_MS ?? String(DEFAULT_TIMEOUT_MS),
+  );
 
   return {
     prompt,
     apiKey,
     model,
-    baseUrl: (getEnv("OPENAI_BASE_URL") ?? "https://api.openai.com/v1").replace(/\/$/, ""),
+    baseUrl: (getEnv("OPENAI_BASE_URL") ?? "https://api.openai.com/v1").replace(
+      /\/$/,
+      "",
+    ),
     systemPrompt: process.env.OPENAI_SYSTEM_PROMPT ?? DEFAULT_SYSTEM_PROMPT,
-    effectiveTimeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_TIMEOUT_MS,
+    effectiveTimeoutMs:
+      Number.isFinite(timeoutMs) && timeoutMs > 0
+        ? timeoutMs
+        : DEFAULT_TIMEOUT_MS,
     debug: parseBooleanEnv("OPENAI_DEBUG", false, fail),
     useStreaming: parseBooleanEnv("OPENAI_STREAM", true, fail),
-    reasoningEffort: parseReasoningEffort(getEnv("OPENAI_REASONING_EFFORT"), fail),
-    reasoningSummary: parseReasoningSummary(getEnv("OPENAI_REASONING_SUMMARY"), fail),
+    reasoningEffort: parseReasoningEffort(
+      getEnv("OPENAI_REASONING_EFFORT"),
+      fail,
+    ),
+    reasoningSummary: parseReasoningSummary(
+      getEnv("OPENAI_REASONING_SUMMARY"),
+      fail,
+    ),
     temperature: parseBoundedNumber("OPENAI_TEMPERATURE", 0, 2, fail),
     topP: parseBoundedNumber("OPENAI_TOP_P", 0, 1, fail),
-    n: parseMinInteger("OPENAI_N", 1, fail),
-    maxCompletionTokens: parseMinInteger("OPENAI_MAX_COMPLETION_TOKENS", 1, fail),
-    presencePenalty: parseBoundedNumber("OPENAI_PRESENCE_PENALTY", -2, 2, fail),
-    frequencyPenalty: parseBoundedNumber("OPENAI_FREQUENCY_PENALTY", -2, 2, fail)
+    maxCompletionTokens: parseMinInteger(
+      "OPENAI_MAX_COMPLETION_TOKENS",
+      1,
+      fail,
+    ),
   };
 }

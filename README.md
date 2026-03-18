@@ -30,12 +30,9 @@ export OPENAI_API_KEY="your_real_key"
    - Опциональные параметры генерации (подробности ниже):
      - `OPENAI_TEMPERATURE`
      - `OPENAI_TOP_P`
-     - `OPENAI_N`
      - `OPENAI_REASONING_EFFORT`
       - `OPENAI_REASONING_SUMMARY`
       - `OPENAI_MAX_COMPLETION_TOKENS`
-     - `OPENAI_PRESENCE_PENALTY`
-     - `OPENAI_FREQUENCY_PENALTY`
 
 ## Параметры генерации
 
@@ -57,10 +54,6 @@ export OPENAI_API_KEY="your_real_key"
   - Обычно настраивают либо `temperature`, либо `top_p`, но не оба сразу.
   - Документация: https://platform.openai.com/docs/api-reference/chat/create#chat-create-top_p
 
-- `OPENAI_N` (целое `>= 1`)
-  - Количество вариантов ответа в одном запросе. Больше вариантов = выше расход токенов/стоимость.
-  - Документация: https://platform.openai.com/docs/api-reference/chat/create#chat-create-n
-
 - `OPENAI_REASONING_EFFORT` (`none|minimal|low|medium|high|xhigh`)
   - Управляет объемом reasoning-бюджета модели. Меньше значение обычно быстрее/дешевле, больше может помочь на сложных задачах.
   - Поддержка зависит от семейства модели.
@@ -74,20 +67,6 @@ export OPENAI_API_KEY="your_real_key"
 - `OPENAI_MAX_COMPLETION_TOKENS` (целое `>= 1`)
   - Верхняя граница числа сгенерированных completion-токенов (включая reasoning-токены, если применимо).
   - Документация: https://platform.openai.com/docs/api-reference/chat/create#chat-create-max_completion_tokens
-
-- `OPENAI_PRESENCE_PENALTY` (`-2..2`)
-  - Повышает новизну тем. Чем выше значение, тем сильнее модель склоняется к новым темам.
-  - В текущей версии CLI параметр не поддерживается Responses API и игнорируется (с предупреждением в debug-режиме).
-  - Документация: https://platform.openai.com/docs/api-reference/chat/create#chat-create-presence_penalty
-
-- `OPENAI_FREQUENCY_PENALTY` (`-2..2`)
-  - Штрафует повторы токенов. Чем выше значение, тем меньше буквальных повторов фраз/строк.
-  - В текущей версии CLI параметр не поддерживается Responses API и игнорируется (с предупреждением в debug-режиме).
-  - Документация: https://platform.openai.com/docs/api-reference/chat/create#chat-create-frequency_penalty
-
-- `OPENAI_N` (целое `>= 1`)
-  - Исторический параметр для Chat Completions API.
-  - В текущей версии CLI при Responses API игнорируется (с предупреждением в debug-режиме).
 
 ## Использование
 
