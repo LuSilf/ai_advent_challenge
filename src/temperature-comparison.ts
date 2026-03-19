@@ -4,7 +4,7 @@ import { loadConfig } from "./config";
 import { buildResponseRequest } from "./request";
 
 const TEMPERATURES = [0, 0.5, 1, 1.5, 2];
-const RUNS_PER_TEMP = 2;
+const RUNS_PER_TEMP = 1;
 
 const SYSTEM_PROMPT = `You are a professional literary translator. Translate the following Russian song lyrics into English. Preserve the poetic structure, rhyme scheme, and emotional tone as closely as possible. Output only the translation, no commentary.`;
 
@@ -84,6 +84,7 @@ for (const temp of TEMPERATURES) {
       ...baseConfig,
       systemPrompt: SYSTEM_PROMPT,
       temperature: temp,
+      maxCompletionTokens: 1024,
       useStreaming: false,
     };
 
