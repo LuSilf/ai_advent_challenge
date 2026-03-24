@@ -117,15 +117,14 @@ function printSessionInfo(sessionId: number, title: string | null, messageCount:
   console.log(pc.cyan(`Сессия #${sessionId}: ${name} (${messageCount} сообщений)`));
 }
 
-function printLastMessages(messages: ChatMessage[], count = 4): void {
-  const last = messages.slice(-count);
-  if (last.length === 0) return;
+function printSessionMessages(messages: ChatMessage[]): void {
+  if (messages.length === 0) return;
 
-  console.log(pc.dim("Последние сообщения:"));
-  for (const msg of last) {
-    const prefix = msg.role === "user" ? pc.green("  Вы: ") : pc.blue("  Бот: ");
-    const text = msg.content.length > 80 ? msg.content.slice(0, 77) + "..." : msg.content;
-    console.log(prefix + text.replace(/\n/g, " "));
+  console.log(pc.dim("История сообщений:"));
+  for (const msg of messages) {
+    const prefix = msg.role === "user" ? pc.green("Вы: ") : pc.blue("Бот: ");
+    console.log(prefix + msg.content.replace(/\n/g, "\n    "));
+    console.log();
   }
 }
 
@@ -187,7 +186,7 @@ function handleCommand(
         role: m.role,
         content: m.content
       }));
-      printLastMessages(msgs);
+      printSessionMessages(msgs);
       return null;
     }
     case "/clear": {
@@ -282,7 +281,7 @@ export async function startRepl(client: OpenAI, config: AppConfig): Promise<void
       role: m.role,
       content: m.content
     }));
-    printLastMessages(msgs);
+    printSessionMessages(msgs);
   } else {
     state.sessionId = createSession();
     console.log(pc.green(`Создана новая сессия #${state.sessionId}`));
