@@ -14,6 +14,10 @@ export type AppConfig = {
   effectiveTimeoutMs: number;
   debug: boolean;
   useStreaming: boolean;
+  historyDb: string;
+  historyLimit: number;
+  titleModel: string;
+  sessionId?: number;
   reasoningEffort?: ReasoningEffort;
   reasoningSummary?: ReasoningSummaryMode;
   temperature?: number;
@@ -149,11 +153,24 @@ function parseReasoningSummary(rawValue: string | undefined, fail: (message: str
   fail(`Invalid OPENAI_REASONING_SUMMARY value: ${rawValue}. Use auto|concise|detailed`);
 }
 
-export function loadConfig(rawPrompt: string, fail: (message: string) => never): AppConfig {
-  const prompt = rawPrompt.trim();
-  if (!prompt) {
-    fail('Usage: bun run src/cli.ts "Your prompt"');
+export function loadConfig(args: string[], fail: (message: string) => never): AppConfig {
+  let sessionId: number | undefined;
+  const promptParts: string[] = [];
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--session" && i + 1 < args.length) {
+      const parsed = Number(args[i + 1]);
+      if (!Number.isInteger(parsed) || parsed < 1) {
+        fail(`Invalid --session value: ${args[i + 1]}. Must be a positive integer`);
+      }
+      sessionId = parsed;
+      i++;
+    } else {
+      promptParts.push(args[i]);
+    }
   }
+
+  const prompt = promptParts.join(" ").trim();
 
   const apiKeyEnvName = getEnv("OPENAI_API_KEY_ENV");
   const apiKey = getEnv("OPENAI_API_KEY") || (apiKeyEnvName ? getEnv(apiKeyEnvName) : undefined);
@@ -168,6 +185,7 @@ export function loadConfig(rawPrompt: string, fail: (message: string) => never):
   }
 
   const timeoutMs = Number(process.env.OPENAI_TIMEOUT_MS ?? String(DEFAULT_TIMEOUT_MS));
+  const historyLimit = parseMinInteger("HISTORY_LIMIT", 1, fail) ?? 50;
 
   return {
     prompt,
@@ -178,6 +196,10 @@ export function loadConfig(rawPrompt: string, fail: (message: string) => never):
     effectiveTimeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_TIMEOUT_MS,
     debug: parseBooleanEnv("OPENAI_DEBUG", false, fail),
     useStreaming: parseBooleanEnv("OPENAI_STREAM", true, fail),
+    historyDb: getEnv("HISTORY_DB") ?? "./data/history.db",
+    historyLimit,
+    titleModel: getEnv("TITLE_MODEL") ?? model,
+    sessionId,
     reasoningEffort: parseReasoningEffort(getEnv("OPENAI_REASONING_EFFORT"), fail),
     reasoningSummary: parseReasoningSummary(getEnv("OPENAI_REASONING_SUMMARY"), fail),
     temperature: parseBoundedNumber("OPENAI_TEMPERATURE", 0, 2, fail),

@@ -2,11 +2,26 @@ import type { ResponseCreateParams } from "openai/resources/responses/responses"
 
 import type { AppConfig } from "./config";
 
-export function buildResponseRequest(config: AppConfig): ResponseCreateParams {
+export type ChatMessage = { role: "user" | "assistant"; content: string };
+
+export function buildResponseRequest(
+  config: AppConfig,
+  history?: ChatMessage[]
+): ResponseCreateParams {
+  let input: ResponseCreateParams["input"];
+  if (history && history.length > 0) {
+    input = [
+      ...history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+      { role: "user" as const, content: config.prompt }
+    ];
+  } else {
+    input = config.prompt;
+  }
+
   const request: ResponseCreateParams = {
     model: config.model,
     instructions: config.systemPrompt,
-    input: config.prompt,
+    input,
     stream: config.useStreaming
   };
 

@@ -4,6 +4,8 @@ import type { Response } from "openai/resources/responses/responses";
 import { loadConfig } from "./config";
 import { printOutputMarker, printRequestDebug, printResponseDebug } from "./debug-logger";
 import { buildResponseRequest } from "./request";
+import { initDb, createSession, getMessages, addMessage, getSession, getMessageCount, updateSessionTitle } from "./db";
+import { startRepl } from "./repl";
 
 function fail(message: string): never {
   console.error(message);
@@ -35,7 +37,9 @@ function isTimeoutError(error: unknown): boolean {
   return error.message.toLowerCase().includes("timed out");
 }
 
-const config = loadConfig(Bun.argv.slice(2).join(" "), fail);
+const config = loadConfig(Bun.argv.slice(2), fail);
+
+initDb(config.historyDb);
 
 const client = new OpenAI({
   apiKey: config.apiKey,
@@ -44,102 +48,154 @@ const client = new OpenAI({
   maxRetries: 0
 });
 
-if (config.debug) {
-  printRequestDebug(config);
-}
+// REPL-режим: без промпта
+if (!config.prompt) {
+  await startRepl(client, config);
+} else {
+  // Одиночный режим
+  let sessionId: number;
 
-try {
-  const request = buildResponseRequest(config);
-  const startedAtMs = Date.now();
-
-  let wroteOutputNewline = false;
-
-  if (config.useStreaming) {
-    const stream = await client.responses.create({ ...request, stream: true });
-
-    let hasOutput = false;
-    let completedResponse: Response | undefined;
-    const reasoningSummaryParts: string[] = [];
-
-    if (config.debug) {
-      printOutputMarker();
+  if (config.sessionId) {
+    const session = getSession(config.sessionId);
+    if (!session) {
+      fail(`Сессия #${config.sessionId} не найдена`);
     }
+    sessionId = config.sessionId;
+  } else {
+    sessionId = createSession();
+  }
 
-    for await (const event of stream) {
-      if (event.type === "response.output_text.delta" && event.delta.length > 0) {
-        process.stdout.write(event.delta);
-        hasOutput = true;
+  const history = getMessages(sessionId, config.historyLimit).map((m) => ({
+    role: m.role as "user" | "assistant",
+    content: m.content
+  }));
+
+  addMessage(sessionId, "user", config.prompt);
+
+  if (config.debug) {
+    printRequestDebug(config);
+  }
+
+  try {
+    const request = buildResponseRequest(config, history);
+    const startedAtMs = Date.now();
+
+    let wroteOutputNewline = false;
+    let responseText = "";
+
+    if (config.useStreaming) {
+      const stream = await client.responses.create({ ...request, stream: true });
+
+      let hasOutput = false;
+      let completedResponse: Response | undefined;
+      const reasoningSummaryParts: string[] = [];
+
+      if (config.debug) {
+        printOutputMarker();
       }
 
-      if (event.type === "response.reasoning_summary_text.done") {
-        const text = event.text.trim();
-        if (text) {
-          reasoningSummaryParts.push(text);
+      for await (const event of stream) {
+        if (event.type === "response.output_text.delta" && event.delta.length > 0) {
+          process.stdout.write(event.delta);
+          responseText += event.delta;
+          hasOutput = true;
+        }
+
+        if (event.type === "response.reasoning_summary_text.done") {
+          const text = event.text.trim();
+          if (text) {
+            reasoningSummaryParts.push(text);
+          }
+        }
+
+        if (event.type === "response.completed") {
+          completedResponse = event.response;
         }
       }
 
-      if (event.type === "response.completed") {
-        completedResponse = event.response;
+      if (!hasOutput && completedResponse?.output_text) {
+        responseText = completedResponse.output_text;
+        process.stdout.write(responseText);
+        hasOutput = true;
+      }
+
+      if (!hasOutput) {
+        fail("No text content found in model response");
+      }
+
+      if (config.debug && completedResponse) {
+        process.stdout.write("\n");
+        wroteOutputNewline = true;
+        printResponseDebug(completedResponse, startedAtMs, reasoningSummaryParts);
+      }
+    } else {
+      const response = await client.responses.create({ ...request, stream: false });
+
+      responseText = response.output_text ?? "";
+
+      if (typeof responseText !== "string" || responseText.length === 0) {
+        fail("No text content found in model response");
+      }
+
+      if (config.debug) {
+        printOutputMarker();
+      }
+
+      process.stdout.write(responseText);
+
+      if (config.debug) {
+        process.stdout.write("\n");
+        wroteOutputNewline = true;
+        printResponseDebug(response, startedAtMs);
       }
     }
 
-    if (!hasOutput && completedResponse?.output_text) {
-      process.stdout.write(completedResponse.output_text);
-      hasOutput = true;
+    if (responseText) {
+      addMessage(sessionId, "assistant", responseText);
+
+      // Автоименование
+      const session = getSession(sessionId);
+      if (session && !session.title && getMessageCount(sessionId) === 2) {
+        try {
+          const titleResponse = await client.responses.create({
+            model: config.titleModel,
+            instructions:
+              "Придумай короткое название (до 50 символов) для диалога по первому обмену сообщениями. Ответь только названием, без кавычек.",
+            input: `Пользователь: ${config.prompt}\nАссистент: ${responseText}`,
+            stream: false
+          });
+          const title = titleResponse.output_text?.trim();
+          if (title) {
+            updateSessionTitle(sessionId, title);
+          }
+        } catch {
+          // не блокируем основной поток
+        }
+      }
     }
 
-    if (!hasOutput) {
-      fail("No text content found in model response");
-    }
-
-    if (config.debug && completedResponse) {
+    if (!wroteOutputNewline) {
       process.stdout.write("\n");
-      wroteOutputNewline = true;
-      printResponseDebug(completedResponse, startedAtMs, reasoningSummaryParts);
     }
-  } else {
-    const response = await client.responses.create({ ...request, stream: false });
+    process.exit(0);
+  } catch (error) {
+    const status = getHttpStatus(error);
 
-    const content = response.output_text;
-
-    if (typeof content !== "string" || content.length === 0) {
-      fail("No text content found in model response");
-    }
-
-    if (config.debug) {
-      printOutputMarker();
+    if (isTimeoutError(error)) {
+      console.error(`Request timed out after ${config.effectiveTimeoutMs}ms`);
+      console.error("Check OPENAI_BASE_URL and network connectivity");
+      process.exit(1);
     }
 
-    process.stdout.write(content);
-
-    if (config.debug) {
-      process.stdout.write("\n");
-      wroteOutputNewline = true;
-      printResponseDebug(response, startedAtMs);
+    if (status === 429) {
+      console.error("Rate limit reached (HTTP 429)");
+      console.error("Switch model/provider or wait before the next request");
+      console.error("Also check account quota/credits on the provider side");
+      process.exit(1);
     }
-  }
 
-  if (!wroteOutputNewline) {
-    process.stdout.write("\n");
-  }
-  process.exit(0);
-} catch (error) {
-  const status = getHttpStatus(error);
-
-  if (isTimeoutError(error)) {
-    console.error(`Request timed out after ${config.effectiveTimeoutMs}ms`);
-    console.error("Check OPENAI_BASE_URL and network connectivity");
+    console.error("LLM request failed");
+    console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
-
-  if (status === 429) {
-    console.error("Rate limit reached (HTTP 429)");
-    console.error("Switch model/provider or wait before the next request");
-    console.error("Also check account quota/credits on the provider side");
-    process.exit(1);
-  }
-
-  console.error("LLM request failed");
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
 }
