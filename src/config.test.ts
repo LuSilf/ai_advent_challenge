@@ -1,0 +1,105 @@
+import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { loadConfig } from "./config";
+
+function fail(message: string): never {
+  throw new Error(message);
+}
+
+const savedEnv: Record<string, string | undefined> = {};
+
+function setEnv(vars: Record<string, string>) {
+  for (const [key, value] of Object.entries(vars)) {
+    savedEnv[key] = process.env[key];
+    process.env[key] = value;
+  }
+}
+
+function restoreEnv() {
+  for (const [key, value] of Object.entries(savedEnv)) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+}
+
+describe("loadConfig", () => {
+  beforeEach(() => {
+    setEnv({
+      OPENAI_API_KEY: "test-key",
+      OPENAI_MODEL: "test-model"
+    });
+  });
+
+  afterEach(() => {
+    restoreEnv();
+  });
+
+  test("empty args gives empty prompt (REPL mode)", () => {
+    const config = loadConfig([], fail);
+    expect(config.prompt).toBe("");
+  });
+
+  test("args joined as prompt", () => {
+    const config = loadConfig(["hello", "world"], fail);
+    expect(config.prompt).toBe("hello world");
+  });
+
+  test("parses --session flag", () => {
+    const config = loadConfig(["--session", "5", "prompt text"], fail);
+    expect(config.sessionId).toBe(5);
+    expect(config.prompt).toBe("prompt text");
+  });
+
+  test("--session without valid number fails", () => {
+    expect(() => loadConfig(["--session", "abc"], fail)).toThrow("Invalid --session value");
+  });
+
+  test("--session with negative number fails", () => {
+    expect(() => loadConfig(["--session", "-1"], fail)).toThrow("Invalid --session value");
+  });
+
+  test("default historyDb", () => {
+    const config = loadConfig([], fail);
+    expect(config.historyDb).toBe("./data/history.db");
+  });
+
+  test("custom historyDb from env", () => {
+    setEnv({ HISTORY_DB: "/tmp/custom.db" });
+    const config = loadConfig([], fail);
+    expect(config.historyDb).toBe("/tmp/custom.db");
+  });
+
+  test("default historyLimit is 50", () => {
+    const config = loadConfig([], fail);
+    expect(config.historyLimit).toBe(50);
+  });
+
+  test("custom historyLimit from env", () => {
+    setEnv({ HISTORY_LIMIT: "100" });
+    const config = loadConfig([], fail);
+    expect(config.historyLimit).toBe(100);
+  });
+
+  test("titleModel defaults to model", () => {
+    const config = loadConfig([], fail);
+    expect(config.titleModel).toBe("test-model");
+  });
+
+  test("custom titleModel from env", () => {
+    setEnv({ TITLE_MODEL: "gpt-4o-mini" });
+    const config = loadConfig([], fail);
+    expect(config.titleModel).toBe("gpt-4o-mini");
+  });
+
+  test("missing API key fails", () => {
+    delete process.env.OPENAI_API_KEY;
+    expect(() => loadConfig([], fail)).toThrow("Missing API key");
+  });
+
+  test("missing model fails", () => {
+    delete process.env.OPENAI_MODEL;
+    expect(() => loadConfig([], fail)).toThrow("Missing OPENAI_MODEL");
+  });
+});

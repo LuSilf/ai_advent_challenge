@@ -351,6 +351,12 @@ export async function startRepl(client: OpenAI, config: AppConfig): Promise<void
   };
 
   rl.on("line", (line: string) => {
+    // Команды выполняются сразу по Enter, без ожидания пустой строки
+    if (line.startsWith("/") && inputLines.length === 0) {
+      processInput(line);
+      return;
+    }
+
     if (line === "" && inputLines.length > 0) {
       const text = inputLines.join("\n").trim();
       inputLines.length = 0;
