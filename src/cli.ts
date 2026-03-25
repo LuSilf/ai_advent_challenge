@@ -4,8 +4,10 @@ import type { Response } from "openai/resources/responses/responses";
 import { loadConfig } from "./config";
 import { printOutputMarker, printRequestDebug, printResponseDebug } from "./debug-logger";
 import { buildResponseRequest } from "./request";
-import { initDb, createSession, getMessages, addMessage, getSession, getMessageCount, updateSessionTitle } from "./db";
+import { initDb, createSession, getMessages, addMessage, getSession, getMessageCount, updateSessionTitle, saveTokenUsage, getSessionTokenTotals, getExchangeCount } from "./db";
 import { startRepl } from "./repl";
+import { fetchModelInfo } from "./model-info";
+import { formatCompactTokenLine } from "./token-display";
 
 function fail(message: string): never {
   console.error(message);
@@ -19,6 +21,11 @@ function getHttpStatus(error: unknown): number | undefined {
 
   const status = Number((error as { status?: number }).status);
   return Number.isFinite(status) ? status : undefined;
+}
+
+function isContextOverflowError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return lower.includes("context length") || lower.includes("maximum context") || lower.includes("token limit") || lower.includes("too many tokens");
 }
 
 function isTimeoutError(error: unknown): boolean {
@@ -47,6 +54,13 @@ const client = new OpenAI({
   timeout: config.effectiveTimeoutMs,
   maxRetries: 0
 });
+
+// Получаем метаданные модели
+const modelInfo = await fetchModelInfo(config.model, config.baseUrl, config.apiKey);
+config.contextLength = modelInfo.contextLength;
+config.inputPrice = modelInfo.inputPrice;
+config.outputPrice = modelInfo.outputPrice;
+config.modelRaw = modelInfo.raw;
 
 // REPL-режим: без промпта
 if (!config.prompt) {
@@ -82,6 +96,7 @@ if (!config.prompt) {
 
     let wroteOutputNewline = false;
     let responseText = "";
+    let completedResponseRef: Response | undefined;
 
     if (config.useStreaming) {
       const stream = await client.responses.create({ ...request, stream: true });
@@ -128,6 +143,8 @@ if (!config.prompt) {
         wroteOutputNewline = true;
         printResponseDebug(completedResponse, startedAtMs, reasoningSummaryParts);
       }
+
+      completedResponseRef = completedResponse;
     } else {
       const response = await client.responses.create({ ...request, stream: false });
 
@@ -148,10 +165,45 @@ if (!config.prompt) {
         wroteOutputNewline = true;
         printResponseDebug(response, startedAtMs);
       }
+
+      completedResponseRef = response;
     }
 
     if (responseText) {
       addMessage(sessionId, "assistant", responseText);
+
+      // Сохраняем usage
+      if (completedResponseRef?.usage) {
+        const usage = completedResponseRef.usage;
+        const exchangeNum = getExchangeCount(sessionId) + 1;
+        const inputCost = usage.input_tokens * config.inputPrice;
+        const outputCost = usage.output_tokens * config.outputPrice;
+
+        saveTokenUsage(sessionId, {
+          exchangeNum,
+          inputTokens: usage.input_tokens,
+          outputTokens: usage.output_tokens,
+          cachedTokens: usage.input_tokens_details.cached_tokens,
+          reasoningTokens: usage.output_tokens_details.reasoning_tokens,
+          totalTokens: usage.total_tokens,
+          inputCost,
+          outputCost,
+          totalCost: inputCost + outputCost,
+        });
+
+        const totals = getSessionTokenTotals(sessionId);
+        if (!wroteOutputNewline) {
+          process.stdout.write("\n");
+          wroteOutputNewline = true;
+        }
+        console.log(formatCompactTokenLine(
+          usage.input_tokens,
+          usage.output_tokens,
+          totals.totalTokens,
+          config.contextLength,
+          totals.totalCost,
+        ));
+      }
 
       // Автоименование
       const session = getSession(sessionId);
@@ -194,8 +246,19 @@ if (!config.prompt) {
       process.exit(1);
     }
 
+    // Обработка переполнения контекста
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (isContextOverflowError(errorMessage)) {
+      const totals = getSessionTokenTotals(sessionId);
+      console.error("⚠️  Превышен лимит контекста модели!");
+      console.error(`   Текущий размер: ~${totals.totalTokens} токенов`);
+      console.error(`   Лимит модели: ${config.contextLength} токенов`);
+      console.error("   Рекомендация: начните новую сессию (/new) или очистите историю (/clear)");
+      process.exit(1);
+    }
+
     console.error("LLM request failed");
-    console.error(error instanceof Error ? error.message : String(error));
+    console.error(errorMessage);
     process.exit(1);
   }
 }

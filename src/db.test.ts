@@ -15,7 +15,11 @@ import {
   addMessage,
   getMessages,
   getMessageCount,
-  clearMessages
+  clearMessages,
+  saveTokenUsage,
+  getSessionTokenUsage,
+  getSessionTokenTotals,
+  getExchangeCount,
 } from "./db";
 
 function freshDb(): string {
@@ -144,5 +148,127 @@ describe("db", () => {
     clearMessages(id);
     expect(getMessages(id)).toEqual([]);
     expect(getSession(id)).not.toBeNull();
+  });
+
+  // --- Token usage ---
+
+  test("saveTokenUsage and getSessionTokenUsage", () => {
+    const id = createSession();
+    saveTokenUsage(id, {
+      exchangeNum: 1,
+      inputTokens: 100,
+      outputTokens: 50,
+      cachedTokens: 20,
+      reasoningTokens: 0,
+      totalTokens: 150,
+      inputCost: 0.001,
+      outputCost: 0.002,
+      totalCost: 0.003,
+    });
+    saveTokenUsage(id, {
+      exchangeNum: 2,
+      inputTokens: 200,
+      outputTokens: 80,
+      cachedTokens: 50,
+      reasoningTokens: 10,
+      totalTokens: 280,
+      inputCost: 0.002,
+      outputCost: 0.003,
+      totalCost: 0.005,
+    });
+
+    const rows = getSessionTokenUsage(id);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].exchangeNum).toBe(1);
+    expect(rows[0].inputTokens).toBe(100);
+    expect(rows[0].cachedTokens).toBe(20);
+    expect(rows[1].exchangeNum).toBe(2);
+    expect(rows[1].reasoningTokens).toBe(10);
+    expect(rows[1].totalCost).toBeCloseTo(0.005);
+  });
+
+  test("getSessionTokenTotals sums correctly", () => {
+    const id = createSession();
+    saveTokenUsage(id, {
+      exchangeNum: 1,
+      inputTokens: 100,
+      outputTokens: 50,
+      cachedTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 150,
+      inputCost: 0.001,
+      outputCost: 0.002,
+      totalCost: 0.003,
+    });
+    saveTokenUsage(id, {
+      exchangeNum: 2,
+      inputTokens: 200,
+      outputTokens: 80,
+      cachedTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 280,
+      inputCost: 0.002,
+      outputCost: 0.003,
+      totalCost: 0.005,
+    });
+
+    const totals = getSessionTokenTotals(id);
+    expect(totals.totalTokens).toBe(430);
+    expect(totals.totalCost).toBeCloseTo(0.008);
+  });
+
+  test("getSessionTokenTotals returns zeros for empty session", () => {
+    const id = createSession();
+    const totals = getSessionTokenTotals(id);
+    expect(totals.totalTokens).toBe(0);
+    expect(totals.totalCost).toBe(0);
+  });
+
+  test("getExchangeCount returns max exchange_num", () => {
+    const id = createSession();
+    expect(getExchangeCount(id)).toBe(0);
+
+    saveTokenUsage(id, {
+      exchangeNum: 1,
+      inputTokens: 10,
+      outputTokens: 5,
+      cachedTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 15,
+      inputCost: 0,
+      outputCost: 0,
+      totalCost: 0,
+    });
+    expect(getExchangeCount(id)).toBe(1);
+
+    saveTokenUsage(id, {
+      exchangeNum: 2,
+      inputTokens: 20,
+      outputTokens: 10,
+      cachedTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 30,
+      inputCost: 0,
+      outputCost: 0,
+      totalCost: 0,
+    });
+    expect(getExchangeCount(id)).toBe(2);
+  });
+
+  test("token_usage cascade deletes with session", () => {
+    const id = createSession();
+    saveTokenUsage(id, {
+      exchangeNum: 1,
+      inputTokens: 10,
+      outputTokens: 5,
+      cachedTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 15,
+      inputCost: 0,
+      outputCost: 0,
+      totalCost: 0,
+    });
+    deleteSession(id);
+    expect(getSessionTokenUsage(id)).toEqual([]);
   });
 });

@@ -26,6 +26,10 @@ export type AppConfig = {
   maxCompletionTokens?: number;
   presencePenalty?: number;
   frequencyPenalty?: number;
+  contextLength: number;
+  inputPrice: number;
+  outputPrice: number;
+  modelRaw: import("./model-info").ModelInfo["raw"];
 };
 
 const DEFAULT_SYSTEM_PROMPT = `Ты — саркастичный ассистент с чёрным юмором. Отвечай коротко (1-3 предложения), едко и по делу. Если вопрос глупый — не стесняйся об этом сказать, но всё равно помоги. Язык: русский.`;
@@ -185,6 +189,10 @@ export function loadConfig(args: string[], fail: (message: string) => never): Ap
     n: parseMinInteger("OPENAI_N", 1, fail),
     maxCompletionTokens: parseMinInteger("OPENAI_MAX_COMPLETION_TOKENS", 1, fail),
     presencePenalty: parseBoundedNumber("OPENAI_PRESENCE_PENALTY", -2, 2, fail),
-    frequencyPenalty: parseBoundedNumber("OPENAI_FREQUENCY_PENALTY", -2, 2, fail)
+    frequencyPenalty: parseBoundedNumber("OPENAI_FREQUENCY_PENALTY", -2, 2, fail),
+    contextLength: 128_000,
+    inputPrice: 0,
+    outputPrice: 0,
+    modelRaw: null,
   };
 }

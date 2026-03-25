@@ -22,8 +22,13 @@ import {
   addMessage,
   getMessages,
   getMessageCount,
-  clearMessages
+  clearMessages,
+  saveTokenUsage,
+  getSessionTokenUsage,
+  getSessionTokenTotals,
+  getExchangeCount,
 } from "./db";
+import { formatCompactTokenLine, formatTokenTable, formatModelInfo } from "./token-display";
 
 async function generateTitle(
   client: OpenAI,
@@ -41,12 +46,17 @@ async function generateTitle(
   return response.output_text?.trim() || "Без названия";
 }
 
+type SendMessageResult = {
+  text: string;
+  response?: Response;
+};
+
 async function sendMessage(
   client: OpenAI,
   config: AppConfig,
   prompt: string,
   history: ChatMessage[]
-): Promise<string> {
+): Promise<SendMessageResult> {
   const configWithPrompt = { ...config, prompt };
   const request = buildResponseRequest(configWithPrompt, history);
   const startedAtMs = Date.now();
@@ -56,10 +66,10 @@ async function sendMessage(
   }
 
   let responseText = "";
+  let completedResponseRef: Response | undefined;
 
   if (config.useStreaming) {
     const stream = await client.responses.create({ ...request, stream: true });
-    let completedResponse: Response | undefined;
     const reasoningSummaryParts: string[] = [];
 
     if (config.debug) {
@@ -80,23 +90,24 @@ async function sendMessage(
       }
 
       if (event.type === "response.completed") {
-        completedResponse = event.response;
+        completedResponseRef = event.response;
       }
     }
 
-    if (!responseText && completedResponse?.output_text) {
-      responseText = completedResponse.output_text;
+    if (!responseText && completedResponseRef?.output_text) {
+      responseText = completedResponseRef.output_text;
       process.stdout.write(responseText);
     }
 
     process.stdout.write("\n");
 
-    if (config.debug && completedResponse) {
-      printResponseDebug(completedResponse, startedAtMs, reasoningSummaryParts);
+    if (config.debug && completedResponseRef) {
+      printResponseDebug(completedResponseRef, startedAtMs, reasoningSummaryParts);
     }
   } else {
     const response = await client.responses.create({ ...request, stream: false });
     responseText = response.output_text ?? "";
+    completedResponseRef = response;
 
     if (config.debug) {
       printOutputMarker();
@@ -109,7 +120,7 @@ async function sendMessage(
     }
   }
 
-  return responseText;
+  return { text: responseText, response: completedResponseRef };
 }
 
 function printSessionInfo(sessionId: number, title: string | null, messageCount: number): void {
@@ -138,6 +149,8 @@ function printHelp(): void {
   console.log("  /rename текст     Переименовать текущую сессию");
   console.log("  /history          Показать историю текущей сессии");
   console.log("  /edit             Открыть $EDITOR для ввода промпта");
+  console.log("  /tokens           Статистика токенов текущей сессии");
+  console.log("  /model            Информация о модели");
   console.log("  /help             Показать эту справку");
   console.log("  /exit             Выход (или Ctrl+D)");
   console.log(pc.dim("Введите сообщение и нажмите Enter дважды для отправки."));
@@ -254,6 +267,19 @@ function handleCommand(
         return null;
       }
     }
+    case "/tokens": {
+      const rows = getSessionTokenUsage(state.sessionId);
+      if (rows.length === 0) {
+        console.log(pc.dim("Нет данных о токенах для текущей сессии"));
+        return null;
+      }
+      console.log(formatTokenTable(rows, state.sessionId, config.contextLength));
+      return null;
+    }
+    case "/model": {
+      console.log(formatModelInfo(config));
+      return null;
+    }
     case "/help": {
       printHelp();
       return null;
@@ -322,10 +348,40 @@ export async function startRepl(client: OpenAI, config: AppConfig): Promise<void
     addMessage(state.sessionId, "user", text);
 
     try {
-      const responseText = await sendMessage(client, config, text, history);
+      const result = await sendMessage(client, config, text, history);
+      const responseText = result.text;
 
       if (responseText) {
         addMessage(state.sessionId, "assistant", responseText);
+
+        // Сохраняем usage
+        if (result.response?.usage) {
+          const usage = result.response.usage;
+          const exchangeNum = getExchangeCount(state.sessionId) + 1;
+          const inputCost = usage.input_tokens * config.inputPrice;
+          const outputCost = usage.output_tokens * config.outputPrice;
+
+          saveTokenUsage(state.sessionId, {
+            exchangeNum,
+            inputTokens: usage.input_tokens,
+            outputTokens: usage.output_tokens,
+            cachedTokens: usage.input_tokens_details.cached_tokens,
+            reasoningTokens: usage.output_tokens_details.reasoning_tokens,
+            totalTokens: usage.total_tokens,
+            inputCost,
+            outputCost,
+            totalCost: inputCost + outputCost,
+          });
+
+          const totals = getSessionTokenTotals(state.sessionId);
+          console.log(formatCompactTokenLine(
+            usage.input_tokens,
+            usage.output_tokens,
+            totals.totalTokens,
+            config.contextLength,
+            totals.totalCost,
+          ));
+        }
 
         // Автоименование после первого обмена
         const session = getSession(state.sessionId);
@@ -341,9 +397,17 @@ export async function startRepl(client: OpenAI, config: AppConfig): Promise<void
         }
       }
     } catch (error) {
-      console.error(
-        pc.red("Ошибка: " + (error instanceof Error ? error.message : String(error)))
-      );
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const lower = errorMessage.toLowerCase();
+      if (lower.includes("context length") || lower.includes("maximum context") || lower.includes("token limit") || lower.includes("too many tokens")) {
+        const totals = getSessionTokenTotals(state.sessionId);
+        console.error(pc.red("⚠️  Превышен лимит контекста модели!"));
+        console.error(pc.red(`   Текущий размер: ~${totals.totalTokens} токенов`));
+        console.error(pc.red(`   Лимит модели: ${config.contextLength} токенов`));
+        console.error(pc.red("   Рекомендация: начните новую сессию (/new) или очистите историю (/clear)"));
+      } else {
+        console.error(pc.red("Ошибка: " + errorMessage));
+      }
     }
 
     rl.prompt();
