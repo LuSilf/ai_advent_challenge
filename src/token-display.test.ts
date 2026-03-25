@@ -22,10 +22,10 @@ describe("formatCost", () => {
 });
 
 describe("formatCompactTokenLine", () => {
-  test("formats compact line — input_tokens as context size", () => {
-    const line = formatCompactTokenLine(2340, 120, 400_000, 0.003);
+  test("formats compact line with session totals", () => {
+    const line = formatCompactTokenLine(450, 120, 2340, 400_000, 0.003);
     const plain = line.replace(/\x1b\[[0-9;]*m/g, "");
-    expect(plain).toContain("in:2340");
+    expect(plain).toContain("in:450");
     expect(plain).toContain("out:120");
     expect(plain).toContain("контекст: 2340/400k");
     expect(plain).toContain("0.6%");
@@ -33,15 +33,15 @@ describe("formatCompactTokenLine", () => {
   });
 
   test("formats context in k", () => {
-    const line = formatCompactTokenLine(100, 50, 128_000, 0);
+    const line = formatCompactTokenLine(100, 50, 500, 128_000, 0);
     const plain = line.replace(/\x1b\[[0-9;]*m/g, "");
     expect(plain).toContain("128k");
   });
 
   test("small context stays as number", () => {
-    const line = formatCompactTokenLine(10, 5, 500, 0);
+    const line = formatCompactTokenLine(10, 5, 15, 500, 0);
     const plain = line.replace(/\x1b\[[0-9;]*m/g, "");
-    expect(plain).toContain("10/500");
+    expect(plain).toContain("15/500");
   });
 });
 

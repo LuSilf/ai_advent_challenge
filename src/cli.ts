@@ -199,6 +199,7 @@ if (!config.prompt) {
         console.log(formatCompactTokenLine(
           usage.input_tokens,
           usage.output_tokens,
+          totals.totalTokens,
           config.contextLength,
           totals.totalCost,
         ));
