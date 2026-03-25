@@ -11,15 +11,14 @@ export function formatCost(cost: number): string {
 export function formatCompactTokenLine(
   inputTokens: number,
   outputTokens: number,
-  sessionTotalTokens: number,
   contextLength: number,
   sessionTotalCost: number,
 ): string {
-  const pct = contextLength > 0 ? ((sessionTotalTokens / contextLength) * 100).toFixed(1) : "?";
+  const pct = contextLength > 0 ? ((inputTokens / contextLength) * 100).toFixed(1) : "?";
   const contextStr = contextLength >= 1000 ? `${Math.round(contextLength / 1000)}k` : String(contextLength);
 
   return pc.dim(
-    `[in:${inputTokens} out:${outputTokens} | сессия: ${sessionTotalTokens}/${contextStr} (${pct}%) | ${formatCost(sessionTotalCost)}]`
+    `[in:${inputTokens} out:${outputTokens} | контекст: ${inputTokens}/${contextStr} (${pct}%) | ${formatCost(sessionTotalCost)}]`
   );
 }
 
@@ -57,6 +56,10 @@ export function formatTokenTable(rows: TokenUsageRow[], sessionId: number, conte
   }
 
   lines.push("──────────────────────────────────────────────────────────────────");
+
+  const lastInput = rows.length > 0 ? rows[rows.length - 1].inputTokens : 0;
+  const pct = contextLength > 0 ? ((lastInput / contextLength) * 100).toFixed(1) : "?";
+
   lines.push(
     pc.bold(
       padR("Всего:", 5) +
@@ -68,9 +71,7 @@ export function formatTokenTable(rows: TokenUsageRow[], sessionId: number, conte
       formatCost(sumCost)
     )
   );
-
-  const pct = contextLength > 0 ? ((sumTotal / contextLength) * 100).toFixed(1) : "?";
-  lines.push(`Контекст: ${sumTotal} / ${contextLength} (${pct}%)`);
+  lines.push(`Контекст: ${lastInput} / ${contextLength} (${pct}%)`);
 
   return lines.join("\n");
 }
