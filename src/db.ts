@@ -19,6 +19,14 @@ export type Message = {
   created_at: string;
 };
 
+export type Summary = {
+  id: number;
+  session_id: number;
+  content: string;
+  message_count: number;
+  updated_at: string;
+};
+
 let db: Database;
 
 export function initDb(dbPath: string): void {
@@ -42,6 +50,14 @@ export function initDb(dbPath: string): void {
       role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
       content TEXT NOT NULL,
       created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS summaries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL UNIQUE REFERENCES sessions(id) ON DELETE CASCADE,
+      content TEXT NOT NULL,
+      message_count INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT DEFAULT (datetime('now'))
     );
   `);
 }
@@ -127,4 +143,22 @@ export function getMessageCount(sessionId: number): number {
 
 export function clearMessages(sessionId: number): void {
   db.run("DELETE FROM messages WHERE session_id = ?", [sessionId]);
+}
+
+export function getSummary(sessionId: number): Summary | null {
+  return db.query<Summary, [number]>(
+    "SELECT * FROM summaries WHERE session_id = ?"
+  ).get(sessionId) ?? null;
+}
+
+export function upsertSummary(sessionId: number, content: string, messageCount: number): void {
+  db.run(
+    `INSERT INTO summaries (session_id, content, message_count, updated_at)
+     VALUES (?, ?, ?, datetime('now'))
+     ON CONFLICT(session_id) DO UPDATE SET
+       content = excluded.content,
+       message_count = excluded.message_count,
+       updated_at = datetime('now')`,
+    [sessionId, content, messageCount]
+  );
 }

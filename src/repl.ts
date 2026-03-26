@@ -11,6 +11,7 @@ import type { AppConfig } from "./config";
 import type { ChatMessage } from "./request";
 import { buildResponseRequest } from "./request";
 import { printOutputMarker, printRequestDebug, printResponseDebug } from "./debug-logger";
+import { formatTokenStats } from "./token-stats";
 import {
   createSession,
   getLastSession,
@@ -22,8 +23,11 @@ import {
   addMessage,
   getMessages,
   getMessageCount,
-  clearMessages
+  clearMessages,
+  getSummary
 } from "./db";
+import { buildContext } from "./context-builder";
+import { runBenchmark } from "./benchmark";
 
 async function generateTitle(
   client: OpenAI,
@@ -94,6 +98,16 @@ async function sendMessage(
     if (config.debug && completedResponse) {
       printResponseDebug(completedResponse, startedAtMs, reasoningSummaryParts);
     }
+
+    if (completedResponse?.usage) {
+      const { input_tokens, output_tokens } = completedResponse.usage;
+      console.log(
+        formatTokenStats(
+          { inputTokens: input_tokens, outputTokens: output_tokens },
+          { inputPricePerMillion: config.tokenPriceInput, outputPricePerMillion: config.tokenPriceOutput }
+        )
+      );
+    }
   } else {
     const response = await client.responses.create({ ...request, stream: false });
     responseText = response.output_text ?? "";
@@ -106,6 +120,16 @@ async function sendMessage(
 
     if (config.debug) {
       printResponseDebug(response, startedAtMs);
+    }
+
+    if (response.usage) {
+      const { input_tokens, output_tokens } = response.usage;
+      console.log(
+        formatTokenStats(
+          { inputTokens: input_tokens, outputTokens: output_tokens },
+          { inputPricePerMillion: config.tokenPriceInput, outputPricePerMillion: config.tokenPriceOutput }
+        )
+      );
     }
   }
 
@@ -138,6 +162,8 @@ function printHelp(): void {
   console.log("  /rename текст     Переименовать текущую сессию");
   console.log("  /history          Показать историю текущей сессии");
   console.log("  /edit             Открыть $EDITOR для ввода промпта");
+  console.log("  /summary          Показать summary текущей сессии");
+  console.log("  /benchmark текст  Сравнить ответ с и без сжатия");
   console.log("  /help             Показать эту справку");
   console.log("  /exit             Выход (или Ctrl+D)");
   console.log(pc.dim("Введите сообщение и нажмите Enter дважды для отправки."));
@@ -254,6 +280,17 @@ function handleCommand(
         return null;
       }
     }
+    case "/summary": {
+      const summary = getSummary(state.sessionId);
+      if (summary) {
+        console.log(pc.cyan("Summary сессии:"));
+        console.log(summary.content);
+        console.log(pc.dim(`(сжато сообщений: ${summary.message_count})`));
+      } else {
+        console.log(pc.dim("Summary ещё не создан"));
+      }
+      return null;
+    }
     case "/help": {
       printHelp();
       return null;
@@ -300,6 +337,25 @@ export async function startRepl(client: OpenAI, config: AppConfig): Promise<void
   const inputLines: string[] = [];
 
   const processInput = async (text: string) => {
+    // /benchmark — асинхронная команда, обрабатываем отдельно
+    if (text.startsWith("/benchmark")) {
+      const prompt = text.slice("/benchmark".length).trim();
+      if (!prompt) {
+        console.log(pc.red("Укажите промпт: /benchmark <текст>"));
+        rl.prompt();
+        return;
+      }
+      try {
+        console.log(pc.dim("Выполняю бенчмарк..."));
+        const table = await runBenchmark(client, config, prompt, state.sessionId);
+        console.log(table);
+      } catch (error) {
+        console.error(pc.red("Ошибка бенчмарка: " + (error instanceof Error ? error.message : String(error))));
+      }
+      rl.prompt();
+      return;
+    }
+
     // Команды
     if (text.startsWith("/")) {
       const spaceIdx = text.indexOf(" ");
@@ -314,10 +370,12 @@ export async function startRepl(client: OpenAI, config: AppConfig): Promise<void
     }
 
     // Отправка сообщения
-    const history = getMessages(state.sessionId, config.historyLimit).map((m) => ({
-      role: m.role as "user" | "assistant",
-      content: m.content
-    }));
+    const { messages: history } = await buildContext(
+      client,
+      config.model,
+      state.sessionId,
+      config.contextTailSize
+    );
 
     addMessage(state.sessionId, "user", text);
 

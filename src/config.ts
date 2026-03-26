@@ -26,6 +26,9 @@ export type AppConfig = {
   maxCompletionTokens?: number;
   presencePenalty?: number;
   frequencyPenalty?: number;
+  tokenPriceInput: number;
+  tokenPriceOutput: number;
+  contextTailSize: number;
 };
 
 const DEFAULT_SYSTEM_PROMPT = `Ты — саркастичный ассистент с чёрным юмором. Отвечай коротко (1-3 предложения), едко и по делу. Если вопрос глупый — не стесняйся об этом сказать, но всё равно помоги. Язык: русский.`;
@@ -185,6 +188,9 @@ export function loadConfig(args: string[], fail: (message: string) => never): Ap
     n: parseMinInteger("OPENAI_N", 1, fail),
     maxCompletionTokens: parseMinInteger("OPENAI_MAX_COMPLETION_TOKENS", 1, fail),
     presencePenalty: parseBoundedNumber("OPENAI_PRESENCE_PENALTY", -2, 2, fail),
-    frequencyPenalty: parseBoundedNumber("OPENAI_FREQUENCY_PENALTY", -2, 2, fail)
+    frequencyPenalty: parseBoundedNumber("OPENAI_FREQUENCY_PENALTY", -2, 2, fail),
+    tokenPriceInput: parseNumberEnv("TOKEN_PRICE_INPUT", fail) ?? 0.05,
+    tokenPriceOutput: parseNumberEnv("TOKEN_PRICE_OUTPUT", fail) ?? 0.40,
+    contextTailSize: parseMinInteger("CONTEXT_TAIL_SIZE", 1, fail) ?? 5
   };
 }

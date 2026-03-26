@@ -15,7 +15,9 @@ import {
   addMessage,
   getMessages,
   getMessageCount,
-  clearMessages
+  clearMessages,
+  getSummary,
+  upsertSummary
 } from "./db";
 
 function freshDb(): string {
@@ -144,5 +146,36 @@ describe("db", () => {
     clearMessages(id);
     expect(getMessages(id)).toEqual([]);
     expect(getSession(id)).not.toBeNull();
+  });
+
+  test("getSummary returns null for new session", () => {
+    const id = createSession();
+    expect(getSummary(id)).toBeNull();
+  });
+
+  test("upsertSummary creates summary", () => {
+    const id = createSession();
+    upsertSummary(id, "тестовое резюме", 5);
+    const summary = getSummary(id);
+    expect(summary).not.toBeNull();
+    expect(summary!.content).toBe("тестовое резюме");
+    expect(summary!.message_count).toBe(5);
+    expect(summary!.session_id).toBe(id);
+  });
+
+  test("upsertSummary updates existing summary", () => {
+    const id = createSession();
+    upsertSummary(id, "первое резюме", 3);
+    upsertSummary(id, "обновлённое резюме", 7);
+    const summary = getSummary(id);
+    expect(summary!.content).toBe("обновлённое резюме");
+    expect(summary!.message_count).toBe(7);
+  });
+
+  test("deleteSession cascades to summary", () => {
+    const id = createSession();
+    upsertSummary(id, "резюме", 2);
+    deleteSession(id);
+    expect(getSummary(id)).toBeNull();
   });
 });

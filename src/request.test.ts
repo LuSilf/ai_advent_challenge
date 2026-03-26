@@ -15,6 +15,9 @@ function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     historyDb: "./data/history.db",
     historyLimit: 50,
     titleModel: "test-model",
+    tokenPriceInput: 0.05,
+    tokenPriceOutput: 0.40,
+    contextTailSize: 10,
     ...overrides
   };
 }

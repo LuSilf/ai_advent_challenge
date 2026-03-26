@@ -4,8 +4,10 @@ import type { Response } from "openai/resources/responses/responses";
 import { loadConfig } from "./config";
 import { printOutputMarker, printRequestDebug, printResponseDebug } from "./debug-logger";
 import { buildResponseRequest } from "./request";
-import { initDb, createSession, getMessages, addMessage, getSession, getMessageCount, updateSessionTitle } from "./db";
+import { initDb, createSession, addMessage, getSession, getMessageCount, updateSessionTitle } from "./db";
 import { startRepl } from "./repl";
+import { formatTokenStats } from "./token-stats";
+import { buildContext } from "./context-builder";
 
 function fail(message: string): never {
   console.error(message);
@@ -65,10 +67,12 @@ if (!config.prompt) {
     sessionId = createSession();
   }
 
-  const history = getMessages(sessionId, config.historyLimit).map((m) => ({
-    role: m.role as "user" | "assistant",
-    content: m.content
-  }));
+  const { messages: history } = await buildContext(
+    client,
+    config.model,
+    sessionId,
+    config.contextTailSize
+  );
 
   addMessage(sessionId, "user", config.prompt);
 
@@ -82,6 +86,7 @@ if (!config.prompt) {
 
     let wroteOutputNewline = false;
     let responseText = "";
+    let completedResponseForStats: Response | undefined;
 
     if (config.useStreaming) {
       const stream = await client.responses.create({ ...request, stream: true });
@@ -123,6 +128,8 @@ if (!config.prompt) {
         fail("No text content found in model response");
       }
 
+      completedResponseForStats = completedResponse;
+
       if (config.debug && completedResponse) {
         process.stdout.write("\n");
         wroteOutputNewline = true;
@@ -142,6 +149,8 @@ if (!config.prompt) {
       }
 
       process.stdout.write(responseText);
+
+      completedResponseForStats = response;
 
       if (config.debug) {
         process.stdout.write("\n");
@@ -177,6 +186,17 @@ if (!config.prompt) {
     if (!wroteOutputNewline) {
       process.stdout.write("\n");
     }
+
+    if (completedResponseForStats?.usage) {
+      const { input_tokens, output_tokens } = completedResponseForStats.usage;
+      console.log(
+        formatTokenStats(
+          { inputTokens: input_tokens, outputTokens: output_tokens },
+          { inputPricePerMillion: config.tokenPriceInput, outputPricePerMillion: config.tokenPriceOutput }
+        )
+      );
+    }
+
     process.exit(0);
   } catch (error) {
     const status = getHttpStatus(error);
