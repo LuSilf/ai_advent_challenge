@@ -15,7 +15,16 @@ import {
   addMessage,
   getMessages,
   getMessageCount,
-  clearMessages
+  clearMessages,
+  getSessionStrategy,
+  setSessionStrategy,
+  getFacts,
+  upsertFacts,
+  clearFacts,
+  createCheckpoint,
+  getLastCheckpoint,
+  createBranch,
+  listBranches
 } from "./db";
 
 function freshDb(): string {
@@ -144,5 +153,140 @@ describe("db", () => {
     clearMessages(id);
     expect(getMessages(id)).toEqual([]);
     expect(getSession(id)).not.toBeNull();
+  });
+
+  test("createSession with contextStrategy", () => {
+    const id = createSession("test", "sliding");
+    const session = getSession(id);
+    expect(session!.context_strategy).toBe("sliding");
+  });
+
+  test("createSession default strategy is full", () => {
+    const id = createSession();
+    expect(getSessionStrategy(id)).toBe("full");
+  });
+
+  test("getSessionStrategy and setSessionStrategy", () => {
+    const id = createSession();
+    expect(getSessionStrategy(id)).toBe("full");
+    setSessionStrategy(id, "sliding");
+    expect(getSessionStrategy(id)).toBe("sliding");
+    setSessionStrategy(id, "facts");
+    expect(getSessionStrategy(id)).toBe("facts");
+  });
+
+  // --- Facts ---
+
+  test("getFacts returns empty for new session", () => {
+    const id = createSession();
+    expect(getFacts(id)).toEqual([]);
+  });
+
+  test("upsertFacts inserts and updates facts", () => {
+    const id = createSession();
+    upsertFacts(id, [
+      { key: "цель", value: "тестирование" },
+      { key: "язык", value: "TypeScript" }
+    ]);
+    const facts = getFacts(id);
+    expect(facts).toHaveLength(2);
+    expect(facts[0]).toEqual({ key: "цель", value: "тестирование" });
+    expect(facts[1]).toEqual({ key: "язык", value: "TypeScript" });
+
+    // upsert обновляет
+    upsertFacts(id, [{ key: "язык", value: "Python" }]);
+    const updated = getFacts(id);
+    expect(updated.find((f) => f.key === "язык")!.value).toBe("Python");
+  });
+
+  test("clearFacts removes all facts", () => {
+    const id = createSession();
+    upsertFacts(id, [{ key: "a", value: "b" }]);
+    clearFacts(id);
+    expect(getFacts(id)).toEqual([]);
+  });
+
+  test("facts cascade deleted with session", () => {
+    const id = createSession();
+    upsertFacts(id, [{ key: "a", value: "b" }]);
+    deleteSession(id);
+    expect(getFacts(id)).toEqual([]);
+  });
+
+  // --- Checkpoints & Branching ---
+
+  test("createCheckpoint saves last message id", () => {
+    const id = createSession();
+    addMessage(id, "user", "msg1");
+    addMessage(id, "assistant", "msg2");
+    const msgId = createCheckpoint(id);
+    const msgs = getMessages(id);
+    expect(msgId).toBe(msgs[msgs.length - 1].id);
+  });
+
+  test("createCheckpoint throws on empty session", () => {
+    const id = createSession();
+    expect(() => createCheckpoint(id)).toThrow("Нет сообщений");
+  });
+
+  test("getLastCheckpoint returns latest", () => {
+    const id = createSession();
+    addMessage(id, "user", "msg1");
+    createCheckpoint(id);
+    addMessage(id, "assistant", "msg2");
+    const cp2 = createCheckpoint(id);
+    const last = getLastCheckpoint(id);
+    expect(last).not.toBeNull();
+    expect(last!.message_id).toBe(cp2);
+  });
+
+  test("getLastCheckpoint returns null if none", () => {
+    const id = createSession();
+    expect(getLastCheckpoint(id)).toBeNull();
+  });
+
+  test("createBranch copies messages up to checkpoint", () => {
+    const id = createSession("parent");
+    addMessage(id, "user", "msg1");
+    addMessage(id, "assistant", "msg2");
+    addMessage(id, "user", "msg3");
+
+    const msgs = getMessages(id);
+    const checkpointMsgId = msgs[1].id; // after msg2
+
+    const branchId = createBranch(id, checkpointMsgId, "branch1");
+    const branchMsgs = getMessages(branchId);
+    expect(branchMsgs).toHaveLength(2);
+    expect(branchMsgs[0].content).toBe("msg1");
+    expect(branchMsgs[1].content).toBe("msg2");
+
+    const branchSession = getSession(branchId);
+    expect(branchSession!.parent_session_id).toBe(id);
+    expect(branchSession!.branch_point_message_id).toBe(checkpointMsgId);
+    expect(branchSession!.title).toBe("branch1");
+  });
+
+  test("createBranch inherits parent strategy", () => {
+    const id = createSession("parent", "sliding");
+    addMessage(id, "user", "msg1");
+    const msgs = getMessages(id);
+    const branchId = createBranch(id, msgs[0].id);
+    expect(getSessionStrategy(branchId)).toBe("sliding");
+  });
+
+  test("listBranches returns all branches of a session", () => {
+    const id = createSession("parent");
+    addMessage(id, "user", "msg1");
+    addMessage(id, "assistant", "msg2");
+    const msgs = getMessages(id);
+
+    const b1 = createBranch(id, msgs[1].id, "branch1");
+    const b2 = createBranch(id, msgs[1].id, "branch2");
+
+    const branches = listBranches(id);
+    expect(branches.length).toBeGreaterThanOrEqual(2);
+    const branchIds = branches.map((b) => b.id);
+    expect(branchIds).toContain(b1);
+    expect(branchIds).toContain(b2);
   });
 });

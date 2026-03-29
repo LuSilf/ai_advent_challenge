@@ -17,6 +17,7 @@ export type AppConfig = {
   historyDb: string;
   historyLimit: number;
   titleModel: string;
+  contextStrategy: string;
   sessionId?: number;
   reasoningEffort?: ReasoningEffort;
   reasoningSummary?: ReasoningSummaryMode;
@@ -165,6 +166,12 @@ export function loadConfig(args: string[], fail: (message: string) => never): Ap
   const timeoutMs = Number(process.env.OPENAI_TIMEOUT_MS ?? String(DEFAULT_TIMEOUT_MS));
   const historyLimit = parseMinInteger("HISTORY_LIMIT", 1, fail) ?? 50;
 
+  const contextStrategy = getEnv("CONTEXT_STRATEGY") ?? "full";
+  const validStrategies = ["full", "sliding", "facts"];
+  if (!validStrategies.includes(contextStrategy)) {
+    fail(`Invalid CONTEXT_STRATEGY value: ${contextStrategy}. Use ${validStrategies.join("|")}`);
+  }
+
   return {
     prompt,
     apiKey,
@@ -177,6 +184,7 @@ export function loadConfig(args: string[], fail: (message: string) => never): Ap
     historyDb: getEnv("HISTORY_DB") ?? "./data/history.db",
     historyLimit,
     titleModel: getEnv("TITLE_MODEL") ?? model,
+    contextStrategy,
     sessionId,
     reasoningEffort: parseReasoningEffort(getEnv("OPENAI_REASONING_EFFORT"), fail),
     reasoningSummary: parseReasoningSummary(getEnv("OPENAI_REASONING_SUMMARY"), fail),

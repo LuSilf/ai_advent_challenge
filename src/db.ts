@@ -5,6 +5,9 @@ import { dirname } from "node:path";
 export type Session = {
   id: number;
   title: string | null;
+  context_strategy: string;
+  parent_session_id: number | null;
+  branch_point_message_id: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -32,6 +35,9 @@ export function initDb(dbPath: string): void {
     CREATE TABLE IF NOT EXISTS sessions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT,
+      context_strategy TEXT NOT NULL DEFAULT 'full',
+      parent_session_id INTEGER REFERENCES sessions(id),
+      branch_point_message_id INTEGER REFERENCES messages(id),
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
@@ -43,13 +49,40 @@ export function initDb(dbPath: string): void {
       content TEXT NOT NULL,
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS facts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      key TEXT NOT NULL,
+      value TEXT NOT NULL,
+      updated_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(session_id, key)
+    );
+
+    CREATE TABLE IF NOT EXISTS checkpoints (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      message_id INTEGER NOT NULL REFERENCES messages(id),
+      created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
+
+  // Миграция: добавляем новые поля если их нет (для существующих БД)
+  try {
+    db.exec("ALTER TABLE sessions ADD COLUMN context_strategy TEXT NOT NULL DEFAULT 'full'");
+  } catch { /* уже существует */ }
+  try {
+    db.exec("ALTER TABLE sessions ADD COLUMN parent_session_id INTEGER REFERENCES sessions(id)");
+  } catch { /* уже существует */ }
+  try {
+    db.exec("ALTER TABLE sessions ADD COLUMN branch_point_message_id INTEGER REFERENCES messages(id)");
+  } catch { /* уже существует */ }
 }
 
-export function createSession(title?: string): number {
+export function createSession(title?: string, contextStrategy?: string): number {
   const result = db.run(
-    "INSERT INTO sessions (title) VALUES (?)",
-    [title ?? null]
+    "INSERT INTO sessions (title, context_strategy) VALUES (?, ?)",
+    [title ?? null, contextStrategy ?? "full"]
   );
   return Number(result.lastInsertRowid);
 }
@@ -127,4 +160,105 @@ export function getMessageCount(sessionId: number): number {
 
 export function clearMessages(sessionId: number): void {
   db.run("DELETE FROM messages WHERE session_id = ?", [sessionId]);
+}
+
+// --- Context strategy ---
+
+export function getSessionStrategy(sessionId: number): string {
+  const row = db.query<{ context_strategy: string }, [number]>(
+    "SELECT context_strategy FROM sessions WHERE id = ?"
+  ).get(sessionId);
+  return row?.context_strategy ?? "full";
+}
+
+export function setSessionStrategy(sessionId: number, strategy: string): void {
+  db.run(
+    "UPDATE sessions SET context_strategy = ?, updated_at = datetime('now') WHERE id = ?",
+    [strategy, sessionId]
+  );
+}
+
+// --- Facts ---
+
+export type Fact = { key: string; value: string };
+
+export function getFacts(sessionId: number): Fact[] {
+  return db.query<Fact, [number]>(
+    "SELECT key, value FROM facts WHERE session_id = ? ORDER BY key ASC"
+  ).all(sessionId);
+}
+
+export function upsertFacts(sessionId: number, facts: Fact[]): void {
+  const stmt = db.prepare(
+    "INSERT INTO facts (session_id, key, value, updated_at) VALUES (?, ?, ?, datetime('now')) ON CONFLICT(session_id, key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')"
+  );
+  for (const fact of facts) {
+    stmt.run(sessionId, fact.key, fact.value);
+  }
+}
+
+export function clearFacts(sessionId: number): void {
+  db.run("DELETE FROM facts WHERE session_id = ?", [sessionId]);
+}
+
+// --- Checkpoints & Branching ---
+
+export function createCheckpoint(sessionId: number): number {
+  const lastMsg = db.query<{ id: number }, [number]>(
+    "SELECT id FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT 1"
+  ).get(sessionId);
+  if (!lastMsg) {
+    throw new Error("Нет сообщений для создания checkpoint");
+  }
+  const result = db.run(
+    "INSERT INTO checkpoints (session_id, message_id) VALUES (?, ?)",
+    [sessionId, lastMsg.id]
+  );
+  return lastMsg.id;
+}
+
+export function getLastCheckpoint(sessionId: number): { id: number; message_id: number } | null {
+  return db.query<{ id: number; message_id: number }, [number]>(
+    "SELECT id, message_id FROM checkpoints WHERE session_id = ? ORDER BY id DESC LIMIT 1"
+  ).get(sessionId) ?? null;
+}
+
+export function createBranch(
+  parentSessionId: number,
+  branchPointMessageId: number,
+  title?: string,
+  contextStrategy?: string
+): number {
+  const parentStrategy = getSessionStrategy(parentSessionId);
+  const result = db.run(
+    "INSERT INTO sessions (title, context_strategy, parent_session_id, branch_point_message_id) VALUES (?, ?, ?, ?)",
+    [title ?? null, contextStrategy ?? parentStrategy, parentSessionId, branchPointMessageId]
+  );
+  const newSessionId = Number(result.lastInsertRowid);
+
+  // Копируем сообщения до checkpoint включительно
+  db.run(
+    `INSERT INTO messages (session_id, role, content, created_at)
+     SELECT ?, role, content, created_at FROM messages
+     WHERE session_id = ? AND id <= ?
+     ORDER BY id ASC`,
+    [newSessionId, parentSessionId, branchPointMessageId]
+  );
+
+  return newSessionId;
+}
+
+export function listBranches(sessionId: number): SessionWithCount[] {
+  // Находим корневую сессию
+  const session = getSession(sessionId);
+  const rootId = session?.parent_session_id ?? sessionId;
+
+  return db.query<SessionWithCount, [number, number]>(`
+    SELECT s.*, COUNT(m.id) as message_count
+    FROM sessions s
+    LEFT JOIN messages m ON m.session_id = s.id
+    WHERE s.parent_session_id = ? OR s.parent_session_id = (SELECT parent_session_id FROM sessions WHERE id = ?)
+    GROUP BY s.id
+    ORDER BY s.created_at ASC
+  `).all(rootId, sessionId);
 }

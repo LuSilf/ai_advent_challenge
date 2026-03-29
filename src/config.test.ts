@@ -102,4 +102,20 @@ describe("loadConfig", () => {
     delete process.env.OPENAI_MODEL;
     expect(() => loadConfig([], fail)).toThrow("Missing OPENAI_MODEL");
   });
+
+  test("default contextStrategy is full", () => {
+    const config = loadConfig([], fail);
+    expect(config.contextStrategy).toBe("full");
+  });
+
+  test("custom contextStrategy from env", () => {
+    setEnv({ CONTEXT_STRATEGY: "sliding" });
+    const config = loadConfig([], fail);
+    expect(config.contextStrategy).toBe("sliding");
+  });
+
+  test("invalid contextStrategy fails", () => {
+    setEnv({ CONTEXT_STRATEGY: "invalid" });
+    expect(() => loadConfig([], fail)).toThrow("Invalid CONTEXT_STRATEGY");
+  });
 });

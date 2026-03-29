@@ -15,6 +15,7 @@ function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     historyDb: "./data/history.db",
     historyLimit: 50,
     titleModel: "test-model",
+    contextStrategy: "full",
     ...overrides
   };
 }
@@ -63,5 +64,16 @@ describe("buildResponseRequest", () => {
   test("max_output_tokens from maxCompletionTokens", () => {
     const req = buildResponseRequest(makeConfig({ maxCompletionTokens: 1024 }));
     expect(req.max_output_tokens).toBe(1024);
+  });
+
+  test("factsBlock prepended to instructions", () => {
+    const factsBlock = "Известные факты:\n- цель: тестирование";
+    const req = buildResponseRequest(makeConfig({ systemPrompt: "system prompt" }), [], factsBlock);
+    expect(req.instructions).toBe("Известные факты:\n- цель: тестирование\n\nsystem prompt");
+  });
+
+  test("without factsBlock instructions unchanged", () => {
+    const req = buildResponseRequest(makeConfig({ systemPrompt: "system prompt" }));
+    expect(req.instructions).toBe("system prompt");
   });
 });

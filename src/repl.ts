@@ -22,8 +22,17 @@ import {
   addMessage,
   getMessages,
   getMessageCount,
-  clearMessages
+  clearMessages,
+  getSessionStrategy,
+  setSessionStrategy,
+  getFacts,
+  upsertFacts,
+  createCheckpoint,
+  getLastCheckpoint,
+  createBranch,
+  listBranches
 } from "./db";
+import { createStrategy, isValidStrategy, buildFactsExtractionInput, parseFactsResponse, FACTS_EXTRACTION_PROMPT } from "./strategy";
 
 async function generateTitle(
   client: OpenAI,
@@ -45,10 +54,11 @@ async function sendMessage(
   client: OpenAI,
   config: AppConfig,
   prompt: string,
-  history: ChatMessage[]
+  history: ChatMessage[],
+  factsBlock?: string
 ): Promise<string> {
   const configWithPrompt = { ...config, prompt };
-  const request = buildResponseRequest(configWithPrompt, history);
+  const request = buildResponseRequest(configWithPrompt, history, factsBlock);
   const startedAtMs = Date.now();
 
   if (config.debug) {
@@ -138,6 +148,15 @@ function printHelp(): void {
   console.log("  /rename текст     Переименовать текущую сессию");
   console.log("  /history          Показать историю текущей сессии");
   console.log("  /edit             Открыть $EDITOR для ввода промпта");
+  console.log(pc.bold("Стратегии контекста:"));
+  console.log("  /strategy [name]  Показать/сменить стратегию (full|sliding|facts)");
+  console.log("  /facts            Показать извлечённые факты сессии");
+  console.log(pc.bold("Ветвление:"));
+  console.log("  /checkpoint       Создать точку ветвления");
+  console.log("  /branch [name]    Создать ветку от checkpoint");
+  console.log("  /branches         Список веток");
+  console.log("  /switch-branch N  Переключиться на ветку N");
+  console.log();
   console.log("  /help             Показать эту справку");
   console.log("  /exit             Выход (или Ctrl+D)");
   console.log(pc.dim("Введите сообщение и нажмите Enter дважды для отправки."));
@@ -151,8 +170,8 @@ function handleCommand(
 ): string | null {
   switch (cmd) {
     case "/new": {
-      state.sessionId = createSession();
-      console.log(pc.green(`Создана новая сессия #${state.sessionId}`));
+      state.sessionId = createSession(undefined, config.contextStrategy);
+      console.log(pc.green(`Создана новая сессия #${state.sessionId} (стратегия: ${config.contextStrategy})`));
       return null;
     }
     case "/list": {
@@ -203,7 +222,7 @@ function handleCommand(
       if (deleteSession(id)) {
         console.log(pc.green(`Сессия #${id} удалена`));
         if (id === state.sessionId) {
-          state.sessionId = createSession();
+          state.sessionId = createSession(undefined, config.contextStrategy);
           console.log(pc.green(`Создана новая сессия #${state.sessionId}`));
         }
       } else {
@@ -254,6 +273,88 @@ function handleCommand(
         return null;
       }
     }
+    case "/strategy": {
+      if (!args.trim()) {
+        const current = getSessionStrategy(state.sessionId);
+        console.log(pc.cyan(`Текущая стратегия: ${current}`));
+        console.log(pc.dim("Доступные: full, sliding, facts"));
+        return null;
+      }
+      const name = args.trim().toLowerCase();
+      if (!isValidStrategy(name)) {
+        console.log(pc.red(`Неизвестная стратегия: ${name}. Доступные: full, sliding, facts`));
+        return null;
+      }
+      setSessionStrategy(state.sessionId, name);
+      console.log(pc.green(`Стратегия сменена на: ${name}`));
+      return null;
+    }
+    case "/facts": {
+      const facts = getFacts(state.sessionId);
+      if (facts.length === 0) {
+        console.log(pc.dim("Фактов нет"));
+        return null;
+      }
+      console.log(pc.bold("Факты сессии:"));
+      for (const f of facts) {
+        console.log(`  ${pc.cyan(f.key)}: ${f.value}`);
+      }
+      return null;
+    }
+    case "/checkpoint": {
+      try {
+        const msgId = createCheckpoint(state.sessionId);
+        console.log(pc.green(`Checkpoint создан (сообщение #${msgId})`));
+      } catch (e) {
+        console.log(pc.red(e instanceof Error ? e.message : String(e)));
+      }
+      return null;
+    }
+    case "/branch": {
+      const checkpoint = getLastCheckpoint(state.sessionId);
+      if (!checkpoint) {
+        console.log(pc.red("Нет checkpoint. Сначала используйте /checkpoint"));
+        return null;
+      }
+      const branchTitle = args.trim() || undefined;
+      const newId = createBranch(state.sessionId, checkpoint.message_id, branchTitle);
+      state.sessionId = newId;
+      const count = getMessageCount(newId);
+      const strategy = getSessionStrategy(newId);
+      console.log(pc.green(`Создана ветка #${newId} (${count} сообщений, стратегия: ${strategy})`));
+      return null;
+    }
+    case "/branches": {
+      const branches = listBranches(state.sessionId);
+      if (branches.length === 0) {
+        console.log(pc.dim("Нет веток"));
+        return null;
+      }
+      console.log(pc.bold("Ветки:"));
+      for (let i = 0; i < branches.length; i++) {
+        const b = branches[i];
+        const marker = b.id === state.sessionId ? pc.yellow(" ←") : "";
+        const name = b.title ? `"${b.title}"` : "(без названия)";
+        const strategy = getSessionStrategy(b.id);
+        console.log(`  ${i + 1}. #${b.id} ${name} — ${b.message_count} сообщ., стратегия: ${strategy}${marker}`);
+      }
+      return null;
+    }
+    case "/switch-branch": {
+      const branches = listBranches(state.sessionId);
+      const idx = Number(args) - 1;
+      if (!Number.isInteger(idx) || idx < 0 || idx >= branches.length) {
+        console.log(pc.red(`Укажите номер ветки (1-${branches.length}): /switch-branch N`));
+        return null;
+      }
+      const branch = branches[idx];
+      state.sessionId = branch.id;
+      const count = getMessageCount(branch.id);
+      const strategy = getSessionStrategy(branch.id);
+      printSessionInfo(branch.id, branch.title, count);
+      console.log(pc.dim(`Стратегия: ${strategy}`));
+      return null;
+    }
     case "/help": {
       printHelp();
       return null;
@@ -283,11 +384,11 @@ export async function startRepl(client: OpenAI, config: AppConfig): Promise<void
     }));
     printSessionMessages(msgs);
   } else {
-    state.sessionId = createSession();
-    console.log(pc.green(`Создана новая сессия #${state.sessionId}`));
+    state.sessionId = createSession(undefined, config.contextStrategy);
+    console.log(pc.green(`Создана новая сессия #${state.sessionId} (стратегия: ${config.contextStrategy})`));
   }
 
-  console.log(pc.dim("Для новой сессии: /new | Помощь: /help"));
+  console.log(pc.dim("Стратегия: " + getSessionStrategy(state.sessionId) + " | /new | /help"));
 
   const rl = createInterface({
     input: process.stdin,
@@ -314,18 +415,43 @@ export async function startRepl(client: OpenAI, config: AppConfig): Promise<void
     }
 
     // Отправка сообщения
-    const history = getMessages(state.sessionId, config.historyLimit).map((m) => ({
-      role: m.role as "user" | "assistant",
-      content: m.content
-    }));
+    const strategyName = getSessionStrategy(state.sessionId);
+    const currentStrategy = createStrategy(strategyName);
+    const { messages: history, factsBlock } = currentStrategy.buildMessages(state.sessionId, config.historyLimit);
 
     addMessage(state.sessionId, "user", text);
 
     try {
-      const responseText = await sendMessage(client, config, text, history);
+      const responseText = await sendMessage(client, config, text, history, factsBlock);
 
       if (responseText) {
         addMessage(state.sessionId, "assistant", responseText);
+
+        // Извлечение фактов (стратегия facts)
+        if (strategyName === "facts") {
+          try {
+            const currentFacts = getFacts(state.sessionId);
+            const factsInput = buildFactsExtractionInput(currentFacts, text, responseText);
+            const factsResponse = await client.responses.create({
+              model: config.titleModel,
+              instructions: FACTS_EXTRACTION_PROMPT,
+              input: factsInput,
+              stream: false,
+            });
+            const factsText = factsResponse.output_text?.trim();
+            if (factsText) {
+              const newFacts = parseFactsResponse(factsText);
+              upsertFacts(state.sessionId, newFacts);
+              if (config.debug) {
+                console.error(pc.dim(`[Facts] Обновлено ${newFacts.length} фактов`));
+              }
+            }
+          } catch (e) {
+            if (config.debug) {
+              console.error(pc.dim(`[Facts] Ошибка извлечения: ${e instanceof Error ? e.message : String(e)}`));
+            }
+          }
+        }
 
         // Автоименование после первого обмена
         const session = getSession(state.sessionId);

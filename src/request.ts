@@ -6,7 +6,8 @@ export type ChatMessage = { role: "user" | "assistant"; content: string };
 
 export function buildResponseRequest(
   config: AppConfig,
-  history?: ChatMessage[]
+  history?: ChatMessage[],
+  factsBlock?: string
 ): ResponseCreateParams {
   let input: ResponseCreateParams["input"];
   if (history && history.length > 0) {
@@ -18,9 +19,14 @@ export function buildResponseRequest(
     input = config.prompt;
   }
 
+  let instructions = config.systemPrompt;
+  if (factsBlock) {
+    instructions = `${factsBlock}\n\n${instructions}`;
+  }
+
   const request: ResponseCreateParams = {
     model: config.model,
-    instructions: config.systemPrompt,
+    instructions,
     input,
     stream: config.useStreaming
   };

@@ -4,8 +4,9 @@ import type { Response } from "openai/resources/responses/responses";
 import { loadConfig } from "./config";
 import { printOutputMarker, printRequestDebug, printResponseDebug } from "./debug-logger";
 import { buildResponseRequest } from "./request";
-import { initDb, createSession, getMessages, addMessage, getSession, getMessageCount, updateSessionTitle } from "./db";
+import { initDb, createSession, addMessage, getSession, getSessionStrategy, getMessageCount, updateSessionTitle, getFacts, upsertFacts } from "./db";
 import { startRepl } from "./repl";
+import { createStrategy, buildFactsExtractionInput, parseFactsResponse, FACTS_EXTRACTION_PROMPT } from "./strategy";
 
 function fail(message: string): never {
   console.error(message);
@@ -62,13 +63,12 @@ if (!config.prompt) {
     }
     sessionId = config.sessionId;
   } else {
-    sessionId = createSession();
+    sessionId = createSession(undefined, config.contextStrategy);
   }
 
-  const history = getMessages(sessionId, config.historyLimit).map((m) => ({
-    role: m.role as "user" | "assistant",
-    content: m.content
-  }));
+  const strategyName = getSessionStrategy(sessionId);
+  const strategy = createStrategy(strategyName);
+  const { messages: history, factsBlock } = strategy.buildMessages(sessionId, config.historyLimit);
 
   addMessage(sessionId, "user", config.prompt);
 
@@ -77,7 +77,7 @@ if (!config.prompt) {
   }
 
   try {
-    const request = buildResponseRequest(config, history);
+    const request = buildResponseRequest(config, history, factsBlock);
     const startedAtMs = Date.now();
 
     let wroteOutputNewline = false;
@@ -152,6 +152,27 @@ if (!config.prompt) {
 
     if (responseText) {
       addMessage(sessionId, "assistant", responseText);
+
+      // Извлечение фактов (стратегия facts)
+      if (strategyName === "facts") {
+        try {
+          const currentFacts = getFacts(sessionId);
+          const factsInput = buildFactsExtractionInput(currentFacts, config.prompt, responseText);
+          const factsResponse = await client.responses.create({
+            model: config.titleModel,
+            instructions: FACTS_EXTRACTION_PROMPT,
+            input: factsInput,
+            stream: false,
+          });
+          const factsText = factsResponse.output_text?.trim();
+          if (factsText) {
+            const newFacts = parseFactsResponse(factsText);
+            upsertFacts(sessionId, newFacts);
+          }
+        } catch {
+          // не блокируем основной поток
+        }
+      }
 
       // Автоименование
       const session = getSession(sessionId);

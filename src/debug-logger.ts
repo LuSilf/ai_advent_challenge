@@ -82,10 +82,17 @@ export function printOutputMarker(): void {
   console.error(pc.bold(pc.green("[Model output]")));
 }
 
-export function printRequestDebug(config: AppConfig): void {
+export function printRequestDebug(config: AppConfig, messageCount?: number, factsCount?: number): void {
   debugPrintHeader("Request Debug");
   debugPrintField("Requesting", `${config.baseUrl}/responses`);
   debugPrintField("Model", config.model);
+  debugPrintField("Context strategy", config.contextStrategy);
+  if (messageCount !== undefined) {
+    debugPrintField("Messages in context", messageCount);
+  }
+  if (factsCount !== undefined && factsCount > 0) {
+    debugPrintField("Facts in context", factsCount);
+  }
   debugPrintField("Timeout", `${config.effectiveTimeoutMs}ms`);
   debugPrintField("Stream", config.useStreaming ? "enabled" : "disabled");
   debugPrintField("Reasoning effort", formatOptional(config.reasoningEffort));
