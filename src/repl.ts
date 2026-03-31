@@ -9,6 +9,7 @@ import pc from "picocolors";
 import type { Response } from "openai/resources/responses/responses";
 
 import type { AppConfig } from "./config";
+import { applyDbOptions } from "./config";
 import type { ChatMessage } from "./request";
 import { buildResponseRequest } from "./request";
 import { printOutputMarker, printRequestDebug, printResponseDebug } from "./debug-logger";
@@ -626,6 +627,8 @@ export async function handleCommand(
       const [key, ...valueParts] = parts;
       const value = valueParts.join(" ");
       setOption(key, value);
+      // Применить изменения к текущему конфигу
+      applyDbOptions(config, getOption);
       console.log(pc.green(`${key} = ${value}`));
       return null;
     }

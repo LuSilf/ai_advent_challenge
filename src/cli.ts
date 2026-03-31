@@ -1,10 +1,10 @@
 import OpenAI from "openai";
 import type { Response } from "openai/resources/responses/responses";
 
-import { loadConfig } from "./config";
+import { loadConfig, applyDbOptions } from "./config";
 import { printOutputMarker, printRequestDebug, printResponseDebug } from "./debug-logger";
 import { buildResponseRequest } from "./request";
-import { initDb, createSession, addMessage, getSession, getSessionStrategy, getMessageCount, updateSessionTitle, getModelForRole, calculateCost, formatCost } from "./db";
+import { initDb, createSession, addMessage, getSession, getSessionStrategy, getMessageCount, updateSessionTitle, getModelForRole, calculateCost, formatCost, getOption } from "./db";
 import { startRepl } from "./repl";
 import { createStrategy } from "./strategy";
 
@@ -41,6 +41,7 @@ function isTimeoutError(error: unknown): boolean {
 const config = loadConfig(Bun.argv.slice(2), fail);
 
 initDb(config.historyDb);
+applyDbOptions(config, getOption);
 
 const client = new OpenAI({
   apiKey: config.apiKey,

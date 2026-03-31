@@ -27,7 +27,7 @@ export type AppConfig = {
   frequencyPenalty?: number;
 };
 
-const DEFAULT_SYSTEM_PROMPT = `Ты — саркастичный ассистент с чёрным юмором. Отвечай коротко (1-3 предложения), едко и по делу. Если вопрос глупый — не стесняйся об этом сказать, но всё равно помоги. Язык: русский.`;
+const DEFAULT_SYSTEM_PROMPT = "";
 
 function getEnv(name: string): string | undefined {
   return process.env[name]?.trim() || undefined;
@@ -186,4 +186,42 @@ export function loadConfig(args: string[], fail: (message: string) => never): Ap
     presencePenalty: parseBoundedNumber("OPENAI_PRESENCE_PENALTY", -2, 2, fail),
     frequencyPenalty: parseBoundedNumber("OPENAI_FREQUENCY_PENALTY", -2, 2, fail)
   };
+}
+
+export function applyDbOptions(config: AppConfig, getOption: (key: string) => string | null): void {
+  const systemPrompt = getOption("system_prompt");
+  if (systemPrompt) {
+    config.systemPrompt = systemPrompt;
+  }
+
+  const temperature = getOption("temperature");
+  if (temperature) {
+    const parsed = Number(temperature);
+    if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 2) {
+      config.temperature = parsed;
+    }
+  }
+
+  const topP = getOption("top_p");
+  if (topP) {
+    const parsed = Number(topP);
+    if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 1) {
+      config.topP = parsed;
+    }
+  }
+
+  const debug = getOption("debug");
+  if (debug) {
+    const normalized = debug.toLowerCase();
+    if (normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on") {
+      config.debug = true;
+    } else if (normalized === "0" || normalized === "false" || normalized === "no" || normalized === "off") {
+      config.debug = false;
+    }
+  }
+
+  const contextStrategy = getOption("context_strategy");
+  if (contextStrategy && (contextStrategy === "full" || contextStrategy === "sliding")) {
+    config.contextStrategy = contextStrategy;
+  }
 }
