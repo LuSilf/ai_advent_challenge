@@ -40,6 +40,7 @@ import {
   formatCost
 } from "./db";
 import { createStrategy, isValidStrategy, buildFactsExtractionInput, parseFactsResponse, FACTS_EXTRACTION_PROMPT } from "./strategy";
+import { appendLongTermMemory, appendWorkingMemory, getLongTermMemoryPath, getWorkingMemoryPath } from "./memory";
 
 function printCostInfo(response: Response | undefined, modelId: string, debug: boolean): void {
   if (!response?.usage) return;
@@ -178,6 +179,9 @@ function printHelp(): void {
   console.log("  /rename текст     Переименовать текущую сессию");
   console.log("  /history          Показать историю текущей сессии");
   console.log("  /edit             Открыть $EDITOR для ввода промпта");
+  console.log(pc.bold("Память:"));
+  console.log("  /remember <текст> Сохранить в долговременную память (глобальная)");
+  console.log("  /save_facts <текст> Сохранить в рабочую память (проект)");
   console.log(pc.bold("Стратегии контекста:"));
   console.log("  /strategy [name]  Показать/сменить стратегию (full|sliding|facts)");
   console.log("  /facts            Показать извлечённые факты сессии");
@@ -196,7 +200,7 @@ function printHelp(): void {
   console.log(pc.dim("Введите сообщение и нажмите Enter дважды для отправки."));
 }
 
-function handleCommand(
+export function handleCommand(
   cmd: string,
   args: string,
   state: { sessionId: number },
@@ -455,6 +459,26 @@ function handleCommand(
       } catch (e) {
         console.log(pc.red(e instanceof Error ? e.message : String(e)));
       }
+      return null;
+    }
+    case "/remember": {
+      const text = args.trim();
+      if (!text) {
+        console.log(pc.red("Использование: /remember <текст>"));
+        return null;
+      }
+      appendLongTermMemory(text);
+      console.log(pc.green(`Сохранено в долговременную память: ${getLongTermMemoryPath()}`));
+      return null;
+    }
+    case "/save_facts": {
+      const text = args.trim();
+      if (!text) {
+        console.log(pc.red("Использование: /save_facts <текст>"));
+        return null;
+      }
+      appendWorkingMemory(text);
+      console.log(pc.green(`Сохранено в рабочую память: ${getWorkingMemoryPath()}`));
       return null;
     }
     case "/help": {
