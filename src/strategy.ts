@@ -106,7 +106,7 @@ export function parseFactsResponse(response: string): Fact[] {
   }));
 }
 
-const STRATEGY_NAMES = ["full", "sliding", "facts"] as const;
+const STRATEGY_NAMES = ["full", "sliding"] as const;
 export type StrategyName = (typeof STRATEGY_NAMES)[number];
 
 export function isValidStrategy(name: string): name is StrategyName {
@@ -120,7 +120,8 @@ export function createStrategy(name: string): ContextStrategy {
     case "sliding":
       return new SlidingWindowStrategy();
     case "facts":
-      return new StickyFactsStrategy();
+      // Обратная совместимость: существующие сессии со стратегией facts → sliding
+      return new SlidingWindowStrategy();
     default:
       throw new Error(
         `Неизвестная стратегия: ${name}. Допустимые: ${STRATEGY_NAMES.join(", ")}`

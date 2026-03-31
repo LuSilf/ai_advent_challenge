@@ -160,7 +160,7 @@ export function loadConfig(args: string[], fail: (message: string) => never): Ap
   const historyLimit = parseMinInteger("HISTORY_LIMIT", 1, fail) ?? 50;
 
   const contextStrategy = getEnv("CONTEXT_STRATEGY") ?? "full";
-  const validStrategies = ["full", "sliding", "facts"];
+  const validStrategies = ["full", "sliding"];
   if (!validStrategies.includes(contextStrategy)) {
     fail(`Invalid CONTEXT_STRATEGY value: ${contextStrategy}. Use ${validStrategies.join("|")}`);
   }

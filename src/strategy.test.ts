@@ -86,9 +86,9 @@ describe("createStrategy", () => {
     expect(s.name).toBe("sliding");
   });
 
-  test("создаёт StickyFactsStrategy по имени 'facts'", () => {
+  test("'facts' возвращает SlidingWindowStrategy для обратной совместимости", () => {
     const s = createStrategy("facts");
-    expect(s.name).toBe("facts");
+    expect(s.name).toBe("sliding");
   });
 
   test("бросает ошибку для неизвестной стратегии", () => {
@@ -100,7 +100,10 @@ describe("isValidStrategy", () => {
   test("допустимые стратегии", () => {
     expect(isValidStrategy("full")).toBe(true);
     expect(isValidStrategy("sliding")).toBe(true);
-    expect(isValidStrategy("facts")).toBe(true);
+  });
+
+  test("facts больше не допустимая стратегия", () => {
+    expect(isValidStrategy("facts")).toBe(false);
   });
 
   test("недопустимые стратегии", () => {

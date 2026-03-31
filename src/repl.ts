@@ -26,8 +26,6 @@ import {
   clearMessages,
   getSessionStrategy,
   setSessionStrategy,
-  getFacts,
-  upsertFacts,
   createCheckpoint,
   getLastCheckpoint,
   createBranch,
@@ -40,7 +38,7 @@ import {
   calculateCost,
   formatCost
 } from "./db";
-import { createStrategy, isValidStrategy, buildFactsExtractionInput, parseFactsResponse, FACTS_EXTRACTION_PROMPT } from "./strategy";
+import { createStrategy, isValidStrategy } from "./strategy";
 import { appendLongTermMemory, appendWorkingMemory, readLongTermMemory, readWorkingMemory, getLongTermMemoryPath, getWorkingMemoryPath } from "./memory";
 
 export const MEMORY_SUGGESTION_PROMPT =`Ты — помощник по управлению памятью. Проанализируй последний обмен сообщениями и определи, есть ли в нём важная информация, которую стоит сохранить в рабочую память проекта.
@@ -196,7 +194,7 @@ function printHelp(): void {
   console.log("  /edit_memory      Редактировать долговременную память ($EDITOR)");
   console.log("  /edit_facts       Редактировать рабочую память ($EDITOR)");
   console.log(pc.bold("Стратегии контекста:"));
-  console.log("  /strategy [name]  Показать/сменить стратегию (full|sliding|facts)");
+  console.log("  /strategy [name]  Показать/сменить стратегию (full|sliding)");
   console.log(pc.bold("Модели:"));
   console.log("  /models           Список доступных моделей с ценами");
   console.log("  /roles            Текущий маппинг ролей на модели");
@@ -327,12 +325,12 @@ export function handleCommand(
       if (!args.trim()) {
         const current = getSessionStrategy(state.sessionId);
         console.log(pc.cyan(`Текущая стратегия: ${current}`));
-        console.log(pc.dim("Доступные: full, sliding, facts"));
+        console.log(pc.dim("Доступные: full, sliding"));
         return null;
       }
       const name = args.trim().toLowerCase();
       if (!isValidStrategy(name)) {
-        console.log(pc.red(`Неизвестная стратегия: ${name}. Доступные: full, sliding, facts`));
+        console.log(pc.red(`Неизвестная стратегия: ${name}. Доступные: full, sliding`));
         return null;
       }
       setSessionStrategy(state.sessionId, name);
@@ -671,34 +669,6 @@ export async function startRepl(client: OpenAI, config: AppConfig): Promise<void
 
       if (responseText) {
         addMessage(state.sessionId, "assistant", responseText);
-
-        // Извлечение фактов (стратегия facts)
-        if (strategyName === "facts") {
-          try {
-            const factsModel = getModelForRole("facts");
-            const factsModelId = factsModel?.id ?? "openai/gpt-5-nano";
-            const currentFacts = getFacts(state.sessionId);
-            const factsInput = buildFactsExtractionInput(currentFacts, text, responseText);
-            const factsResponse = await client.responses.create({
-              model: factsModelId,
-              instructions: FACTS_EXTRACTION_PROMPT,
-              input: factsInput,
-              stream: false,
-            });
-            const factsText = factsResponse.output_text?.trim();
-            if (factsText) {
-              const newFacts = parseFactsResponse(factsText);
-              upsertFacts(state.sessionId, newFacts);
-              if (config.debug) {
-                console.error(pc.dim(`[Facts] Обновлено ${newFacts.length} фактов`));
-              }
-            }
-          } catch (e) {
-            if (config.debug) {
-              console.error(pc.dim(`[Facts] Ошибка извлечения: ${e instanceof Error ? e.message : String(e)}`));
-            }
-          }
-        }
 
         // Автоименование после первого обмена
         const session = getSession(state.sessionId);

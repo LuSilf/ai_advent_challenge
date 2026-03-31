@@ -4,9 +4,9 @@ import type { Response } from "openai/resources/responses/responses";
 import { loadConfig } from "./config";
 import { printOutputMarker, printRequestDebug, printResponseDebug } from "./debug-logger";
 import { buildResponseRequest } from "./request";
-import { initDb, createSession, addMessage, getSession, getSessionStrategy, getMessageCount, updateSessionTitle, getFacts, upsertFacts, getModelForRole, calculateCost, formatCost } from "./db";
+import { initDb, createSession, addMessage, getSession, getSessionStrategy, getMessageCount, updateSessionTitle, getModelForRole, calculateCost, formatCost } from "./db";
 import { startRepl } from "./repl";
-import { createStrategy, buildFactsExtractionInput, parseFactsResponse, FACTS_EXTRACTION_PROMPT } from "./strategy";
+import { createStrategy } from "./strategy";
 
 function fail(message: string): never {
   console.error(message);
@@ -171,29 +171,6 @@ if (!config.prompt) {
 
     if (responseText) {
       addMessage(sessionId, "assistant", responseText);
-
-      // Извлечение фактов (стратегия facts)
-      if (strategyName === "facts") {
-        try {
-          const factsModel = getModelForRole("facts");
-          const factsModelId = factsModel?.id ?? "openai/gpt-5-nano";
-          const currentFacts = getFacts(sessionId);
-          const factsInput = buildFactsExtractionInput(currentFacts, config.prompt, responseText);
-          const factsResponse = await client.responses.create({
-            model: factsModelId,
-            instructions: FACTS_EXTRACTION_PROMPT,
-            input: factsInput,
-            stream: false,
-          });
-          const factsText = factsResponse.output_text?.trim();
-          if (factsText) {
-            const newFacts = parseFactsResponse(factsText);
-            upsertFacts(sessionId, newFacts);
-          }
-        } catch {
-          // не блокируем основной поток
-        }
-      }
 
       // Автоименование
       const session = getSession(sessionId);
