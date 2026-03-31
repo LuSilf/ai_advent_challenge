@@ -205,12 +205,13 @@ function printHelp(): void {
   console.log(pc.dim("Введите сообщение и нажмите Enter дважды для отправки."));
 }
 
-export function handleCommand(
+export async function handleCommand(
   cmd: string,
   args: string,
   state: { sessionId: number },
-  config: AppConfig
-): string | null {
+  config: AppConfig,
+  deps?: { client?: OpenAI; rl?: ReturnType<typeof createInterface> }
+): Promise<string | null> {
   switch (cmd) {
     case "/new": {
       state.sessionId = createSession(undefined, config.contextStrategy);
@@ -510,8 +511,73 @@ export function handleCommand(
         console.log(pc.red("Использование: /remember <текст>"));
         return null;
       }
-      appendLongTermMemory(text);
-      console.log(pc.green(`Сохранено в долговременную память: ${getLongTermMemoryPath()}`));
+
+      const currentMemory = readLongTermMemory();
+      if (!currentMemory) {
+        // Пустая память — пишем напрямую без LLM
+        appendLongTermMemory(text);
+        console.log(pc.green(`Сохранено в долговременную память: ${getLongTermMemoryPath()}`));
+        return null;
+      }
+
+      // Реконсиляция через LLM
+      if (!deps?.client || !deps?.rl) {
+        // Fallback: нет клиента (например, в тестах) — аппенд
+        appendLongTermMemory(text);
+        console.log(pc.green(`Сохранено в долговременную память: ${getLongTermMemoryPath()}`));
+        return null;
+      }
+
+      const acc = createCostAccumulator();
+      const factsModel = getModelForRole("facts");
+      try {
+        const result = await reconcileMemory(deps.client, currentMemory, text);
+        addUsage(acc, result.inputTokens, result.outputTokens);
+
+        if (!result.changesSummary || !result.updatedMemory) {
+          console.log(pc.dim("Изменений не обнаружено"));
+          if (hasUsage(acc) && factsModel) {
+            console.log(pc.dim(formatMemoryCost(acc, factsModel, "Без изменений")));
+          }
+          return null;
+        }
+
+        console.log(pc.yellow("Изменения в долговременной памяти:"));
+        console.log(pc.dim(result.changesSummary));
+        const answer = await askUserChoice(deps.rl, pc.yellow("[д]а / [н]ет / [и]зменить: "));
+
+        if (answer === "д" || answer === "да" || answer === "y" || answer === "yes") {
+          writeLongTermMemory(result.updatedMemory);
+          console.log(pc.green("Долговременная память обновлена"));
+          if (hasUsage(acc) && factsModel) {
+            console.log(pc.dim(formatMemoryCost(acc, factsModel, "Сохранено в долговременную память")));
+          }
+        } else if (answer === "и" || answer === "изменить" || answer === "e" || answer === "edit") {
+          const edited = await askUserEdit(deps.rl, result.updatedMemory);
+          if (edited) {
+            writeLongTermMemory(edited);
+            console.log(pc.green("Долговременная память обновлена (отредактировано)"));
+            if (hasUsage(acc) && factsModel) {
+              console.log(pc.dim(formatMemoryCost(acc, factsModel, "Сохранено в долговременную память")));
+            }
+          }
+        } else {
+          console.log(pc.dim("Изменения отклонены"));
+          if (hasUsage(acc) && factsModel) {
+            console.log(pc.dim(formatMemoryCost(acc, factsModel, "Изменения отклонены")));
+          }
+        }
+      } catch (e) {
+        if (config.debug) {
+          console.error(pc.dim(`[Memory] Ошибка: ${e instanceof Error ? e.message : String(e)}`));
+        }
+        // Fallback: аппенд без реконсиляции
+        appendLongTermMemory(text);
+        console.log(pc.green(`Сохранено в долговременную память (без реконсиляции): ${getLongTermMemoryPath()}`));
+        if (hasUsage(acc) && factsModel) {
+          console.log(pc.dim(formatMemoryCost(acc, factsModel, "Ошибка реконсиляции")));
+        }
+      }
       return null;
     }
     case "/save_facts": {
@@ -656,7 +722,7 @@ export async function startRepl(client: OpenAI, config: AppConfig): Promise<void
       const spaceIdx = text.indexOf(" ");
       const cmd = spaceIdx === -1 ? text : text.slice(0, spaceIdx);
       const args = spaceIdx === -1 ? "" : text.slice(spaceIdx + 1);
-      const result = handleCommand(cmd, args, state, config);
+      const result = await handleCommand(cmd, args, state, config, { client, rl });
       if (result === null) {
         rl.prompt();
         return;

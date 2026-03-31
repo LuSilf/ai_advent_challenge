@@ -48,83 +48,92 @@ afterEach(() => {
 });
 
 describe("/remember", () => {
-  test("saves text to long-term memory file", () => {
+  test("saves text directly when memory is empty (no LLM)", async () => {
     const state = { sessionId: 1 };
-    const result = handleCommand("/remember", "user prefers dark mode", state, makeConfig());
+    const result = await handleCommand("/remember", "user prefers dark mode", state, makeConfig());
     expect(result).toBeNull();
     const content = readFileSync(getLongTermMemoryPath(), "utf-8");
     expect(content).toBe("user prefers dark mode");
   });
 
-  test("returns null without args (shows usage)", () => {
+  test("appends without LLM when no client provided and memory exists", async () => {
+    appendLongTermMemory("existing");
     const state = { sessionId: 1 };
-    const result = handleCommand("/remember", "", state, makeConfig());
+    // No deps.client — fallback to append
+    const result = await handleCommand("/remember", "new fact", state, makeConfig());
+    expect(result).toBeNull();
+    const content = readFileSync(getLongTermMemoryPath(), "utf-8");
+    expect(content).toContain("existing");
+    expect(content).toContain("new fact");
+  });
+
+  test("returns null without args (shows usage)", async () => {
+    const state = { sessionId: 1 };
+    const result = await handleCommand("/remember", "", state, makeConfig());
     expect(result).toBeNull();
   });
 });
 
 describe("/save_facts", () => {
-  test("saves text to working memory file", () => {
+  test("saves text to working memory file", async () => {
     const state = { sessionId: 1 };
-    const result = handleCommand("/save_facts", "arch: monorepo", state, makeConfig());
+    const result = await handleCommand("/save_facts", "arch: monorepo", state, makeConfig());
     expect(result).toBeNull();
     const content = readFileSync(getWorkingMemoryPath(), "utf-8");
     expect(content).toBe("arch: monorepo");
   });
 
-  test("returns null without args (shows usage)", () => {
+  test("returns null without args (shows usage)", async () => {
     const state = { sessionId: 1 };
-    const result = handleCommand("/save_facts", "", state, makeConfig());
+    const result = await handleCommand("/save_facts", "", state, makeConfig());
     expect(result).toBeNull();
   });
 });
 
 describe("/memory", () => {
-  test("returns null when memory is empty", () => {
+  test("returns null when memory is empty", async () => {
     const state = { sessionId: 1 };
-    const result = handleCommand("/memory", "", state, makeConfig());
+    const result = await handleCommand("/memory", "", state, makeConfig());
     expect(result).toBeNull();
   });
 
-  test("returns null and shows content when memory exists", () => {
+  test("returns null and shows content when memory exists", async () => {
     appendLongTermMemory("global rule");
     const state = { sessionId: 1 };
-    const result = handleCommand("/memory", "", state, makeConfig());
+    const result = await handleCommand("/memory", "", state, makeConfig());
     expect(result).toBeNull();
   });
 });
 
 describe("/facts (working memory)", () => {
-  test("returns null when working memory is empty", () => {
+  test("returns null when working memory is empty", async () => {
     const state = { sessionId: 1 };
-    const result = handleCommand("/facts", "", state, makeConfig());
+    const result = await handleCommand("/facts", "", state, makeConfig());
     expect(result).toBeNull();
   });
 
-  test("returns null and shows content when working memory exists", () => {
+  test("returns null and shows content when working memory exists", async () => {
     appendWorkingMemory("project fact");
     const state = { sessionId: 1 };
-    const result = handleCommand("/facts", "", state, makeConfig());
+    const result = await handleCommand("/facts", "", state, makeConfig());
     expect(result).toBeNull();
   });
 });
 
 describe("/edit_memory", () => {
-  test("creates file if it does not exist", () => {
-    // Используем 'true' как редактор — он ничего не делает и возвращает 0
+  test("creates file if it does not exist", async () => {
     process.env.EDITOR = "true";
     const state = { sessionId: 1 };
-    const result = handleCommand("/edit_memory", "", state, makeConfig());
+    const result = await handleCommand("/edit_memory", "", state, makeConfig());
     expect(result).toBeNull();
   });
 });
 
 describe("/edit_facts", () => {
-  test("creates file if it does not exist", () => {
+  test("creates file if it does not exist", async () => {
     process.env.EDITOR = "true";
     const state = { sessionId: 1 };
-    const result = handleCommand("/edit_facts", "", state, makeConfig());
+    const result = await handleCommand("/edit_facts", "", state, makeConfig());
     expect(result).toBeNull();
   });
 });
-
