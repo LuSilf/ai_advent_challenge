@@ -1,6 +1,10 @@
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { buildResponseRequest } from "./request";
 import type { AppConfig } from "./config";
+import { getLongTermMemoryPath, getWorkingMemoryPath } from "./memory";
 
 function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   return {
@@ -18,7 +22,31 @@ function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   };
 }
 
+let tmpDir: string;
+let savedMemoryDir: string | undefined;
+let savedCwd: string;
+
 describe("buildResponseRequest", () => {
+  beforeEach(() => {
+    tmpDir = join(tmpdir(), `req-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(tmpDir, { recursive: true });
+    savedMemoryDir = process.env.MEMORY_DIR;
+    savedCwd = process.cwd();
+    // Изолируем от реальных файлов памяти
+    process.env.MEMORY_DIR = join(tmpDir, "nomemory");
+    process.chdir(tmpDir);
+  });
+
+  afterEach(() => {
+    process.chdir(savedCwd);
+    if (savedMemoryDir === undefined) {
+      delete process.env.MEMORY_DIR;
+    } else {
+      process.env.MEMORY_DIR = savedMemoryDir;
+    }
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
   test("without history, input is string", () => {
     const req = buildResponseRequest(makeConfig(), "test-model");
     expect(req.input).toBe("test prompt");
@@ -74,5 +102,30 @@ describe("buildResponseRequest", () => {
   test("without factsBlock instructions unchanged", () => {
     const req = buildResponseRequest(makeConfig({ systemPrompt: "system prompt" }), "test-model");
     expect(req.instructions).toBe("system prompt");
+  });
+
+  test("memory blocks prepended to instructions", () => {
+    // Создаём файлы памяти в tmpDir
+    const memDir = join(tmpDir, "nomemory");
+    mkdirSync(memDir, { recursive: true });
+    writeFileSync(join(memDir, "memory.md"), "global rule");
+    mkdirSync(join(tmpDir, ".ai"), { recursive: true });
+    writeFileSync(join(tmpDir, ".ai/memory.md"), "project fact");
+
+    const req = buildResponseRequest(makeConfig({ systemPrompt: "sys" }), "test-model");
+    expect(req.instructions).toBe(
+      "[Долговременная память]\nglobal rule\n\n[Рабочая память проекта]\nproject fact\n\nsys"
+    );
+  });
+
+  test("memory blocks + factsBlock both prepended, facts first", () => {
+    const memDir = join(tmpDir, "nomemory");
+    mkdirSync(memDir, { recursive: true });
+    writeFileSync(join(memDir, "memory.md"), "global");
+
+    const req = buildResponseRequest(makeConfig({ systemPrompt: "sys" }), "test-model", [], "facts here");
+    expect(req.instructions).toBe(
+      "facts here\n\n[Долговременная память]\nglobal\n\nsys"
+    );
   });
 });

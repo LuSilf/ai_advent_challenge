@@ -1,6 +1,7 @@
 import type { ResponseCreateParams } from "openai/resources/responses/responses";
 
 import type { AppConfig } from "./config";
+import { buildMemoryBlocks } from "./memory";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -20,7 +21,11 @@ export function buildResponseRequest(
     input = config.prompt;
   }
 
+  const memoryBlocks = buildMemoryBlocks();
   let instructions = config.systemPrompt;
+  if (memoryBlocks) {
+    instructions = `${memoryBlocks}\n\n${instructions}`;
+  }
   if (factsBlock) {
     instructions = `${factsBlock}\n\n${instructions}`;
   }
