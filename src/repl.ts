@@ -215,13 +215,17 @@ function printHelp(): void {
 export async function handleCommand(
   cmd: string,
   args: string,
-  state: { sessionId: number },
+  state: { sessionId: number; messagesSinceReconciliation: number },
   config: AppConfig,
   deps?: { client?: OpenAI; rl?: ReturnType<typeof createInterface> }
 ): Promise<string | null> {
   switch (cmd) {
     case "/new": {
+      if (deps?.client && deps?.rl) {
+        await triggerReconciliation(deps.client, deps.rl, state, config.debug);
+      }
       state.sessionId = createSession(undefined, config.contextStrategy);
+      state.messagesSinceReconciliation = 0;
       console.log(pc.green(`Создана новая сессия #${state.sessionId} (стратегия: ${config.contextStrategy})`));
       return null;
     }
@@ -249,7 +253,11 @@ export async function handleCommand(
         console.log(pc.red(`Сессия #${id} не найдена`));
         return null;
       }
+      if (deps?.client && deps?.rl) {
+        await triggerReconciliation(deps.client, deps.rl, state, config.debug);
+      }
       state.sessionId = id;
+      state.messagesSinceReconciliation = 0;
       const count = getMessageCount(id);
       printSessionInfo(id, session.title, count);
       const msgs = getMessages(id, config.historyLimit).map((m) => ({
@@ -626,6 +634,9 @@ export async function handleCommand(
       return null;
     }
     case "/exit": {
+      if (deps?.client && deps?.rl) {
+        await triggerReconciliation(deps.client, deps.rl, state, config.debug);
+      }
       process.exit(0);
     }
     default: {
@@ -660,11 +671,30 @@ async function askUserEdit(rl: ReturnType<typeof createInterface>, text: string)
   }
 }
 
+async function triggerReconciliation(
+  client: OpenAI,
+  rl: ReturnType<typeof createInterface>,
+  state: { sessionId: number; messagesSinceReconciliation: number },
+  debug: boolean
+): Promise<void> {
+  if (state.messagesSinceReconciliation === 0) return;
+
+  // Получим последние сообщения для контекста
+  const messages = getMessages(state.sessionId, state.messagesSinceReconciliation * 2);
+  if (messages.length === 0) return;
+
+  const newContent = messages.map((m) =>
+    `${m.role === "user" ? "Пользователь" : "Ассистент"}: ${m.content}`
+  ).join("\n\n");
+
+  state.messagesSinceReconciliation = 0;
+  await suggestMemorySave(client, rl, newContent, "", debug);
+}
+
 export async function suggestMemorySave(
   client: OpenAI,
   rl: ReturnType<typeof createInterface>,
-  userMessage: string,
-  assistantMessage: string,
+  newContent: string,
   debug: boolean
 ): Promise<void> {
   const acc = createCostAccumulator();
@@ -672,7 +702,6 @@ export async function suggestMemorySave(
 
   try {
     const currentMemory = readWorkingMemory();
-    const newContent = `Пользователь: ${userMessage}\nАссистент: ${assistantMessage}`;
 
     const result = await reconcileMemory(client, currentMemory, newContent);
     addUsage(acc, result.inputTokens, result.outputTokens);
@@ -717,8 +746,7 @@ export async function suggestMemorySave(
 }
 
 export async function startRepl(client: OpenAI, config: AppConfig): Promise<void> {
-  const state = { sessionId: 0 };
-  let messagesSinceLastReconciliation = 0;
+  const state = { sessionId: 0, messagesSinceReconciliation: 0 };
 
   // Восстанавливаем последнюю сессию или создаём новую
   const lastSession = getLastSession();
@@ -789,11 +817,12 @@ export async function startRepl(client: OpenAI, config: AppConfig): Promise<void
         }
 
         // Счётчик для интервала предложений рабочей памяти
-        messagesSinceLastReconciliation++;
+        state.messagesSinceReconciliation++;
         const interval = Number(getOption("memory_interval") ?? "5");
-        if (interval > 0 && messagesSinceLastReconciliation >= interval) {
-          messagesSinceLastReconciliation = 0;
-          await suggestMemorySave(client, rl, text, responseText, config.debug);
+        if (interval > 0 && state.messagesSinceReconciliation >= interval) {
+          state.messagesSinceReconciliation = 0;
+          const dialogContent = `Пользователь: ${text}\nАссистент: ${responseText}`;
+          await suggestMemorySave(client, rl, dialogContent, config.debug);
         }
       }
     } catch (error) {

@@ -49,7 +49,7 @@ afterEach(() => {
 
 describe("/remember", () => {
   test("saves text directly when memory is empty (no LLM)", async () => {
-    const state = { sessionId: 1 };
+    const state = { sessionId: 1, messagesSinceReconciliation: 0 };
     const result = await handleCommand("/remember", "user prefers dark mode", state, makeConfig());
     expect(result).toBeNull();
     const content = readFileSync(getLongTermMemoryPath(), "utf-8");
@@ -58,7 +58,7 @@ describe("/remember", () => {
 
   test("appends without LLM when no client provided and memory exists", async () => {
     appendLongTermMemory("existing");
-    const state = { sessionId: 1 };
+    const state = { sessionId: 1, messagesSinceReconciliation: 0 };
     // No deps.client — fallback to append
     const result = await handleCommand("/remember", "new fact", state, makeConfig());
     expect(result).toBeNull();
@@ -68,7 +68,7 @@ describe("/remember", () => {
   });
 
   test("returns null without args (shows usage)", async () => {
-    const state = { sessionId: 1 };
+    const state = { sessionId: 1, messagesSinceReconciliation: 0 };
     const result = await handleCommand("/remember", "", state, makeConfig());
     expect(result).toBeNull();
   });
@@ -76,7 +76,7 @@ describe("/remember", () => {
 
 describe("/save_facts", () => {
   test("saves text to working memory file", async () => {
-    const state = { sessionId: 1 };
+    const state = { sessionId: 1, messagesSinceReconciliation: 0 };
     const result = await handleCommand("/save_facts", "arch: monorepo", state, makeConfig());
     expect(result).toBeNull();
     const content = readFileSync(getWorkingMemoryPath(), "utf-8");
@@ -84,7 +84,7 @@ describe("/save_facts", () => {
   });
 
   test("returns null without args (shows usage)", async () => {
-    const state = { sessionId: 1 };
+    const state = { sessionId: 1, messagesSinceReconciliation: 0 };
     const result = await handleCommand("/save_facts", "", state, makeConfig());
     expect(result).toBeNull();
   });
@@ -92,14 +92,14 @@ describe("/save_facts", () => {
 
 describe("/memory", () => {
   test("returns null when memory is empty", async () => {
-    const state = { sessionId: 1 };
+    const state = { sessionId: 1, messagesSinceReconciliation: 0 };
     const result = await handleCommand("/memory", "", state, makeConfig());
     expect(result).toBeNull();
   });
 
   test("returns null and shows content when memory exists", async () => {
     appendLongTermMemory("global rule");
-    const state = { sessionId: 1 };
+    const state = { sessionId: 1, messagesSinceReconciliation: 0 };
     const result = await handleCommand("/memory", "", state, makeConfig());
     expect(result).toBeNull();
   });
@@ -107,14 +107,14 @@ describe("/memory", () => {
 
 describe("/facts (working memory)", () => {
   test("returns null when working memory is empty", async () => {
-    const state = { sessionId: 1 };
+    const state = { sessionId: 1, messagesSinceReconciliation: 0 };
     const result = await handleCommand("/facts", "", state, makeConfig());
     expect(result).toBeNull();
   });
 
   test("returns null and shows content when working memory exists", async () => {
     appendWorkingMemory("project fact");
-    const state = { sessionId: 1 };
+    const state = { sessionId: 1, messagesSinceReconciliation: 0 };
     const result = await handleCommand("/facts", "", state, makeConfig());
     expect(result).toBeNull();
   });
@@ -123,7 +123,7 @@ describe("/facts (working memory)", () => {
 describe("/edit_memory", () => {
   test("creates file if it does not exist", async () => {
     process.env.EDITOR = "true";
-    const state = { sessionId: 1 };
+    const state = { sessionId: 1, messagesSinceReconciliation: 0 };
     const result = await handleCommand("/edit_memory", "", state, makeConfig());
     expect(result).toBeNull();
   });
@@ -132,7 +132,7 @@ describe("/edit_memory", () => {
 describe("/edit_facts", () => {
   test("creates file if it does not exist", async () => {
     process.env.EDITOR = "true";
-    const state = { sessionId: 1 };
+    const state = { sessionId: 1, messagesSinceReconciliation: 0 };
     const result = await handleCommand("/edit_facts", "", state, makeConfig());
     expect(result).toBeNull();
   });
@@ -140,7 +140,7 @@ describe("/edit_facts", () => {
 
 describe("/options", () => {
   test("shows default options", async () => {
-    const state = { sessionId: 1 };
+    const state = { sessionId: 1, messagesSinceReconciliation: 0 };
     const result = await handleCommand("/options", "", state, makeConfig());
     expect(result).toBeNull();
     // Default memory_interval should be set
@@ -150,20 +150,20 @@ describe("/options", () => {
 
 describe("/set", () => {
   test("sets option value", async () => {
-    const state = { sessionId: 1 };
+    const state = { sessionId: 1, messagesSinceReconciliation: 0 };
     const result = await handleCommand("/set", "memory_interval 3", state, makeConfig());
     expect(result).toBeNull();
     expect(getOption("memory_interval")).toBe("3");
   });
 
   test("returns null without args (shows usage)", async () => {
-    const state = { sessionId: 1 };
+    const state = { sessionId: 1, messagesSinceReconciliation: 0 };
     const result = await handleCommand("/set", "", state, makeConfig());
     expect(result).toBeNull();
   });
 
   test("sets value with spaces", async () => {
-    const state = { sessionId: 1 };
+    const state = { sessionId: 1, messagesSinceReconciliation: 0 };
     await handleCommand("/set", "custom_key hello world", state, makeConfig());
     expect(getOption("custom_key")).toBe("hello world");
   });
