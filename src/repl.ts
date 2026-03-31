@@ -39,15 +39,10 @@ import {
   formatCost
 } from "./db";
 import { createStrategy, isValidStrategy } from "./strategy";
-import { appendLongTermMemory, appendWorkingMemory, readLongTermMemory, readWorkingMemory, getLongTermMemoryPath, getWorkingMemoryPath } from "./memory";
+import { appendLongTermMemory, appendWorkingMemory, readLongTermMemory, readWorkingMemory, writeLongTermMemory, writeWorkingMemory, getLongTermMemoryPath, getWorkingMemoryPath } from "./memory";
+import { reconcileMemory } from "./reconciliation";
+import { createCostAccumulator, addUsage, resetAccumulator, formatMemoryCost, hasUsage } from "./cost-accumulator";
 
-export const MEMORY_SUGGESTION_PROMPT =`Ты — помощник по управлению памятью. Проанализируй последний обмен сообщениями и определи, есть ли в нём важная информация, которую стоит сохранить в рабочую память проекта.
-
-Сохранять стоит: архитектурные решения, договорённости, ограничения, паттерны, ключевые технические детали проекта.
-НЕ сохранять: тривиальные факты, временные задачи, содержимое кода, общеизвестные вещи.
-
-Если есть что сохранить — ответь ТОЛЬКО текстом для сохранения (краткий, информативный).
-Если сохранять нечего — ответь ТОЛЬКО словом "НЕТ".`;
 
 function printCostInfo(response: Response | undefined, modelId: string, debug: boolean): void {
   if (!response?.usage) return;
@@ -575,39 +570,51 @@ export async function suggestMemorySave(
   assistantMessage: string,
   debug: boolean
 ): Promise<void> {
-  try {
-    const factsModel = getModelForRole("facts");
-    const modelId = factsModel?.id ?? "openai/gpt-5-nano";
-    const response = await client.responses.create({
-      model: modelId,
-      instructions: MEMORY_SUGGESTION_PROMPT,
-      input: `Пользователь: ${userMessage}\nАссистент: ${assistantMessage}`,
-      stream: false,
-    });
+  const acc = createCostAccumulator();
+  const factsModel = getModelForRole("facts");
 
-    const suggestion = response.output_text?.trim();
-    if (!suggestion || suggestion === "НЕТ" || suggestion.startsWith("НЕТ")) {
+  try {
+    const currentMemory = readWorkingMemory();
+    const newContent = `Пользователь: ${userMessage}\nАссистент: ${assistantMessage}`;
+
+    const result = await reconcileMemory(client, currentMemory, newContent);
+    addUsage(acc, result.inputTokens, result.outputTokens);
+
+    if (!result.changesSummary || !result.updatedMemory) {
+      if (hasUsage(acc) && factsModel) {
+        console.log(pc.dim(formatMemoryCost(acc, factsModel, "Фактов не обнаружено")));
+      }
       return;
     }
 
-    console.log(pc.yellow("\n💡 Предложение сохранить в рабочую память:"));
-    console.log(pc.dim(suggestion));
+    console.log(pc.yellow("\n💡 Изменения в рабочей памяти:"));
+    console.log(pc.dim(result.changesSummary));
     const answer = await askUserChoice(rl, pc.yellow("[д]а / [н]ет / [и]зменить: "));
 
     if (answer === "д" || answer === "да" || answer === "y" || answer === "yes") {
-      appendWorkingMemory(suggestion);
-      console.log(pc.green("Сохранено в рабочую память"));
+      writeWorkingMemory(result.updatedMemory);
+      if (hasUsage(acc) && factsModel) {
+        console.log(pc.dim(formatMemoryCost(acc, factsModel, "Сохранено в рабочую память")));
+      }
     } else if (answer === "и" || answer === "изменить" || answer === "e" || answer === "edit") {
-      const edited = await askUserEdit(rl, suggestion);
+      const edited = await askUserEdit(rl, result.updatedMemory);
       if (edited) {
-        appendWorkingMemory(edited);
-        console.log(pc.green("Сохранено в рабочую память (отредактировано)"));
+        writeWorkingMemory(edited);
+        if (hasUsage(acc) && factsModel) {
+          console.log(pc.dim(formatMemoryCost(acc, factsModel, "Сохранено в рабочую память")));
+        }
+      }
+    } else {
+      if (hasUsage(acc) && factsModel) {
+        console.log(pc.dim(formatMemoryCost(acc, factsModel, "Факты отклонены")));
       }
     }
-    // "н" или что угодно другое — пропускаем
   } catch (e) {
     if (debug) {
-      console.error(pc.dim(`[Memory] Ошибка предложения: ${e instanceof Error ? e.message : String(e)}`));
+      console.error(pc.dim(`[Memory] Ошибка реконсиляции: ${e instanceof Error ? e.message : String(e)}`));
+    }
+    if (hasUsage(acc) && factsModel) {
+      console.log(pc.dim(formatMemoryCost(acc, factsModel, "Ошибка работы с памятью")));
     }
   }
 }
