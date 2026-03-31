@@ -1,7 +1,8 @@
 import { createInterface } from "node:readline";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { writeFileSync, readFileSync, unlinkSync } from "node:fs";
+import { writeFileSync, readFileSync, unlinkSync, mkdirSync, existsSync } from "node:fs";
+import { dirname } from "node:path";
 import { spawnSync } from "node:child_process";
 import OpenAI from "openai";
 import pc from "picocolors";
@@ -40,7 +41,7 @@ import {
   formatCost
 } from "./db";
 import { createStrategy, isValidStrategy, buildFactsExtractionInput, parseFactsResponse, FACTS_EXTRACTION_PROMPT } from "./strategy";
-import { appendLongTermMemory, appendWorkingMemory, getLongTermMemoryPath, getWorkingMemoryPath } from "./memory";
+import { appendLongTermMemory, appendWorkingMemory, readLongTermMemory, readWorkingMemory, getLongTermMemoryPath, getWorkingMemoryPath } from "./memory";
 
 function printCostInfo(response: Response | undefined, modelId: string, debug: boolean): void {
   if (!response?.usage) return;
@@ -182,9 +183,12 @@ function printHelp(): void {
   console.log(pc.bold("Память:"));
   console.log("  /remember <текст> Сохранить в долговременную память (глобальная)");
   console.log("  /save_facts <текст> Сохранить в рабочую память (проект)");
+  console.log("  /memory           Показать долговременную память");
+  console.log("  /facts            Показать рабочую память проекта");
+  console.log("  /edit_memory      Редактировать долговременную память ($EDITOR)");
+  console.log("  /edit_facts       Редактировать рабочую память ($EDITOR)");
   console.log(pc.bold("Стратегии контекста:"));
   console.log("  /strategy [name]  Показать/сменить стратегию (full|sliding|facts)");
-  console.log("  /facts            Показать извлечённые факты сессии");
   console.log(pc.bold("Модели:"));
   console.log("  /models           Список доступных моделей с ценами");
   console.log("  /roles            Текущий маппинг ролей на модели");
@@ -328,14 +332,52 @@ export function handleCommand(
       return null;
     }
     case "/facts": {
-      const facts = getFacts(state.sessionId);
-      if (facts.length === 0) {
-        console.log(pc.dim("Фактов нет"));
+      const content = readWorkingMemory();
+      if (!content) {
+        console.log(pc.dim("Рабочая память пуста"));
         return null;
       }
-      console.log(pc.bold("Факты сессии:"));
-      for (const f of facts) {
-        console.log(`  ${pc.cyan(f.key)}: ${f.value}`);
+      console.log(pc.bold("Рабочая память проекта:"));
+      console.log(content);
+      return null;
+    }
+    case "/memory": {
+      const content = readLongTermMemory();
+      if (!content) {
+        console.log(pc.dim("Долговременная память пуста"));
+        return null;
+      }
+      console.log(pc.bold("Долговременная память:"));
+      console.log(content);
+      return null;
+    }
+    case "/edit_memory": {
+      const editor = process.env.EDITOR || "vi";
+      const memPath = getLongTermMemoryPath();
+      mkdirSync(dirname(memPath), { recursive: true });
+      if (!existsSync(memPath)) {
+        writeFileSync(memPath, "");
+      }
+      const result = spawnSync(editor, [memPath], { stdio: "inherit" });
+      if (result.status !== 0) {
+        console.log(pc.red("Редактор завершился с ошибкой"));
+      } else {
+        console.log(pc.green("Долговременная память обновлена"));
+      }
+      return null;
+    }
+    case "/edit_facts": {
+      const editor = process.env.EDITOR || "vi";
+      const memPath = getWorkingMemoryPath();
+      mkdirSync(dirname(memPath), { recursive: true });
+      if (!existsSync(memPath)) {
+        writeFileSync(memPath, "");
+      }
+      const result = spawnSync(editor, [memPath], { stdio: "inherit" });
+      if (result.status !== 0) {
+        console.log(pc.red("Редактор завершился с ошибкой"));
+      } else {
+        console.log(pc.green("Рабочая память обновлена"));
       }
       return null;
     }

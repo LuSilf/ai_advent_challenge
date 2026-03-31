@@ -1,12 +1,12 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { handleCommand } from "./repl";
 import { initDb } from "./db";
 import type { AppConfig } from "./config";
-import { getLongTermMemoryPath, getWorkingMemoryPath } from "./memory";
+import { getLongTermMemoryPath, getWorkingMemoryPath, appendLongTermMemory, appendWorkingMemory } from "./memory";
 
 let tmpDir: string;
 let savedEnv: Record<string, string | undefined>;
@@ -75,6 +75,55 @@ describe("/save_facts", () => {
   test("returns null without args (shows usage)", () => {
     const state = { sessionId: 1 };
     const result = handleCommand("/save_facts", "", state, makeConfig());
+    expect(result).toBeNull();
+  });
+});
+
+describe("/memory", () => {
+  test("returns null when memory is empty", () => {
+    const state = { sessionId: 1 };
+    const result = handleCommand("/memory", "", state, makeConfig());
+    expect(result).toBeNull();
+  });
+
+  test("returns null and shows content when memory exists", () => {
+    appendLongTermMemory("global rule");
+    const state = { sessionId: 1 };
+    const result = handleCommand("/memory", "", state, makeConfig());
+    expect(result).toBeNull();
+  });
+});
+
+describe("/facts (working memory)", () => {
+  test("returns null when working memory is empty", () => {
+    const state = { sessionId: 1 };
+    const result = handleCommand("/facts", "", state, makeConfig());
+    expect(result).toBeNull();
+  });
+
+  test("returns null and shows content when working memory exists", () => {
+    appendWorkingMemory("project fact");
+    const state = { sessionId: 1 };
+    const result = handleCommand("/facts", "", state, makeConfig());
+    expect(result).toBeNull();
+  });
+});
+
+describe("/edit_memory", () => {
+  test("creates file if it does not exist", () => {
+    // Используем 'true' как редактор — он ничего не делает и возвращает 0
+    process.env.EDITOR = "true";
+    const state = { sessionId: 1 };
+    const result = handleCommand("/edit_memory", "", state, makeConfig());
+    expect(result).toBeNull();
+  });
+});
+
+describe("/edit_facts", () => {
+  test("creates file if it does not exist", () => {
+    process.env.EDITOR = "true";
+    const state = { sessionId: 1 };
+    const result = handleCommand("/edit_facts", "", state, makeConfig());
     expect(result).toBeNull();
   });
 });
