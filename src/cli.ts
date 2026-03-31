@@ -2,7 +2,8 @@ import OpenAI from "openai";
 import type { Response } from "openai/resources/responses/responses";
 
 import { loadConfig, applyDbOptions } from "./config";
-import { printOutputMarker, printRequestDebug, printResponseDebug } from "./debug-logger";
+import { printOutputMarker, printRequestDebug, printResponseDebug, type DebugContext } from "./debug-logger";
+import { readLongTermMemory, readWorkingMemory } from "./memory";
 import { buildResponseRequest } from "./request";
 import { initDb, createSession, addMessage, getSession, getSessionStrategy, getMessageCount, updateSessionTitle, getModelForRole, calculateCost, formatCost, getOption } from "./db";
 import { startRepl } from "./repl";
@@ -77,7 +78,12 @@ if (!config.prompt) {
   const modelId = chatModel?.id ?? "openai/gpt-5-nano";
 
   if (config.debug) {
-    printRequestDebug(config, modelId);
+    printRequestDebug(config, modelId, {
+      messageCount: history.length,
+      longTermMemory: readLongTermMemory() || undefined,
+      workingMemory: readWorkingMemory() || undefined,
+      factsBlock,
+    });
   }
 
   try {

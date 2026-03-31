@@ -82,7 +82,16 @@ export function printOutputMarker(): void {
   console.error(pc.bold(pc.green("[Model output]")));
 }
 
-export function printRequestDebug(config: AppConfig, model?: string, messageCount?: number, factsCount?: number): void {
+export type DebugContext = {
+  messageCount?: number;
+  longTermMemory?: string;
+  workingMemory?: string;
+  factsBlock?: string;
+};
+
+export function printRequestDebug(config: AppConfig, model?: string, ctx?: DebugContext): void {
+  const messageCount = ctx?.messageCount;
+  const factsCount = ctx?.factsBlock ? 1 : 0;
   debugPrintHeader("Request Debug");
   debugPrintField("Requesting", `${config.baseUrl}/responses`);
   debugPrintField("Model", model ?? "(unknown)");
@@ -117,7 +126,23 @@ export function printRequestDebug(config: AppConfig, model?: string, messageCoun
   }
 
   debugPrintSection("Prompts");
-  debugPrintPromptBlock("System prompt", config.systemPrompt);
+
+  if (ctx?.longTermMemory) {
+    debugPrintPromptBlock("Долговременная память", ctx.longTermMemory);
+    console.error("");
+  }
+
+  if (ctx?.workingMemory) {
+    debugPrintPromptBlock("Рабочая память проекта", ctx.workingMemory);
+    console.error("");
+  }
+
+  if (ctx?.factsBlock) {
+    debugPrintPromptBlock("Facts block", ctx.factsBlock);
+    console.error("");
+  }
+
+  debugPrintPromptBlock("System prompt", config.systemPrompt || "(пусто)");
   console.error("");
   debugPrintPromptBlock("User prompt", config.prompt);
   debugPrintFooter();

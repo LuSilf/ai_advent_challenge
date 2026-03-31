@@ -12,7 +12,7 @@ import type { AppConfig } from "./config";
 import { applyDbOptions } from "./config";
 import type { ChatMessage } from "./request";
 import { buildResponseRequest } from "./request";
-import { printOutputMarker, printRequestDebug, printResponseDebug } from "./debug-logger";
+import { printOutputMarker, printRequestDebug, printResponseDebug, type DebugContext } from "./debug-logger";
 import {
   createSession,
   getLastSession,
@@ -84,7 +84,8 @@ async function sendMessage(
   config: AppConfig,
   prompt: string,
   history: ChatMessage[],
-  factsBlock?: string
+  factsBlock?: string,
+  debugCtx?: DebugContext
 ): Promise<{ text: string; response?: Response }> {
   const chatModel = getModelForRole("chat");
   const modelId = chatModel?.id ?? "openai/gpt-5-nano";
@@ -93,7 +94,11 @@ async function sendMessage(
   const startedAtMs = Date.now();
 
   if (config.debug) {
-    printRequestDebug(configWithPrompt, modelId);
+    printRequestDebug(configWithPrompt, modelId, {
+      messageCount: history.length,
+      ...debugCtx,
+      factsBlock,
+    });
   }
 
   let responseText = "";
@@ -547,7 +552,9 @@ export async function handleCommand(
       const acc = createCostAccumulator();
       const factsModel = getModelForRole("facts");
       try {
+        const stopSpinner = startSpinner("Анализ долговременной памяти...");
         const result = await reconcileMemory(deps.client, currentMemory, text);
+        stopSpinner();
         addUsage(acc, result.inputTokens, result.outputTokens);
 
         if (!result.changesSummary || !result.updatedMemory) {
@@ -697,6 +704,20 @@ async function triggerReconciliation(
   await suggestMemorySave(client, rl, newContent, debug);
 }
 
+function startSpinner(message: string): () => void {
+  const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+  let i = 0;
+  process.stdout.write(pc.dim(`${frames[0]} ${message}`));
+  const interval = setInterval(() => {
+    i = (i + 1) % frames.length;
+    process.stdout.write(`\r${pc.dim(`${frames[i]} ${message}`)}`);
+  }, 80);
+  return () => {
+    clearInterval(interval);
+    process.stdout.write(`\r${" ".repeat(message.length + 4)}\r`);
+  };
+}
+
 export async function suggestMemorySave(
   client: OpenAI,
   rl: ReturnType<typeof createInterface>,
@@ -709,7 +730,9 @@ export async function suggestMemorySave(
   try {
     const currentMemory = readWorkingMemory();
 
+    const stopSpinner = startSpinner("Анализ рабочей памяти...");
     const result = await reconcileMemory(client, currentMemory, newContent);
+    stopSpinner();
     addUsage(acc, result.inputTokens, result.outputTokens);
 
     if (!result.changesSummary || !result.updatedMemory) {
@@ -807,7 +830,10 @@ export async function startRepl(client: OpenAI, config: AppConfig): Promise<void
     addMessage(state.sessionId, "user", text);
 
     try {
-      const { text: responseText } = await sendMessage(client, config, text, history, factsBlock);
+      const { text: responseText } = await sendMessage(client, config, text, history, factsBlock, {
+        longTermMemory: readLongTermMemory() || undefined,
+        workingMemory: readWorkingMemory() || undefined,
+      });
 
       if (responseText) {
         addMessage(state.sessionId, "assistant", responseText);
