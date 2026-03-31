@@ -48,6 +48,19 @@ export function appendWorkingMemory(text: string): void {
   appendToMemoryFile(getWorkingMemoryPath(), text);
 }
 
+export function writeLongTermMemory(content: string): void {
+  writeMemoryFile(getLongTermMemoryPath(), content);
+}
+
+export function writeWorkingMemory(content: string): void {
+  writeMemoryFile(getWorkingMemoryPath(), content);
+}
+
+function writeMemoryFile(path: string, content: string): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, content, "utf-8");
+}
+
 export function buildMemoryBlocks(): string {
   const parts: string[] = [];
 

@@ -8,6 +8,8 @@ import {
   readWorkingMemory,
   appendLongTermMemory,
   appendWorkingMemory,
+  writeLongTermMemory,
+  writeWorkingMemory,
   buildMemoryBlocks,
   getLongTermMemoryPath,
   getWorkingMemoryPath,
@@ -98,6 +100,38 @@ describe("appendWorkingMemory", () => {
     appendWorkingMemory("fact 2");
     const content = readFileSync(getWorkingMemoryPath(), "utf-8");
     expect(content).toBe("fact 1\n\n---\n\nfact 2");
+  });
+});
+
+describe("writeLongTermMemory", () => {
+  test("creates file and writes content", () => {
+    writeLongTermMemory("full content");
+    const content = readFileSync(getLongTermMemoryPath(), "utf-8");
+    expect(content).toBe("full content");
+  });
+
+  test("overwrites existing content completely", () => {
+    appendLongTermMemory("old data");
+    writeLongTermMemory("new data");
+    const content = readFileSync(getLongTermMemoryPath(), "utf-8");
+    expect(content).toBe("new data");
+  });
+});
+
+describe("writeWorkingMemory", () => {
+  test("creates file and writes content", () => {
+    process.chdir(tmpDir);
+    writeWorkingMemory("full content");
+    const content = readFileSync(getWorkingMemoryPath(), "utf-8");
+    expect(content).toBe("full content");
+  });
+
+  test("overwrites existing content completely", () => {
+    process.chdir(tmpDir);
+    appendWorkingMemory("old data");
+    writeWorkingMemory("new data");
+    const content = readFileSync(getWorkingMemoryPath(), "utf-8");
+    expect(content).toBe("new data");
   });
 });
 
