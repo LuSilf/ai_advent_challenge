@@ -792,6 +792,7 @@ export async function startRepl(client: OpenAI, config: AppConfig): Promise<void
       const args = spaceIdx === -1 ? "" : text.slice(spaceIdx + 1);
       const result = await handleCommand(cmd, args, state, config, { client, rl });
       if (result === null) {
+        processing = false;
         rl.prompt();
         return;
       }
