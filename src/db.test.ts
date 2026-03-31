@@ -24,7 +24,14 @@ import {
   createCheckpoint,
   getLastCheckpoint,
   createBranch,
-  listBranches
+  listBranches,
+  getModel,
+  listModels,
+  getModelForRole,
+  listModelRoles,
+  setModelForRole,
+  calculateCost,
+  formatCost
 } from "./db";
 
 function freshDb(): string {
@@ -272,6 +279,92 @@ describe("db", () => {
     const msgs = getMessages(id);
     const branchId = createBranch(id, msgs[0].id);
     expect(getSessionStrategy(branchId)).toBe("sliding");
+  });
+
+  // --- Models ---
+
+  test("listModels returns seeded models", () => {
+    const models = listModels();
+    expect(models.length).toBe(7);
+    const ids = models.map((m) => m.id);
+    expect(ids).toContain("openai/gpt-5-nano");
+    expect(ids).toContain("deepseek/deepseek-v3.2");
+  });
+
+  test("getModel returns model by id", () => {
+    const model = getModel("openai/gpt-5-nano");
+    expect(model).not.toBeNull();
+    expect(model!.name).toBe("GPT-5 Nano");
+    expect(model!.input_price).toBe(0.05);
+    expect(model!.output_price).toBe(0.40);
+    expect(model!.context_size).toBe(400_000);
+  });
+
+  test("getModel returns null for unknown id", () => {
+    expect(getModel("nonexistent/model")).toBeNull();
+  });
+
+  // --- Model Roles ---
+
+  test("getModelForRole returns default model for chat", () => {
+    const model = getModelForRole("chat");
+    expect(model).not.toBeNull();
+    expect(model!.id).toBe("openai/gpt-5-nano");
+  });
+
+  test("getModelForRole returns null for unknown role", () => {
+    expect(getModelForRole("nonexistent")).toBeNull();
+  });
+
+  test("listModelRoles returns all default roles", () => {
+    const roles = listModelRoles();
+    expect(roles.length).toBe(3);
+    const roleNames = roles.map((r) => r.role);
+    expect(roleNames).toContain("chat");
+    expect(roleNames).toContain("title");
+    expect(roleNames).toContain("facts");
+  });
+
+  test("setModelForRole changes model for role", () => {
+    setModelForRole("chat", "deepseek/deepseek-v3.2");
+    const model = getModelForRole("chat");
+    expect(model).not.toBeNull();
+    expect(model!.id).toBe("deepseek/deepseek-v3.2");
+  });
+
+  test("setModelForRole throws for nonexistent model", () => {
+    expect(() => setModelForRole("chat", "nonexistent/model")).toThrow("не найдена");
+  });
+
+  // --- Cost calculation ---
+
+  test("calculateCost computes correctly", () => {
+    const model = getModel("openai/gpt-5-nano")!;
+    // input: 0.05 $/1M, output: 0.40 $/1M
+    // 1000 in tokens = 0.05 * 1000 / 1_000_000 = 0.00005
+    // 500 out tokens = 0.40 * 500 / 1_000_000 = 0.0002
+    const info = calculateCost(model, 1000, 500);
+    expect(info.inputTokens).toBe(1000);
+    expect(info.outputTokens).toBe(500);
+    expect(info.cost).toBeCloseTo(0.00025, 8);
+  });
+
+  test("calculateCost with zero tokens", () => {
+    const model = getModel("openai/gpt-5-nano")!;
+    const info = calculateCost(model, 0, 0);
+    expect(info.cost).toBe(0);
+  });
+
+  test("formatCost formats small cost", () => {
+    const result = formatCost({ cost: 0.000250, inputTokens: 1000, outputTokens: 500 });
+    expect(result).toContain("$0.000250");
+    expect(result).toContain("1000 in");
+    expect(result).toContain("500 out");
+  });
+
+  test("formatCost formats larger cost", () => {
+    const result = formatCost({ cost: 0.1234, inputTokens: 50000, outputTokens: 30000 });
+    expect(result).toContain("$0.1234");
   });
 
   test("listBranches returns all branches of a session", () => {

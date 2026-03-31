@@ -30,18 +30,40 @@ import {
   createCheckpoint,
   getLastCheckpoint,
   createBranch,
-  listBranches
+  listBranches,
+  listModels,
+  listModelRoles,
+  setModelForRole,
+  getModelForRole,
+  getModel,
+  calculateCost,
+  formatCost
 } from "./db";
 import { createStrategy, isValidStrategy, buildFactsExtractionInput, parseFactsResponse, FACTS_EXTRACTION_PROMPT } from "./strategy";
 
+function printCostInfo(response: Response | undefined, modelId: string, debug: boolean): void {
+  if (!response?.usage) return;
+
+  const model = getModelForRole("chat") ?? getModel(modelId);
+  if (!model) return;
+
+  const costInfo = calculateCost(model, response.usage.input_tokens, response.usage.output_tokens);
+  console.log(pc.dim(formatCost(costInfo)));
+
+  if (debug) {
+    console.error(pc.dim(`  Модель: ${model.name} (${model.id})`));
+    console.error(pc.dim(`  Цена: $${model.input_price}/1M in, $${model.output_price}/1M out`));
+  }
+}
+
 async function generateTitle(
   client: OpenAI,
-  config: AppConfig,
   userMessage: string,
   assistantMessage: string
 ): Promise<string> {
+  const titleModel = getModelForRole("title");
   const response = await client.responses.create({
-    model: config.titleModel,
+    model: titleModel?.id ?? "openai/gpt-5-nano",
     instructions:
       "Придумай короткое название (до 50 символов) для диалога по первому обмену сообщениями. Ответь только названием, без кавычек.",
     input: `Пользователь: ${userMessage}\nАссистент: ${assistantMessage}`,
@@ -56,13 +78,15 @@ async function sendMessage(
   prompt: string,
   history: ChatMessage[],
   factsBlock?: string
-): Promise<string> {
+): Promise<{ text: string; response?: Response }> {
+  const chatModel = getModelForRole("chat");
+  const modelId = chatModel?.id ?? "openai/gpt-5-nano";
   const configWithPrompt = { ...config, prompt };
-  const request = buildResponseRequest(configWithPrompt, history, factsBlock);
+  const request = buildResponseRequest(configWithPrompt, modelId, history, factsBlock);
   const startedAtMs = Date.now();
 
   if (config.debug) {
-    printRequestDebug(configWithPrompt);
+    printRequestDebug(configWithPrompt, modelId);
   }
 
   let responseText = "";
@@ -104,6 +128,10 @@ async function sendMessage(
     if (config.debug && completedResponse) {
       printResponseDebug(completedResponse, startedAtMs, reasoningSummaryParts);
     }
+
+    printCostInfo(completedResponse, modelId, config.debug);
+
+    return { text: responseText, response: completedResponse };
   } else {
     const response = await client.responses.create({ ...request, stream: false });
     responseText = response.output_text ?? "";
@@ -117,9 +145,11 @@ async function sendMessage(
     if (config.debug) {
       printResponseDebug(response, startedAtMs);
     }
-  }
 
-  return responseText;
+    printCostInfo(response, modelId, config.debug);
+
+    return { text: responseText, response };
+  }
 }
 
 function printSessionInfo(sessionId: number, title: string | null, messageCount: number): void {
@@ -151,6 +181,10 @@ function printHelp(): void {
   console.log(pc.bold("Стратегии контекста:"));
   console.log("  /strategy [name]  Показать/сменить стратегию (full|sliding|facts)");
   console.log("  /facts            Показать извлечённые факты сессии");
+  console.log(pc.bold("Модели:"));
+  console.log("  /models           Список доступных моделей с ценами");
+  console.log("  /roles            Текущий маппинг ролей на модели");
+  console.log("  /set_model <роль> <model_id>  Назначить модель на роль");
   console.log(pc.bold("Ветвление:"));
   console.log("  /checkpoint       Создать точку ветвления");
   console.log("  /branch [name]    Создать ветку от checkpoint");
@@ -355,6 +389,55 @@ function handleCommand(
       console.log(pc.dim(`Стратегия: ${strategy}`));
       return null;
     }
+    case "/models": {
+      const models = listModels();
+      if (models.length === 0) {
+        console.log(pc.dim("Нет моделей"));
+        return null;
+      }
+      console.log(pc.bold("Доступные модели:"));
+      for (const m of models) {
+        const ctx = m.context_size >= 1_000_000
+          ? `${(m.context_size / 1_000_000).toFixed(1)}M`
+          : `${(m.context_size / 1_000).toFixed(0)}K`;
+        console.log(`  ${pc.cyan(m.id)}`);
+        console.log(`    ${m.name} | in: $${m.input_price}/1M | out: $${m.output_price}/1M | ctx: ${ctx}`);
+      }
+      return null;
+    }
+    case "/roles": {
+      const roles = listModelRoles();
+      if (roles.length === 0) {
+        console.log(pc.dim("Нет назначенных ролей"));
+        return null;
+      }
+      console.log(pc.bold("Роли:"));
+      for (const r of roles) {
+        console.log(`  ${pc.cyan(r.role.padEnd(8))} → ${r.model_id} (${r.model_name})`);
+      }
+      return null;
+    }
+    case "/set_model": {
+      const parts = args.trim().split(/\s+/);
+      if (parts.length < 2) {
+        console.log(pc.red("Использование: /set_model <роль> <model_id>"));
+        console.log(pc.dim("Пример: /set_model chat deepseek/deepseek-v3.2"));
+        return null;
+      }
+      const [role, modelId] = parts;
+      const validRoles = ["chat", "title", "facts"];
+      if (!validRoles.includes(role)) {
+        console.log(pc.red(`Неизвестная роль: ${role}. Доступные: ${validRoles.join(", ")}`));
+        return null;
+      }
+      try {
+        setModelForRole(role, modelId);
+        console.log(pc.green(`Роль "${role}" → ${modelId}`));
+      } catch (e) {
+        console.log(pc.red(e instanceof Error ? e.message : String(e)));
+      }
+      return null;
+    }
     case "/help": {
       printHelp();
       return null;
@@ -422,7 +505,7 @@ export async function startRepl(client: OpenAI, config: AppConfig): Promise<void
     addMessage(state.sessionId, "user", text);
 
     try {
-      const responseText = await sendMessage(client, config, text, history, factsBlock);
+      const { text: responseText } = await sendMessage(client, config, text, history, factsBlock);
 
       if (responseText) {
         addMessage(state.sessionId, "assistant", responseText);
@@ -430,10 +513,12 @@ export async function startRepl(client: OpenAI, config: AppConfig): Promise<void
         // Извлечение фактов (стратегия facts)
         if (strategyName === "facts") {
           try {
+            const factsModel = getModelForRole("facts");
+            const factsModelId = factsModel?.id ?? "openai/gpt-5-nano";
             const currentFacts = getFacts(state.sessionId);
             const factsInput = buildFactsExtractionInput(currentFacts, text, responseText);
             const factsResponse = await client.responses.create({
-              model: config.titleModel,
+              model: factsModelId,
               instructions: FACTS_EXTRACTION_PROMPT,
               input: factsInput,
               stream: false,
@@ -458,7 +543,7 @@ export async function startRepl(client: OpenAI, config: AppConfig): Promise<void
         if (session && !session.title) {
           const msgCount = getMessageCount(state.sessionId);
           if (msgCount === 2) {
-            generateTitle(client, config, text, responseText)
+            generateTitle(client, text, responseText)
               .then((title) => {
                 updateSessionTitle(state.sessionId, title);
               })

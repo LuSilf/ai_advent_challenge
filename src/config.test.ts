@@ -27,8 +27,7 @@ function restoreEnv() {
 describe("loadConfig", () => {
   beforeEach(() => {
     setEnv({
-      OPENAI_API_KEY: "test-key",
-      OPENAI_MODEL: "test-model"
+      OPENAI_API_KEY: "test-key"
     });
   });
 
@@ -82,25 +81,9 @@ describe("loadConfig", () => {
     expect(config.historyLimit).toBe(100);
   });
 
-  test("titleModel defaults to model", () => {
-    const config = loadConfig([], fail);
-    expect(config.titleModel).toBe("test-model");
-  });
-
-  test("custom titleModel from env", () => {
-    setEnv({ TITLE_MODEL: "gpt-4o-mini" });
-    const config = loadConfig([], fail);
-    expect(config.titleModel).toBe("gpt-4o-mini");
-  });
-
   test("missing API key fails", () => {
     delete process.env.OPENAI_API_KEY;
     expect(() => loadConfig([], fail)).toThrow("Missing API key");
-  });
-
-  test("missing model fails", () => {
-    delete process.env.OPENAI_MODEL;
-    expect(() => loadConfig([], fail)).toThrow("Missing OPENAI_MODEL");
   });
 
   test("default contextStrategy is full", () => {

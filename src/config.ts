@@ -8,7 +8,6 @@ type ReasoningSummaryMode = "auto" | "concise" | "detailed";
 export type AppConfig = {
   prompt: string;
   apiKey: string;
-  model: string;
   baseUrl: string;
   systemPrompt: string;
   effectiveTimeoutMs: number;
@@ -16,7 +15,6 @@ export type AppConfig = {
   useStreaming: boolean;
   historyDb: string;
   historyLimit: number;
-  titleModel: string;
   contextStrategy: string;
   sessionId?: number;
   reasoningEffort?: ReasoningEffort;
@@ -153,14 +151,9 @@ export function loadConfig(args: string[], fail: (message: string) => never): Ap
 
   const apiKeyEnvName = getEnv("OPENAI_API_KEY_ENV");
   const apiKey = getEnv("OPENAI_API_KEY") || (apiKeyEnvName ? getEnv(apiKeyEnvName) : undefined);
-  const model = getEnv("OPENAI_MODEL");
 
   if (!apiKey) {
     fail("Missing API key. Set OPENAI_API_KEY or OPENAI_API_KEY_ENV");
-  }
-
-  if (!model) {
-    fail("Missing OPENAI_MODEL environment variable");
   }
 
   const timeoutMs = Number(process.env.OPENAI_TIMEOUT_MS ?? String(DEFAULT_TIMEOUT_MS));
@@ -175,7 +168,6 @@ export function loadConfig(args: string[], fail: (message: string) => never): Ap
   return {
     prompt,
     apiKey,
-    model,
     baseUrl: (getEnv("OPENAI_BASE_URL") ?? "https://api.openai.com/v1").replace(/\/$/, ""),
     systemPrompt: process.env.OPENAI_SYSTEM_PROMPT ?? DEFAULT_SYSTEM_PROMPT,
     effectiveTimeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_TIMEOUT_MS,
@@ -183,7 +175,6 @@ export function loadConfig(args: string[], fail: (message: string) => never): Ap
     useStreaming: parseBooleanEnv("OPENAI_STREAM", true, fail),
     historyDb: getEnv("HISTORY_DB") ?? "./data/history.db",
     historyLimit,
-    titleModel: getEnv("TITLE_MODEL") ?? model,
     contextStrategy,
     sessionId,
     reasoningEffort: parseReasoningEffort(getEnv("OPENAI_REASONING_EFFORT"), fail),

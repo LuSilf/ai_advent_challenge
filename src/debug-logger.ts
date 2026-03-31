@@ -82,10 +82,10 @@ export function printOutputMarker(): void {
   console.error(pc.bold(pc.green("[Model output]")));
 }
 
-export function printRequestDebug(config: AppConfig, messageCount?: number, factsCount?: number): void {
+export function printRequestDebug(config: AppConfig, model?: string, messageCount?: number, factsCount?: number): void {
   debugPrintHeader("Request Debug");
   debugPrintField("Requesting", `${config.baseUrl}/responses`);
-  debugPrintField("Model", config.model);
+  debugPrintField("Model", model ?? "(unknown)");
   debugPrintField("Context strategy", config.contextStrategy);
   if (messageCount !== undefined) {
     debugPrintField("Messages in context", messageCount);

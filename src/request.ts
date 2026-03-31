@@ -6,6 +6,7 @@ export type ChatMessage = { role: "user" | "assistant"; content: string };
 
 export function buildResponseRequest(
   config: AppConfig,
+  model: string,
   history?: ChatMessage[],
   factsBlock?: string
 ): ResponseCreateParams {
@@ -25,7 +26,7 @@ export function buildResponseRequest(
   }
 
   const request: ResponseCreateParams = {
-    model: config.model,
+    model,
     instructions,
     input,
     stream: config.useStreaming

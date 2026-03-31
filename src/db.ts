@@ -22,6 +22,19 @@ export type Message = {
   created_at: string;
 };
 
+export type Model = {
+  id: string;
+  name: string;
+  input_price: number;
+  output_price: number;
+  context_size: number;
+};
+
+export type ModelRole = {
+  role: string;
+  model_id: string;
+};
+
 let db: Database;
 
 export function initDb(dbPath: string): void {
@@ -65,7 +78,52 @@ export function initDb(dbPath: string): void {
       message_id INTEGER NOT NULL REFERENCES messages(id),
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS models (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      input_price REAL NOT NULL,
+      output_price REAL NOT NULL,
+      context_size INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS model_roles (
+      role TEXT PRIMARY KEY,
+      model_id TEXT NOT NULL REFERENCES models(id)
+    );
   `);
+
+  // Предзаполнение моделей
+  const seedModels: Model[] = [
+    { id: "openai/gpt-5-nano", name: "GPT-5 Nano", input_price: 0.05, output_price: 0.40, context_size: 400_000 },
+    { id: "openai/gpt-5.4-nano", name: "GPT-5.4 Nano", input_price: 0.20, output_price: 1.25, context_size: 400_000 },
+    { id: "google/gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite", input_price: 0.10, output_price: 0.40, context_size: 1_048_576 },
+    { id: "qwen/qwen3-235b-a22b-2507", name: "Qwen3 235B A22B", input_price: 0.071, output_price: 0.10, context_size: 262_144 },
+    { id: "qwen/qwen3.5-flash-02-23", name: "Qwen3.5 Flash", input_price: 0.065, output_price: 0.26, context_size: 1_000_000 },
+    { id: "deepseek/deepseek-v3.2", name: "DeepSeek V3.2", input_price: 0.26, output_price: 0.38, context_size: 163_840 },
+    { id: "xiaomi/mimo-v2-flash", name: "MiMo V2 Flash", input_price: 0.09, output_price: 0.29, context_size: 262_144 },
+  ];
+
+  const insertModel = db.prepare(
+    "INSERT OR IGNORE INTO models (id, name, input_price, output_price, context_size) VALUES (?, ?, ?, ?, ?)"
+  );
+  for (const m of seedModels) {
+    insertModel.run(m.id, m.name, m.input_price, m.output_price, m.context_size);
+  }
+
+  // Дефолтные маппинги ролей
+  const defaultRoles: ModelRole[] = [
+    { role: "chat", model_id: "openai/gpt-5-nano" },
+    { role: "title", model_id: "openai/gpt-5-nano" },
+    { role: "facts", model_id: "openai/gpt-5-nano" },
+  ];
+
+  const insertRole = db.prepare(
+    "INSERT OR IGNORE INTO model_roles (role, model_id) VALUES (?, ?)"
+  );
+  for (const r of defaultRoles) {
+    insertRole.run(r.role, r.model_id);
+  }
 
   // Миграция: добавляем новые поля если их нет (для существующих БД)
   try {
@@ -246,6 +304,65 @@ export function createBranch(
   );
 
   return newSessionId;
+}
+
+// --- Cost calculation ---
+
+export type CostInfo = {
+  cost: number;
+  inputTokens: number;
+  outputTokens: number;
+};
+
+export function calculateCost(model: Model, inputTokens: number, outputTokens: number): CostInfo {
+  const cost = (inputTokens / 1_000_000) * model.input_price + (outputTokens / 1_000_000) * model.output_price;
+  return { cost, inputTokens, outputTokens };
+}
+
+export function formatCost(info: CostInfo): string {
+  const costStr = info.cost < 0.01
+    ? `$${info.cost.toFixed(6)}`
+    : `$${info.cost.toFixed(4)}`;
+  return `💰 ${costStr} (${info.inputTokens} in / ${info.outputTokens} out)`;
+}
+
+// --- Models ---
+
+export function getModel(id: string): Model | null {
+  return db.query<Model, [string]>(
+    "SELECT * FROM models WHERE id = ?"
+  ).get(id) ?? null;
+}
+
+export function listModels(): Model[] {
+  return db.query<Model, []>(
+    "SELECT * FROM models ORDER BY id ASC"
+  ).all();
+}
+
+// --- Model Roles ---
+
+export function getModelForRole(role: string): Model | null {
+  return db.query<Model, [string]>(
+    "SELECT m.* FROM models m JOIN model_roles r ON r.model_id = m.id WHERE r.role = ?"
+  ).get(role) ?? null;
+}
+
+export function listModelRoles(): (ModelRole & { model_name: string })[] {
+  return db.query<ModelRole & { model_name: string }, []>(
+    "SELECT r.role, r.model_id, m.name as model_name FROM model_roles r JOIN models m ON r.model_id = m.id ORDER BY r.role ASC"
+  ).all();
+}
+
+export function setModelForRole(role: string, modelId: string): void {
+  const model = getModel(modelId);
+  if (!model) {
+    throw new Error(`Модель "${modelId}" не найдена`);
+  }
+  db.run(
+    "INSERT INTO model_roles (role, model_id) VALUES (?, ?) ON CONFLICT(role) DO UPDATE SET model_id = excluded.model_id",
+    [role, modelId]
+  );
 }
 
 export function listBranches(sessionId: number): SessionWithCount[] {

@@ -4,7 +4,7 @@ import type { Response } from "openai/resources/responses/responses";
 import { loadConfig } from "./config";
 import { printOutputMarker, printRequestDebug, printResponseDebug } from "./debug-logger";
 import { buildResponseRequest } from "./request";
-import { initDb, createSession, addMessage, getSession, getSessionStrategy, getMessageCount, updateSessionTitle, getFacts, upsertFacts } from "./db";
+import { initDb, createSession, addMessage, getSession, getSessionStrategy, getMessageCount, updateSessionTitle, getFacts, upsertFacts, getModelForRole, calculateCost, formatCost } from "./db";
 import { startRepl } from "./repl";
 import { createStrategy, buildFactsExtractionInput, parseFactsResponse, FACTS_EXTRACTION_PROMPT } from "./strategy";
 
@@ -72,12 +72,15 @@ if (!config.prompt) {
 
   addMessage(sessionId, "user", config.prompt);
 
+  const chatModel = getModelForRole("chat");
+  const modelId = chatModel?.id ?? "openai/gpt-5-nano";
+
   if (config.debug) {
-    printRequestDebug(config);
+    printRequestDebug(config, modelId);
   }
 
   try {
-    const request = buildResponseRequest(config, history, factsBlock);
+    const request = buildResponseRequest(config, modelId, history, factsBlock);
     const startedAtMs = Date.now();
 
     let wroteOutputNewline = false;
@@ -128,6 +131,13 @@ if (!config.prompt) {
         wroteOutputNewline = true;
         printResponseDebug(completedResponse, startedAtMs, reasoningSummaryParts);
       }
+
+      if (completedResponse?.usage && chatModel) {
+        process.stdout.write("\n");
+        wroteOutputNewline = true;
+        const costInfo = calculateCost(chatModel, completedResponse.usage.input_tokens, completedResponse.usage.output_tokens);
+        console.error(formatCost(costInfo));
+      }
     } else {
       const response = await client.responses.create({ ...request, stream: false });
 
@@ -148,6 +158,15 @@ if (!config.prompt) {
         wroteOutputNewline = true;
         printResponseDebug(response, startedAtMs);
       }
+
+      if (response.usage && chatModel) {
+        if (!wroteOutputNewline) {
+          process.stdout.write("\n");
+          wroteOutputNewline = true;
+        }
+        const costInfo = calculateCost(chatModel, response.usage.input_tokens, response.usage.output_tokens);
+        console.error(formatCost(costInfo));
+      }
     }
 
     if (responseText) {
@@ -156,10 +175,12 @@ if (!config.prompt) {
       // Извлечение фактов (стратегия facts)
       if (strategyName === "facts") {
         try {
+          const factsModel = getModelForRole("facts");
+          const factsModelId = factsModel?.id ?? "openai/gpt-5-nano";
           const currentFacts = getFacts(sessionId);
           const factsInput = buildFactsExtractionInput(currentFacts, config.prompt, responseText);
           const factsResponse = await client.responses.create({
-            model: config.titleModel,
+            model: factsModelId,
             instructions: FACTS_EXTRACTION_PROMPT,
             input: factsInput,
             stream: false,
@@ -178,8 +199,10 @@ if (!config.prompt) {
       const session = getSession(sessionId);
       if (session && !session.title && getMessageCount(sessionId) === 2) {
         try {
+          const titleModelObj = getModelForRole("title");
+          const titleModelId = titleModelObj?.id ?? "openai/gpt-5-nano";
           const titleResponse = await client.responses.create({
-            model: config.titleModel,
+            model: titleModelId,
             instructions:
               "Придумай короткое название (до 50 символов) для диалога по первому обмену сообщениями. Ответь только названием, без кавычек.",
             input: `Пользователь: ${config.prompt}\nАссистент: ${responseText}`,

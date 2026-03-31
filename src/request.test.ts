@@ -6,7 +6,6 @@ function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   return {
     prompt: "test prompt",
     apiKey: "key",
-    model: "test-model",
     baseUrl: "http://localhost",
     systemPrompt: "system",
     effectiveTimeoutMs: 30000,
@@ -14,7 +13,6 @@ function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     useStreaming: true,
     historyDb: "./data/history.db",
     historyLimit: 50,
-    titleModel: "test-model",
     contextStrategy: "full",
     ...overrides
   };
@@ -22,14 +20,14 @@ function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
 
 describe("buildResponseRequest", () => {
   test("without history, input is string", () => {
-    const req = buildResponseRequest(makeConfig());
+    const req = buildResponseRequest(makeConfig(), "test-model");
     expect(req.input).toBe("test prompt");
     expect(req.model).toBe("test-model");
     expect(req.instructions).toBe("system");
   });
 
   test("with empty history, input is string", () => {
-    const req = buildResponseRequest(makeConfig(), []);
+    const req = buildResponseRequest(makeConfig(), "test-model", []);
     expect(req.input).toBe("test prompt");
   });
 
@@ -38,7 +36,7 @@ describe("buildResponseRequest", () => {
       { role: "user" as const, content: "привет" },
       { role: "assistant" as const, content: "ответ" }
     ];
-    const req = buildResponseRequest(makeConfig({ prompt: "новый вопрос" }), history);
+    const req = buildResponseRequest(makeConfig({ prompt: "новый вопрос" }), "test-model", history);
 
     expect(Array.isArray(req.input)).toBe(true);
     const input = req.input as Array<{ role: string; content: string }>;
@@ -50,30 +48,31 @@ describe("buildResponseRequest", () => {
 
   test("reasoning options passed through", () => {
     const req = buildResponseRequest(
-      makeConfig({ reasoningEffort: "high", reasoningSummary: "concise" })
+      makeConfig({ reasoningEffort: "high", reasoningSummary: "concise" }),
+      "test-model"
     );
     expect(req.reasoning).toEqual({ effort: "high", summary: "concise" });
   });
 
   test("temperature and top_p passed through", () => {
-    const req = buildResponseRequest(makeConfig({ temperature: 0.5, topP: 0.9 }));
+    const req = buildResponseRequest(makeConfig({ temperature: 0.5, topP: 0.9 }), "test-model");
     expect(req.temperature).toBe(0.5);
     expect(req.top_p).toBe(0.9);
   });
 
   test("max_output_tokens from maxCompletionTokens", () => {
-    const req = buildResponseRequest(makeConfig({ maxCompletionTokens: 1024 }));
+    const req = buildResponseRequest(makeConfig({ maxCompletionTokens: 1024 }), "test-model");
     expect(req.max_output_tokens).toBe(1024);
   });
 
   test("factsBlock prepended to instructions", () => {
     const factsBlock = "Известные факты:\n- цель: тестирование";
-    const req = buildResponseRequest(makeConfig({ systemPrompt: "system prompt" }), [], factsBlock);
+    const req = buildResponseRequest(makeConfig({ systemPrompt: "system prompt" }), "test-model", [], factsBlock);
     expect(req.instructions).toBe("Известные факты:\n- цель: тестирование\n\nsystem prompt");
   });
 
   test("without factsBlock instructions unchanged", () => {
-    const req = buildResponseRequest(makeConfig({ systemPrompt: "system prompt" }));
+    const req = buildResponseRequest(makeConfig({ systemPrompt: "system prompt" }), "test-model");
     expect(req.instructions).toBe("system prompt");
   });
 });
