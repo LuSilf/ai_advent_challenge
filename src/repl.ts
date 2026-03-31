@@ -43,6 +43,14 @@ import {
 import { createStrategy, isValidStrategy, buildFactsExtractionInput, parseFactsResponse, FACTS_EXTRACTION_PROMPT } from "./strategy";
 import { appendLongTermMemory, appendWorkingMemory, readLongTermMemory, readWorkingMemory, getLongTermMemoryPath, getWorkingMemoryPath } from "./memory";
 
+export const MEMORY_SUGGESTION_PROMPT =`Ты — помощник по управлению памятью. Проанализируй последний обмен сообщениями и определи, есть ли в нём важная информация, которую стоит сохранить в рабочую память проекта.
+
+Сохранять стоит: архитектурные решения, договорённости, ограничения, паттерны, ключевые технические детали проекта.
+НЕ сохранять: тривиальные факты, временные задачи, содержимое кода, общеизвестные вещи.
+
+Если есть что сохранить — ответь ТОЛЬКО текстом для сохранения (краткий, информативный).
+Если сохранять нечего — ответь ТОЛЬКО словом "НЕТ".`;
+
 function printCostInfo(response: Response | undefined, modelId: string, debug: boolean): void {
   if (!response?.usage) return;
 
@@ -537,6 +545,75 @@ export function handleCommand(
   }
 }
 
+async function askUserChoice(rl: ReturnType<typeof createInterface>, prompt: string): Promise<string> {
+  return new Promise((resolve) => {
+    rl.question(prompt, (answer) => {
+      resolve(answer.trim().toLowerCase());
+    });
+  });
+}
+
+async function askUserEdit(rl: ReturnType<typeof createInterface>, text: string): Promise<string> {
+  const editor = process.env.EDITOR || "vi";
+  const tmpFile = join(tmpdir(), `memory-edit-${Date.now()}.md`);
+  writeFileSync(tmpFile, text);
+  const result = spawnSync(editor, [tmpFile], { stdio: "inherit" });
+  if (result.status !== 0) {
+    return text;
+  }
+  try {
+    const content = readFileSync(tmpFile, "utf-8").trim();
+    unlinkSync(tmpFile);
+    return content || text;
+  } catch {
+    return text;
+  }
+}
+
+export async function suggestMemorySave(
+  client: OpenAI,
+  rl: ReturnType<typeof createInterface>,
+  userMessage: string,
+  assistantMessage: string,
+  debug: boolean
+): Promise<void> {
+  try {
+    const factsModel = getModelForRole("facts");
+    const modelId = factsModel?.id ?? "openai/gpt-5-nano";
+    const response = await client.responses.create({
+      model: modelId,
+      instructions: MEMORY_SUGGESTION_PROMPT,
+      input: `Пользователь: ${userMessage}\nАссистент: ${assistantMessage}`,
+      stream: false,
+    });
+
+    const suggestion = response.output_text?.trim();
+    if (!suggestion || suggestion === "НЕТ" || suggestion.startsWith("НЕТ")) {
+      return;
+    }
+
+    console.log(pc.yellow("\n💡 Предложение сохранить в рабочую память:"));
+    console.log(pc.dim(suggestion));
+    const answer = await askUserChoice(rl, pc.yellow("[д]а / [н]ет / [и]зменить: "));
+
+    if (answer === "д" || answer === "да" || answer === "y" || answer === "yes") {
+      appendWorkingMemory(suggestion);
+      console.log(pc.green("Сохранено в рабочую память"));
+    } else if (answer === "и" || answer === "изменить" || answer === "e" || answer === "edit") {
+      const edited = await askUserEdit(rl, suggestion);
+      if (edited) {
+        appendWorkingMemory(edited);
+        console.log(pc.green("Сохранено в рабочую память (отредактировано)"));
+      }
+    }
+    // "н" или что угодно другое — пропускаем
+  } catch (e) {
+    if (debug) {
+      console.error(pc.dim(`[Memory] Ошибка предложения: ${e instanceof Error ? e.message : String(e)}`));
+    }
+  }
+}
+
 export async function startRepl(client: OpenAI, config: AppConfig): Promise<void> {
   const state = { sessionId: 0 };
 
@@ -635,6 +712,9 @@ export async function startRepl(client: OpenAI, config: AppConfig): Promise<void
               .catch(() => {});
           }
         }
+
+        // Предложение сохранить в рабочую память
+        await suggestMemorySave(client, rl, text, responseText, config.debug);
       }
     } catch (error) {
       console.error(

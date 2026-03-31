@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { handleCommand } from "./repl";
+import { handleCommand, MEMORY_SUGGESTION_PROMPT } from "./repl";
 import { initDb } from "./db";
 import type { AppConfig } from "./config";
 import { getLongTermMemoryPath, getWorkingMemoryPath, appendLongTermMemory, appendWorkingMemory } from "./memory";
@@ -125,5 +125,12 @@ describe("/edit_facts", () => {
     const state = { sessionId: 1 };
     const result = handleCommand("/edit_facts", "", state, makeConfig());
     expect(result).toBeNull();
+  });
+});
+
+describe("MEMORY_SUGGESTION_PROMPT", () => {
+  test("is defined and contains key instructions", () => {
+    expect(MEMORY_SUGGESTION_PROMPT).toContain("рабочую память");
+    expect(MEMORY_SUGGESTION_PROMPT).toContain("НЕТ");
   });
 });
