@@ -37,6 +37,10 @@ export type ModelRole = {
 
 let db: Database;
 
+export function getDb(): Database {
+  return db;
+}
+
 export function initDb(dbPath: string): void {
   mkdirSync(dirname(dbPath), { recursive: true });
 
