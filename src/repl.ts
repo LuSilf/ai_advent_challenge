@@ -395,13 +395,32 @@ function handleCommand(
         console.log(pc.dim("Нет моделей"));
         return null;
       }
-      console.log(pc.bold("Доступные модели:"));
-      for (const m of models) {
-        const ctx = m.context_size >= 1_000_000
+
+      const rows = models.map((m) => ({
+        id: m.id,
+        name: m.name,
+        input: `$${m.input_price}`,
+        output: `$${m.output_price}`,
+        ctx: m.context_size >= 1_000_000
           ? `${(m.context_size / 1_000_000).toFixed(1)}M`
-          : `${(m.context_size / 1_000).toFixed(0)}K`;
-        console.log(`  ${pc.cyan(m.id)}`);
-        console.log(`    ${m.name} | in: $${m.input_price}/1M | out: $${m.output_price}/1M | ctx: ${ctx}`);
+          : `${(m.context_size / 1_000).toFixed(0)}K`,
+      }));
+
+      const col = {
+        id: Math.max(2, ...rows.map((r) => r.id.length)),
+        name: Math.max(4, ...rows.map((r) => r.name.length)),
+        input: Math.max(6, ...rows.map((r) => r.input.length)),
+        output: Math.max(7, ...rows.map((r) => r.output.length)),
+        ctx: Math.max(3, ...rows.map((r) => r.ctx.length)),
+      };
+
+      const header = `  ${"ID".padEnd(col.id)}  ${"Имя".padEnd(col.name)}  ${"In/1M".padStart(col.input)}  ${"Out/1M".padStart(col.output)}  ${"Ctx".padStart(col.ctx)}`;
+      const sep = `  ${"─".repeat(col.id)}  ${"─".repeat(col.name)}  ${"─".repeat(col.input)}  ${"─".repeat(col.output)}  ${"─".repeat(col.ctx)}`;
+
+      console.log(pc.bold(header));
+      console.log(pc.dim(sep));
+      for (const r of rows) {
+        console.log(`  ${pc.cyan(r.id.padEnd(col.id))}  ${r.name.padEnd(col.name)}  ${r.input.padStart(col.input)}  ${r.output.padStart(col.output)}  ${r.ctx.padStart(col.ctx)}`);
       }
       return null;
     }
