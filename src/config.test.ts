@@ -137,6 +137,12 @@ describe("applyDbOptions", () => {
     expect(config.systemPrompt).toBe("from env");
   });
 
+  test("default system_prompt is 'Отвечай кратко и по делу'", () => {
+    const config = makeConfig();
+    applyDbOptions(config, (key) => key === "system_prompt" ? "Отвечай кратко и по делу" : null);
+    expect(config.systemPrompt).toBe("Отвечай кратко и по делу");
+  });
+
   test("applies temperature from DB", () => {
     const config = makeConfig();
     applyDbOptions(config, (key) => key === "temperature" ? "0.7" : null);
