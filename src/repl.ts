@@ -650,10 +650,13 @@ export async function handleCommand(
 }
 
 async function askUserChoice(rl: ReturnType<typeof createInterface>, prompt: string): Promise<string> {
+  process.stdout.write(prompt);
   return new Promise((resolve) => {
-    rl.question(prompt, (answer) => {
-      resolve(answer.trim().toLowerCase());
-    });
+    const onLine = (line: string) => {
+      rl.removeListener("line", onLine);
+      resolve(line.trim().toLowerCase());
+    };
+    rl.on("line", onLine);
   });
 }
 
@@ -691,7 +694,7 @@ async function triggerReconciliation(
   ).join("\n\n");
 
   state.messagesSinceReconciliation = 0;
-  await suggestMemorySave(client, rl, newContent, "", debug);
+  await suggestMemorySave(client, rl, newContent, debug);
 }
 
 export async function suggestMemorySave(
@@ -778,8 +781,10 @@ export async function startRepl(client: OpenAI, config: AppConfig): Promise<void
   rl.prompt();
 
   const inputLines: string[] = [];
+  let processing = false;
 
   const processInput = async (text: string) => {
+    processing = true;
     // Команды
     if (text.startsWith("/")) {
       const spaceIdx = text.indexOf(" ");
@@ -834,10 +839,14 @@ export async function startRepl(client: OpenAI, config: AppConfig): Promise<void
       );
     }
 
+    processing = false;
     rl.prompt();
   };
 
   rl.on("line", (line: string) => {
+    // Блокируем ввод пока идёт async операция (reconciliation, LLM)
+    if (processing) return;
+
     // Команды выполняются сразу по Enter, без ожидания пустой строки
     if (line.startsWith("/") && inputLines.length === 0) {
       processInput(line);
