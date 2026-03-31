@@ -533,22 +533,15 @@ export async function handleCommand(
         return null;
       }
 
-      const currentMemory = readLongTermMemory();
-      if (!currentMemory) {
-        // Пустая память — пишем напрямую без LLM
-        appendLongTermMemory(text);
-        console.log(pc.green(`Сохранено в долговременную память: ${getLongTermMemoryPath()}`));
-        return null;
-      }
-
-      // Реконсиляция через LLM
+      // Реконсиляция через LLM (всегда, даже при пустой памяти — для переформулирования)
       if (!deps?.client || !deps?.rl) {
-        // Fallback: нет клиента (например, в тестах) — аппенд
+        // Fallback: нет клиента (например, в тестах) — аппенд как есть
         appendLongTermMemory(text);
         console.log(pc.green(`Сохранено в долговременную память: ${getLongTermMemoryPath()}`));
         return null;
       }
 
+      const currentMemory = readLongTermMemory();
       const acc = createCostAccumulator();
       const factsModel = getModelForRole("facts");
       try {
