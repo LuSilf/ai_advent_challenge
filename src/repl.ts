@@ -36,7 +36,10 @@ import {
   getModelForRole,
   getModel,
   calculateCost,
-  formatCost
+  formatCost,
+  getOption,
+  setOption,
+  listOptions
 } from "./db";
 import { createStrategy, isValidStrategy } from "./strategy";
 import { appendLongTermMemory, appendWorkingMemory, readLongTermMemory, readWorkingMemory, writeLongTermMemory, writeWorkingMemory, getLongTermMemoryPath, getWorkingMemoryPath } from "./memory";
@@ -199,6 +202,10 @@ function printHelp(): void {
   console.log("  /branch [name]    Создать ветку от checkpoint");
   console.log("  /branches         Список веток");
   console.log("  /switch-branch N  Переключиться на ветку N");
+  console.log();
+  console.log(pc.bold("Настройки:"));
+  console.log("  /options          Показать все настройки");
+  console.log("  /set <ключ> <зн>  Установить значение настройки");
   console.log();
   console.log("  /help             Показать эту справку");
   console.log("  /exit             Выход (или Ctrl+D)");
@@ -590,6 +597,30 @@ export async function handleCommand(
       console.log(pc.green(`Сохранено в рабочую память: ${getWorkingMemoryPath()}`));
       return null;
     }
+    case "/options": {
+      const opts = listOptions();
+      if (opts.length === 0) {
+        console.log(pc.dim("Нет настроек"));
+        return null;
+      }
+      console.log(pc.bold("Настройки:"));
+      for (const o of opts) {
+        console.log(`  ${pc.cyan(o.key)}: ${o.value}`);
+      }
+      return null;
+    }
+    case "/set": {
+      const parts = args.trim().split(/\s+/);
+      if (parts.length < 2) {
+        console.log(pc.red("Использование: /set <ключ> <значение>"));
+        return null;
+      }
+      const [key, ...valueParts] = parts;
+      const value = valueParts.join(" ");
+      setOption(key, value);
+      console.log(pc.green(`${key} = ${value}`));
+      return null;
+    }
     case "/help": {
       printHelp();
       return null;
@@ -687,6 +718,7 @@ export async function suggestMemorySave(
 
 export async function startRepl(client: OpenAI, config: AppConfig): Promise<void> {
   const state = { sessionId: 0 };
+  let messagesSinceLastReconciliation = 0;
 
   // Восстанавливаем последнюю сессию или создаём новую
   const lastSession = getLastSession();
@@ -756,8 +788,13 @@ export async function startRepl(client: OpenAI, config: AppConfig): Promise<void
           }
         }
 
-        // Предложение сохранить в рабочую память
-        await suggestMemorySave(client, rl, text, responseText, config.debug);
+        // Счётчик для интервала предложений рабочей памяти
+        messagesSinceLastReconciliation++;
+        const interval = Number(getOption("memory_interval") ?? "5");
+        if (interval > 0 && messagesSinceLastReconciliation >= interval) {
+          messagesSinceLastReconciliation = 0;
+          await suggestMemorySave(client, rl, text, responseText, config.debug);
+        }
       }
     } catch (error) {
       console.error(

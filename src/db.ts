@@ -91,6 +91,11 @@ export function initDb(dbPath: string): void {
       role TEXT PRIMARY KEY,
       model_id TEXT NOT NULL REFERENCES models(id)
     );
+
+    CREATE TABLE IF NOT EXISTS options (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
 
   // Предзаполнение моделей
@@ -123,6 +128,17 @@ export function initDb(dbPath: string): void {
   );
   for (const r of defaultRoles) {
     insertRole.run(r.role, r.model_id);
+  }
+
+  // Дефолтные опции
+  const defaultOptions: { key: string; value: string }[] = [
+    { key: "memory_interval", value: "5" },
+  ];
+  const insertOption = db.prepare(
+    "INSERT OR IGNORE INTO options (key, value) VALUES (?, ?)"
+  );
+  for (const o of defaultOptions) {
+    insertOption.run(o.key, o.value);
   }
 
   // Миграция: добавляем новые поля если их нет (для существующих БД)
@@ -378,4 +394,28 @@ export function listBranches(sessionId: number): SessionWithCount[] {
     GROUP BY s.id
     ORDER BY s.created_at ASC
   `).all(rootId, sessionId);
+}
+
+// --- Options ---
+
+export type Option = { key: string; value: string };
+
+export function getOption(key: string): string | null {
+  const row = db.query<{ value: string }, [string]>(
+    "SELECT value FROM options WHERE key = ?"
+  ).get(key);
+  return row?.value ?? null;
+}
+
+export function setOption(key: string, value: string): void {
+  db.run(
+    "INSERT INTO options (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    [key, value]
+  );
+}
+
+export function listOptions(): Option[] {
+  return db.query<Option, []>(
+    "SELECT key, value FROM options ORDER BY key ASC"
+  ).all();
 }

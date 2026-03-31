@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { handleCommand } from "./repl";
-import { initDb } from "./db";
+import { initDb, getOption } from "./db";
 import type { AppConfig } from "./config";
 import { getLongTermMemoryPath, getWorkingMemoryPath, appendLongTermMemory, appendWorkingMemory } from "./memory";
 
@@ -135,5 +135,36 @@ describe("/edit_facts", () => {
     const state = { sessionId: 1 };
     const result = await handleCommand("/edit_facts", "", state, makeConfig());
     expect(result).toBeNull();
+  });
+});
+
+describe("/options", () => {
+  test("shows default options", async () => {
+    const state = { sessionId: 1 };
+    const result = await handleCommand("/options", "", state, makeConfig());
+    expect(result).toBeNull();
+    // Default memory_interval should be set
+    expect(getOption("memory_interval")).toBe("5");
+  });
+});
+
+describe("/set", () => {
+  test("sets option value", async () => {
+    const state = { sessionId: 1 };
+    const result = await handleCommand("/set", "memory_interval 3", state, makeConfig());
+    expect(result).toBeNull();
+    expect(getOption("memory_interval")).toBe("3");
+  });
+
+  test("returns null without args (shows usage)", async () => {
+    const state = { sessionId: 1 };
+    const result = await handleCommand("/set", "", state, makeConfig());
+    expect(result).toBeNull();
+  });
+
+  test("sets value with spaces", async () => {
+    const state = { sessionId: 1 };
+    await handleCommand("/set", "custom_key hello world", state, makeConfig());
+    expect(getOption("custom_key")).toBe("hello world");
   });
 });

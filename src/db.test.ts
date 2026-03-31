@@ -31,7 +31,10 @@ import {
   listModelRoles,
   setModelForRole,
   calculateCost,
-  formatCost
+  formatCost,
+  getOption,
+  setOption,
+  listOptions
 } from "./db";
 
 function freshDb(): string {
@@ -381,5 +384,34 @@ describe("db", () => {
     const branchIds = branches.map((b) => b.id);
     expect(branchIds).toContain(b1);
     expect(branchIds).toContain(b2);
+  });
+});
+
+describe("options", () => {
+  beforeEach(() => { freshDb(); });
+
+  test("default memory_interval is 5", () => {
+    expect(getOption("memory_interval")).toBe("5");
+  });
+
+  test("getOption returns null for unknown key", () => {
+    expect(getOption("unknown_key")).toBeNull();
+  });
+
+  test("setOption creates new option", () => {
+    setOption("new_key", "new_value");
+    expect(getOption("new_key")).toBe("new_value");
+  });
+
+  test("setOption updates existing option", () => {
+    setOption("memory_interval", "10");
+    expect(getOption("memory_interval")).toBe("10");
+  });
+
+  test("listOptions returns all options", () => {
+    const opts = listOptions();
+    expect(opts.length).toBeGreaterThanOrEqual(1);
+    const keys = opts.map((o) => o.key);
+    expect(keys).toContain("memory_interval");
   });
 });
