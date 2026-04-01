@@ -77,9 +77,15 @@ export class ChatService {
       instructions = `${context.factsBlock}\n\n${instructions}`;
     }
 
+    // Добавляем текущее сообщение пользователя в контекст
+    const allMessages = [
+      ...context.messages,
+      { id: 0, sessionId, role: "user" as const, content: userPrompt, createdAt: "" },
+    ];
+
     // Build LLM request
     const llmRequest: LLMRequest = {
-      messages: context.messages,
+      messages: allMessages,
       instructions,
       model: model.id,
       params: {
