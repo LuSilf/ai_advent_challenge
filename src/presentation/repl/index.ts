@@ -739,9 +739,6 @@ export async function handleCommand(
       return null;
     }
     case "/exit": {
-      if (rl) {
-        await triggerReconciliation(state, deps, rl);
-      }
       process.exit(0);
     }
     default: {
@@ -749,24 +746,6 @@ export async function handleCommand(
       return null;
     }
   }
-}
-
-async function triggerReconciliation(
-  state: { sessionId: number; messagesSinceReconciliation: number },
-  deps: ReplDeps,
-  rl: ReturnType<typeof createInterface>,
-): Promise<void> {
-  if (state.messagesSinceReconciliation === 0) return;
-
-  const messages = deps.sessionService.getHistory(state.sessionId, state.messagesSinceReconciliation * 2);
-  if (messages.length === 0) return;
-
-  const newContent = messages.map((m) =>
-    `${m.role === "user" ? "Пользователь" : "Ассистент"}: ${m.content}`
-  ).join("\n\n");
-
-  state.messagesSinceReconciliation = 0;
-  await suggestMemorySave(deps, rl, newContent);
 }
 
 async function suggestMemorySave(
