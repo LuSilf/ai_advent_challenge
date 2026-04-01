@@ -33,8 +33,22 @@ export class ProfileService {
     this.profileRepo.update(id, fields);
   }
 
+  getPreferences(profileId: number): { key: string; value: string }[] {
+    return this.profileRepo.getPreferences(profileId);
+  }
+
   setPreference(profileId: number, key: string, value: string): void {
     this.profileRepo.setPreference(profileId, key, value);
+  }
+
+  replacePreferences(profileId: number, preferences: { key: string; value: string }[]): void {
+    const existing = this.profileRepo.getPreferences(profileId);
+    for (const p of existing) {
+      this.profileRepo.deletePreference(profileId, p.key);
+    }
+    for (const p of preferences) {
+      this.profileRepo.setPreference(profileId, p.key, p.value);
+    }
   }
 
   deleteProfile(id: number): void {

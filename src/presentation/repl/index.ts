@@ -91,6 +91,7 @@ function printHelp(): void {
   console.log("  /profile list         Список профилей");
   console.log("  /profile switch <id>  Переключить активный профиль");
   console.log("  /profile set <к> <з>  Установить поле профиля");
+  console.log("  /profile edit         Редактировать профиль в $EDITOR (YAML)");
   console.log("  /profile delete <id>  Удалить профиль");
   console.log(pc.bold("Настройки:"));
   console.log("  /options          Показать все настройки");
@@ -124,6 +125,67 @@ async function askUserChoice(rl: ReturnType<typeof createInterface>, prompt: str
     };
     rl.on("line", onLine);
   });
+}
+
+async function askUserInput(rl: ReturnType<typeof createInterface>, prompt: string): Promise<string> {
+  process.stdout.write(prompt);
+  return new Promise((resolve) => {
+    const onLine = (line: string) => {
+      rl.removeListener("line", onLine);
+      resolve(line.trim());
+    };
+    rl.on("line", onLine);
+  });
+}
+
+function profileToYaml(profile: { name: string; userName?: string | null; language?: string | null; style?: string | null; format?: string | null; restrictions?: string | null }, preferences: { key: string; value: string }[] = []): string {
+  const lines = [
+    `name: ${profile.name}`,
+    `user_name: ${profile.userName || ""}`,
+    `language: ${profile.language || ""}`,
+    `style: ${profile.style || ""}`,
+    `format: ${profile.format || ""}`,
+    `restrictions: ${profile.restrictions || ""}`,
+    "",
+    "# Произвольные предпочтения (ключ: значение)",
+    "preferences:",
+  ];
+  if (preferences.length > 0) {
+    for (const p of preferences) {
+      lines.push(`  ${p.key}: ${p.value}`);
+    }
+  } else {
+    lines.push("  # example_key: example_value");
+  }
+  return lines.join("\n");
+}
+
+function yamlToProfile(yaml: string): { fields: Record<string, string>; preferences: { key: string; value: string }[] } {
+  const fields: Record<string, string> = {};
+  const preferences: { key: string; value: string }[] = [];
+  let inPreferences = false;
+
+  for (const line of yaml.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    if (trimmed === "preferences:") {
+      inPreferences = true;
+      continue;
+    }
+
+    const match = trimmed.match(/^(\w+):\s*(.*)/);
+    if (!match) continue;
+
+    const [, key, value] = match;
+    if (inPreferences) {
+      if (value) preferences.push({ key, value });
+    } else {
+      fields[key] = value;
+    }
+  }
+
+  return { fields, preferences };
 }
 
 async function askUserEdit(rl: ReturnType<typeof createInterface>, text: string): Promise<string> {
@@ -536,13 +598,37 @@ export async function handleCommand(
 
       switch (subCmd) {
         case "create": {
-          const name = subCmdArgs.trim();
+          let name = subCmdArgs.trim();
           if (!name) {
-            console.log(pc.red("Использование: /profile create <имя>"));
-            return null;
+            if (!rl) {
+              console.log(pc.red("Использование: /profile create <имя>"));
+              return null;
+            }
+            name = await askUserInput(rl, pc.cyan("Имя профиля: "));
+            if (!name) {
+              console.log(pc.red("Имя профиля обязательно"));
+              return null;
+            }
           }
-          const id = profileService.createProfile(name);
-          console.log(pc.green(`Создан профиль #${id}: "${name}"`));
+
+          let userName: string | undefined;
+          let language: string | undefined;
+          let style: string | undefined;
+          let format: string | undefined;
+          let restrictions: string | undefined;
+
+          if (rl) {
+            console.log(pc.dim("Заполните поля профиля (Enter — пропустить):"));
+            userName = await askUserInput(rl, pc.cyan("  Имя пользователя: ")) || undefined;
+            language = await askUserInput(rl, pc.cyan("  Язык ответов: ")) || undefined;
+            style = await askUserInput(rl, pc.cyan("  Стиль (формальный/неформальный/технический): ")) || undefined;
+            format = await askUserInput(rl, pc.cyan("  Формат (краткий/развёрнутый/с примерами): ")) || undefined;
+            restrictions = await askUserInput(rl, pc.cyan("  Ограничения: ")) || undefined;
+          }
+
+          const id = profileService.createProfile(name, { userName, language, style, format, restrictions });
+          profileService.setActiveProfile(id);
+          console.log(pc.green(`Создан и активирован профиль #${id}: "${name}"`));
           return null;
         }
         case "list": {
@@ -608,6 +694,45 @@ export async function handleCommand(
           }
           return null;
         }
+        case "edit": {
+          const active = profileService.getActiveProfile();
+          if (!active) {
+            console.log(pc.red("Нет активного профиля. Создайте: /profile create <имя>"));
+            return null;
+          }
+          if (!rl) return null;
+
+          const prefs = profileService.getPreferences(active.id);
+          const yaml = profileToYaml(active, prefs);
+          const edited = await askUserEdit(rl, yaml);
+
+          if (edited === yaml) {
+            console.log(pc.dim("Без изменений"));
+            return null;
+          }
+
+          const { fields, preferences } = yamlToProfile(edited);
+
+          const standardFields: Record<string, string> = {
+            name: "name", user_name: "userName", language: "language",
+            style: "style", format: "format", restrictions: "restrictions",
+          };
+
+          const updateFields: Record<string, string | null> = {};
+          for (const [yamlKey, domainKey] of Object.entries(standardFields)) {
+            if (yamlKey in fields) {
+              updateFields[domainKey] = fields[yamlKey] || null;
+            }
+          }
+          if (Object.keys(updateFields).length > 0) {
+            profileService.updateProfile(active.id, updateFields as any);
+          }
+
+          profileService.replacePreferences(active.id, preferences);
+
+          console.log(pc.green("Профиль обновлён"));
+          return null;
+        }
         case "delete": {
           const id = Number(subCmdArgs);
           if (!Number.isInteger(id) || id < 1) {
@@ -620,7 +745,7 @@ export async function handleCommand(
         }
         default: {
           console.log(pc.red(`Неизвестная подкоманда: /profile ${subCmd}`));
-          console.log(pc.dim("Доступные: create, list, switch, set, delete"));
+          console.log(pc.dim("Доступные: create, list, switch, set, edit, delete"));
           return null;
         }
       }
