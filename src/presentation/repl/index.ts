@@ -90,7 +90,6 @@ function printHelp(): void {
   console.log("  /profile create <имя> Создать профиль");
   console.log("  /profile list         Список профилей");
   console.log("  /profile switch <id>  Переключить активный профиль");
-  console.log("  /profile set <к> <з>  Установить поле профиля");
   console.log("  /profile edit         Редактировать профиль в $EDITOR (YAML)");
   console.log("  /profile delete <id>  Удалить профиль");
   console.log(pc.bold("Настройки:"));
@@ -660,40 +659,6 @@ export async function handleCommand(
           console.log(pc.green(`Активный профиль: #${id} "${profile.name}"`));
           return null;
         }
-        case "set": {
-          const active = profileService.getActiveProfile();
-          if (!active) {
-            console.log(pc.red("Нет активного профиля. Создайте: /profile create <имя>"));
-            return null;
-          }
-          const setParts = subCmdArgs.split(/\s+/);
-          if (setParts.length < 2) {
-            console.log(pc.red("Использование: /profile set <ключ> <значение>"));
-            console.log(pc.dim("Стандартные поля: name, user_name, language, style, format, restrictions"));
-            console.log(pc.dim("Произвольные поля сохраняются как предпочтения"));
-            return null;
-          }
-          const [setKey, ...setValueParts] = setParts;
-          const setValue = setValueParts.join(" ");
-
-          const standardFields: Record<string, string> = {
-            name: "name",
-            user_name: "userName",
-            language: "language",
-            style: "style",
-            format: "format",
-            restrictions: "restrictions",
-          };
-
-          if (standardFields[setKey]) {
-            profileService.updateProfile(active.id, { [standardFields[setKey]]: setValue });
-            console.log(pc.green(`Профиль #${active.id}: ${setKey} = ${setValue}`));
-          } else {
-            profileService.setPreference(active.id, setKey, setValue);
-            console.log(pc.green(`Профиль #${active.id}: предпочтение ${setKey} = ${setValue}`));
-          }
-          return null;
-        }
         case "edit": {
           const active = profileService.getActiveProfile();
           if (!active) {
@@ -745,7 +710,7 @@ export async function handleCommand(
         }
         default: {
           console.log(pc.red(`Неизвестная подкоманда: /profile ${subCmd}`));
-          console.log(pc.dim("Доступные: create, list, switch, set, edit, delete"));
+          console.log(pc.dim("Доступные: create, list, switch, edit, delete"));
           return null;
         }
       }

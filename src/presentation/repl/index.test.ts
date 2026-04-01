@@ -257,20 +257,6 @@ describe("presentation/repl handleCommand", () => {
     expect(deps.profileService.getActiveProfile()!.id).toBe(id);
   });
 
-  test("/profile set updates active profile field", async () => {
-    const id = deps.profileService.createProfile("test");
-    deps.profileService.setActiveProfile(id);
-    await handleCommand("/profile", "set language русский", state, deps);
-    expect(deps.profileService.getProfile(id)!.language).toBe("русский");
-  });
-
-  test("/profile set adds custom preference", async () => {
-    const id = deps.profileService.createProfile("test");
-    deps.profileService.setActiveProfile(id);
-    await handleCommand("/profile", "set framework React", state, deps);
-    // Custom preferences handled by profileService.setPreference
-  });
-
   test("/profile delete removes profile", async () => {
     const id = deps.profileService.createProfile("test");
     await handleCommand("/profile", `delete ${id}`, state, deps);
