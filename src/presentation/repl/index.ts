@@ -213,9 +213,6 @@ export async function handleCommand(
 
   switch (cmd) {
     case "/new": {
-      if (rl) {
-        await triggerReconciliation(state, deps, rl);
-      }
       state.sessionId = sessionService.createSession(undefined, config.contextStrategy);
       state.messagesSinceReconciliation = 0;
       console.log(pc.green(`Создана новая сессия #${state.sessionId} (стратегия: ${config.contextStrategy})`));
@@ -244,9 +241,6 @@ export async function handleCommand(
       if (!session) {
         console.log(pc.red(`Сессия #${id} не найдена`));
         return null;
-      }
-      if (rl) {
-        await triggerReconciliation(state, deps, rl);
       }
       state.sessionId = id;
       state.messagesSinceReconciliation = 0;
