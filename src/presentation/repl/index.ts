@@ -21,6 +21,7 @@ import type { OptionsRepository } from "../../domain/ports/options-repository";
 import type { CheckpointRepository } from "../../domain/ports/checkpoint-repository";
 import type { FactRepository } from "../../domain/ports/fact-repository";
 import type { LLMClient } from "../../domain/ports/llm-client";
+import type { ProfileService } from "../../domain/services/profile-service";
 
 export type ReplDeps = {
   config: AppConfig;
@@ -35,6 +36,7 @@ export type ReplDeps = {
   factRepo: FactRepository;
   llmClient: LLMClient;
   openaiClient: OpenAI;
+  profileService: ProfileService;
 };
 
 function printSessionInfo(sessionId: number, title: string | null, messageCount: number): void {
@@ -83,6 +85,13 @@ function printHelp(): void {
   console.log("  /branches         Список веток");
   console.log("  /switch-branch N  Переключиться на ветку N");
   console.log();
+  console.log(pc.bold("Профиль:"));
+  console.log("  /profile              Показать активный профиль");
+  console.log("  /profile create <имя> Создать профиль");
+  console.log("  /profile list         Список профилей");
+  console.log("  /profile switch <id>  Переключить активный профиль");
+  console.log("  /profile set <к> <з>  Установить поле профиля");
+  console.log("  /profile delete <id>  Удалить профиль");
   console.log(pc.bold("Настройки:"));
   console.log("  /options          Показать все настройки");
   console.log("  /set <ключ> <зн>  Установить значение настройки");
@@ -291,32 +300,28 @@ export async function handleCommand(
       return null;
     }
     case "/edit_memory": {
-      const editor = process.env.EDITOR || "vi";
-      const memPath = memoryService.getMemoryPath("longterm");
-      mkdirSync(dirname(memPath), { recursive: true });
-      if (!existsSync(memPath)) {
-        writeFileSync(memPath, "");
-      }
-      const result = spawnSync(editor, [memPath], { stdio: "inherit" });
-      if (result.status !== 0) {
-        console.log(pc.red("Редактор завершился с ошибкой"));
-      } else {
-        console.log(pc.green("Долговременная память обновлена"));
+      const currentContent = memoryService.readMemory("longterm");
+      if (rl) {
+        const edited = await askUserEdit(rl, currentContent);
+        if (edited !== currentContent) {
+          memoryService.writeMemory("longterm", edited);
+          console.log(pc.green("Долговременная память обновлена"));
+        } else {
+          console.log(pc.dim("Без изменений"));
+        }
       }
       return null;
     }
     case "/edit_facts": {
-      const editor = process.env.EDITOR || "vi";
-      const memPath = memoryService.getMemoryPath("working");
-      mkdirSync(dirname(memPath), { recursive: true });
-      if (!existsSync(memPath)) {
-        writeFileSync(memPath, "");
-      }
-      const result = spawnSync(editor, [memPath], { stdio: "inherit" });
-      if (result.status !== 0) {
-        console.log(pc.red("Редактор завершился с ошибкой"));
-      } else {
-        console.log(pc.green("Рабочая память обновлена"));
+      const currentContent = memoryService.readMemory("working");
+      if (rl) {
+        const edited = await askUserEdit(rl, currentContent);
+        if (edited !== currentContent) {
+          memoryService.writeMemory("working", edited);
+          console.log(pc.green("Рабочая память обновлена"));
+        } else {
+          console.log(pc.dim("Без изменений"));
+        }
       }
       return null;
     }
@@ -447,7 +452,7 @@ export async function handleCommand(
 
       if (!rl) {
         memoryService.appendMemory("longterm", text);
-        console.log(pc.green(`Сохранено в долговременную память: ${memoryService.getMemoryPath("longterm")}`));
+        console.log(pc.green("Сохранено в долговременную память"));
         return null;
       }
 
@@ -495,7 +500,7 @@ export async function handleCommand(
           console.error(pc.dim(`[Memory] Ошибка: ${e instanceof Error ? e.message : String(e)}`));
         }
         memoryService.appendMemory("longterm", text);
-        console.log(pc.green(`Сохранено в долговременную память (без реконсиляции): ${memoryService.getMemoryPath("longterm")}`));
+        console.log(pc.green("Сохранено в долговременную память (без реконсиляции)"));
       }
       return null;
     }
@@ -506,8 +511,119 @@ export async function handleCommand(
         return null;
       }
       memoryService.appendMemory("working", text);
-      console.log(pc.green(`Сохранено в рабочую память: ${memoryService.getMemoryPath("working")}`));
+      console.log(pc.green("Сохранено в рабочую память"));
       return null;
+    }
+    case "/profile": {
+      const { profileService } = deps;
+      const subArgs = args.trim();
+
+      if (!subArgs) {
+        // Показать активный профиль
+        const active = profileService.getActiveProfile();
+        if (!active) {
+          console.log(pc.dim("Нет активного профиля"));
+        } else {
+          console.log(pc.bold(`Профиль #${active.id}: "${active.name}"`));
+          console.log(profileService.buildProfileBlock(active));
+        }
+        return null;
+      }
+
+      const parts = subArgs.split(/\s+/);
+      const subCmd = parts[0];
+      const subCmdArgs = parts.slice(1).join(" ");
+
+      switch (subCmd) {
+        case "create": {
+          const name = subCmdArgs.trim();
+          if (!name) {
+            console.log(pc.red("Использование: /profile create <имя>"));
+            return null;
+          }
+          const id = profileService.createProfile(name);
+          console.log(pc.green(`Создан профиль #${id}: "${name}"`));
+          return null;
+        }
+        case "list": {
+          const profiles = profileService.getAllProfiles();
+          if (profiles.length === 0) {
+            console.log(pc.dim("Нет профилей"));
+            return null;
+          }
+          const active = profileService.getActiveProfile();
+          for (const p of profiles) {
+            const marker = active && p.id === active.id ? pc.yellow(" ←") : "";
+            const details = [p.userName, p.language, p.style].filter(Boolean).join(", ");
+            console.log(`  #${p.id} "${p.name}"${details ? ` (${details})` : ""}${marker}`);
+          }
+          return null;
+        }
+        case "switch": {
+          const id = Number(subCmdArgs);
+          if (!Number.isInteger(id) || id < 1) {
+            console.log(pc.red("Использование: /profile switch <id>"));
+            return null;
+          }
+          const profile = profileService.getProfile(id);
+          if (!profile) {
+            console.log(pc.red(`Профиль #${id} не найден`));
+            return null;
+          }
+          profileService.setActiveProfile(id);
+          console.log(pc.green(`Активный профиль: #${id} "${profile.name}"`));
+          return null;
+        }
+        case "set": {
+          const active = profileService.getActiveProfile();
+          if (!active) {
+            console.log(pc.red("Нет активного профиля. Создайте: /profile create <имя>"));
+            return null;
+          }
+          const setParts = subCmdArgs.split(/\s+/);
+          if (setParts.length < 2) {
+            console.log(pc.red("Использование: /profile set <ключ> <значение>"));
+            console.log(pc.dim("Стандартные поля: name, user_name, language, style, format, restrictions"));
+            console.log(pc.dim("Произвольные поля сохраняются как предпочтения"));
+            return null;
+          }
+          const [setKey, ...setValueParts] = setParts;
+          const setValue = setValueParts.join(" ");
+
+          const standardFields: Record<string, string> = {
+            name: "name",
+            user_name: "userName",
+            language: "language",
+            style: "style",
+            format: "format",
+            restrictions: "restrictions",
+          };
+
+          if (standardFields[setKey]) {
+            profileService.updateProfile(active.id, { [standardFields[setKey]]: setValue });
+            console.log(pc.green(`Профиль #${active.id}: ${setKey} = ${setValue}`));
+          } else {
+            profileService.setPreference(active.id, setKey, setValue);
+            console.log(pc.green(`Профиль #${active.id}: предпочтение ${setKey} = ${setValue}`));
+          }
+          return null;
+        }
+        case "delete": {
+          const id = Number(subCmdArgs);
+          if (!Number.isInteger(id) || id < 1) {
+            console.log(pc.red("Использование: /profile delete <id>"));
+            return null;
+          }
+          profileService.deleteProfile(id);
+          console.log(pc.green(`Профиль #${id} удалён`));
+          return null;
+        }
+        default: {
+          console.log(pc.red(`Неизвестная подкоманда: /profile ${subCmd}`));
+          console.log(pc.dim("Доступные: create, list, switch, set, delete"));
+          return null;
+        }
+      }
     }
     case "/options": {
       const opts = optionsRepo.getAll();

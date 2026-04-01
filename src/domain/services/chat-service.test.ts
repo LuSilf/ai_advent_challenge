@@ -8,7 +8,10 @@ import type { ModelRepository } from "../ports/model-repository";
 import type { SessionRepository } from "../ports/session-repository";
 import type { MessageRepository } from "../ports/message-repository";
 import type { FactRepository } from "../ports/fact-repository";
-import type { LLMRequest, LLMResponse, Message, Model, Fact, Session } from "../models";
+import type { ProfileRepository } from "../ports/profile-repository";
+import type { OptionsRepository } from "../ports/options-repository";
+import { ProfileService } from "./profile-service";
+import type { LLMRequest, LLMResponse, Message, Model, Fact, Session, Profile, ProfilePreference } from "../models";
 
 const testModel: Model = {
   id: "test/model",
@@ -97,6 +100,48 @@ function createMockFactRepo(): FactRepository {
     getBySession: (id) => facts.get(id) ?? [],
     set: (id, f) => facts.set(id, f),
     delete: (id) => { facts.delete(id); },
+  };
+}
+
+function createMockProfileRepo(): ProfileRepository {
+  const profiles = new Map<number, Profile>();
+  const preferences = new Map<number, Map<string, string>>();
+  let nextId = 1;
+  return {
+    create(data) {
+      const id = nextId++;
+      const now = new Date().toISOString();
+      profiles.set(id, { id, ...data, createdAt: now, updatedAt: now });
+      return id;
+    },
+    getById: (id) => profiles.get(id) ?? null,
+    getAll: () => [...profiles.values()],
+    update(id, fields) {
+      const p = profiles.get(id);
+      if (p) Object.assign(p, fields);
+    },
+    delete(id) { preferences.delete(id); return profiles.delete(id); },
+    getPreferences(profileId) {
+      const map = preferences.get(profileId);
+      if (!map) return [];
+      return [...map.entries()].map(([key, value]) => ({ key, value }));
+    },
+    setPreference(profileId, key, value) {
+      if (!preferences.has(profileId)) preferences.set(profileId, new Map());
+      preferences.get(profileId)!.set(key, value);
+    },
+    deletePreference(profileId, key) {
+      return preferences.get(profileId)?.delete(key) ?? false;
+    },
+  };
+}
+
+function createMockOptionsRepo(): OptionsRepository {
+  const options = new Map<string, string>();
+  return {
+    get: (key) => options.get(key) ?? null,
+    set: (key, value) => { options.set(key, value); },
+    getAll: () => [...options.entries()].map(([key, value]) => ({ key, value })),
   };
 }
 
@@ -230,5 +275,67 @@ describe("ChatService", () => {
 
     expect(result.model).toBeDefined();
     expect(result.model.id).toBe("test/model");
+  });
+
+  test("sendMessage includes profile block in instructions when profile is active", async () => {
+    const profileRepo = createMockProfileRepo();
+    const optionsRepo = createMockOptionsRepo();
+    const profileService = new ProfileService(profileRepo, optionsRepo);
+
+    const profileId = profileService.createProfile("dev", {
+      userName: "Алексей",
+      language: "русский",
+      style: "неформальный",
+    });
+    profileService.setActiveProfile(profileId);
+
+    let capturedRequest: LLMRequest | null = null;
+    const capturingClient: LLMClient = {
+      async send(request) {
+        capturedRequest = request;
+        return { content: "ok", inputTokens: 10, outputTokens: 5 };
+      },
+      async *stream() {
+        yield { type: "done" as const, response: { content: "ok", inputTokens: 10, outputTokens: 5 } };
+      },
+    };
+
+    const modelRepo = createMockModelRepo();
+    const sessionRepo = createMockSessionRepo();
+    const newMsgRepo = createMockMessageRepo();
+    const svc = new ChatService(
+      capturingClient,
+      new SessionService(sessionRepo, newMsgRepo),
+      new ContextService(),
+      new CostService(modelRepo),
+      newMsgRepo,
+      createMockFactRepo(),
+      modelRepo,
+      profileService,
+    );
+
+    const sid = sessionRepo.create();
+    await svc.sendMessage(sid, "привет", {
+      historyLimit: 50,
+      systemPrompt: "базовый промпт",
+      useStreaming: false,
+    });
+
+    expect(capturedRequest).not.toBeNull();
+    expect(capturedRequest!.instructions).toContain("Профиль пользователя");
+    expect(capturedRequest!.instructions).toContain("Алексей");
+    expect(capturedRequest!.instructions).toContain("русский");
+    expect(capturedRequest!.instructions).toContain("базовый промпт");
+  });
+
+  test("sendMessage works without profileService", async () => {
+    const sessionId = sessionService.createSession();
+    const result = await chatService.sendMessage(sessionId, "без профиля", {
+      historyLimit: 50,
+      systemPrompt: "test",
+      useStreaming: false,
+    });
+
+    expect(result.response.content).toBe("ответ бота");
   });
 });

@@ -6,6 +6,7 @@ import type { ModelRepository } from "../ports/model-repository";
 import type { SessionService } from "./session-service";
 import type { ContextService, ContextResult } from "./context-service";
 import type { CostService } from "./cost-service";
+import type { ProfileService } from "./profile-service";
 
 export type SendMessageOptions = {
   historyLimit: number;
@@ -37,6 +38,7 @@ export class ChatService {
     private readonly messageRepo: MessageRepository,
     private readonly factRepo: FactRepository,
     private readonly modelRepo: ModelRepository,
+    private readonly profileService?: ProfileService,
   ) {}
 
   async sendMessage(
@@ -58,6 +60,16 @@ export class ChatService {
 
     // Build instructions
     let instructions = options.systemPrompt;
+
+    // Добавляем профиль в system prompt
+    if (this.profileService) {
+      const activeProfile = this.profileService.getActiveProfile();
+      if (activeProfile) {
+        const profileBlock = this.profileService.buildProfileBlock(activeProfile);
+        instructions = `${profileBlock}\n\n${instructions}`;
+      }
+    }
+
     if (options.memoryBlocks) {
       instructions = `${options.memoryBlocks}\n\n${instructions}`;
     }

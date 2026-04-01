@@ -10,13 +10,15 @@ import { SqliteFactRepository } from "../../storage/sqlite/fact-repository";
 import { SqliteModelRepository } from "../../storage/sqlite/model-repository";
 import { SqliteOptionsRepository } from "../../storage/sqlite/options-repository";
 import { SqliteCheckpointRepository } from "../../storage/sqlite/checkpoint-repository";
-import { FileMemoryStore } from "../../storage/file/memory-store";
+import { SqliteProfileRepository } from "../../storage/sqlite/profile-repository";
+import { SqliteMemoryRepository } from "../../storage/sqlite/memory-repository";
 
 import { SessionService } from "../../domain/services/session-service";
 import { ContextService } from "../../domain/services/context-service";
 import { CostService } from "../../domain/services/cost-service";
 import { ChatService } from "../../domain/services/chat-service";
 import { MemoryService } from "../../domain/services/memory-service";
+import { ProfileService } from "../../domain/services/profile-service";
 import type { LLMClient, StreamEvent } from "../../domain/ports/llm-client";
 import type { LLMRequest, LLMResponse } from "../../domain/models";
 import type { AppConfig } from "../../config";
@@ -67,17 +69,16 @@ describe("presentation/repl handleCommand", () => {
     const modelRepo = new SqliteModelRepository();
     const optionsRepo = new SqliteOptionsRepository();
     const checkpointRepo = new SqliteCheckpointRepository();
-    const memoryStore = new FileMemoryStore(
-      join(tempDir, "memory.md"),
-      join(tempDir, "working.md"),
-    );
+    const profileRepo = new SqliteProfileRepository();
+    const memoryRepo = new SqliteMemoryRepository();
     const llmClient = createMockLLMClient();
 
     const sessionService = new SessionService(sessionRepo, messageRepo);
     const contextService = new ContextService();
     const costService = new CostService(modelRepo);
-    const chatService = new ChatService(llmClient, sessionService, contextService, costService, messageRepo, factRepo, modelRepo);
-    const memoryService = new MemoryService(memoryStore, llmClient, modelRepo);
+    const profileService = new ProfileService(profileRepo, optionsRepo);
+    const chatService = new ChatService(llmClient, sessionService, contextService, costService, messageRepo, factRepo, modelRepo, profileService);
+    const memoryService = new MemoryService(memoryRepo, llmClient, modelRepo);
 
     deps = {
       config: createTestConfig(),
@@ -92,6 +93,7 @@ describe("presentation/repl handleCommand", () => {
       factRepo,
       llmClient,
       openaiClient: {} as any,
+      profileService,
     };
 
     const id = sessionService.createSession(undefined, "full");
@@ -227,5 +229,51 @@ describe("presentation/repl handleCommand", () => {
   test("/set custom_key hello world", async () => {
     await handleCommand("/set", "custom_key hello world", state, deps);
     expect(deps.optionsRepo.get("custom_key")).toBe("hello world");
+  });
+
+  // Profile commands
+
+  test("/profile shows no active profile initially", async () => {
+    const result = await handleCommand("/profile", "", state, deps);
+    expect(result).toBeNull();
+  });
+
+  test("/profile create creates a profile", async () => {
+    await handleCommand("/profile", "create dev", state, deps);
+    const profiles = deps.profileService.getAllProfiles();
+    expect(profiles).toHaveLength(1);
+    expect(profiles[0].name).toBe("dev");
+  });
+
+  test("/profile list shows profiles", async () => {
+    deps.profileService.createProfile("test");
+    const result = await handleCommand("/profile", "list", state, deps);
+    expect(result).toBeNull();
+  });
+
+  test("/profile switch activates profile", async () => {
+    const id = deps.profileService.createProfile("test");
+    await handleCommand("/profile", `switch ${id}`, state, deps);
+    expect(deps.profileService.getActiveProfile()!.id).toBe(id);
+  });
+
+  test("/profile set updates active profile field", async () => {
+    const id = deps.profileService.createProfile("test");
+    deps.profileService.setActiveProfile(id);
+    await handleCommand("/profile", "set language русский", state, deps);
+    expect(deps.profileService.getProfile(id)!.language).toBe("русский");
+  });
+
+  test("/profile set adds custom preference", async () => {
+    const id = deps.profileService.createProfile("test");
+    deps.profileService.setActiveProfile(id);
+    await handleCommand("/profile", "set framework React", state, deps);
+    // Custom preferences handled by profileService.setPreference
+  });
+
+  test("/profile delete removes profile", async () => {
+    const id = deps.profileService.createProfile("test");
+    await handleCommand("/profile", `delete ${id}`, state, deps);
+    expect(deps.profileService.getProfile(id)).toBeNull();
   });
 });

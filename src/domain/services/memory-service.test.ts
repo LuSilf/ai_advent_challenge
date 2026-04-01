@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 import { MemoryService } from "./memory-service";
-import type { MemoryStore, MemoryType } from "../ports/memory-store";
+import type { MemoryRepository, MemoryType } from "../ports/memory-repository";
 import type { LLMClient, StreamEvent } from "../ports/llm-client";
 import type { ModelRepository } from "../ports/model-repository";
 import type { LLMRequest, LLMResponse, Model } from "../models";
@@ -13,7 +13,7 @@ const testModel: Model = {
   contextSize: 100_000,
 };
 
-function createMockMemoryStore(): MemoryStore & { data: Record<MemoryType, string> } {
+function createMockMemoryRepo(): MemoryRepository & { data: Record<MemoryType, string> } {
   const data: Record<MemoryType, string> = { longterm: "", working: "" };
   return {
     data,
@@ -22,7 +22,7 @@ function createMockMemoryStore(): MemoryStore & { data: Record<MemoryType, strin
     append: (type, content) => {
       data[type] = data[type] ? data[type] + "\n\n---\n\n" + content : content;
     },
-    getPath: (type) => type === "longterm" ? "/mock/memory.md" : "/mock/.ai/memory.md",
+    clear: (type) => { data[type] = ""; },
   };
 }
 
@@ -49,11 +49,11 @@ function createMockModelRepo(): ModelRepository {
 
 describe("MemoryService", () => {
   let service: MemoryService;
-  let memoryStore: ReturnType<typeof createMockMemoryStore>;
+  let memoryRepo: ReturnType<typeof createMockMemoryRepo>;
   let modelRepo: ModelRepository;
 
   beforeEach(() => {
-    memoryStore = createMockMemoryStore();
+    memoryRepo = createMockMemoryRepo();
     modelRepo = createMockModelRepo();
   });
 
@@ -61,7 +61,7 @@ describe("MemoryService", () => {
     const llmClient = createMockLLMClient(
       '{"updated_memory": "# Факты\\n- язык: TypeScript", "changes_summary": "добавлен язык"}'
     );
-    service = new MemoryService(memoryStore, llmClient, modelRepo);
+    service = new MemoryService(memoryRepo, llmClient, modelRepo);
 
     const result = await service.reconcile("working", "Пишем на TypeScript");
     expect(result.updatedMemory).toContain("TypeScript");
@@ -71,11 +71,11 @@ describe("MemoryService", () => {
   });
 
   test("reconcile with existing memory updates it", async () => {
-    memoryStore.data.working = "# Старые факты\n- старый факт";
+    memoryRepo.data.working = "# Старые факты\n- старый факт";
     const llmClient = createMockLLMClient(
       '{"updated_memory": "# Обновлённые факты\\n- старый факт\\n- новый факт", "changes_summary": "добавлен новый факт"}'
     );
-    service = new MemoryService(memoryStore, llmClient, modelRepo);
+    service = new MemoryService(memoryRepo, llmClient, modelRepo);
 
     const result = await service.reconcile("working", "Новый контент");
     expect(result.updatedMemory).toContain("новый факт");
@@ -84,7 +84,7 @@ describe("MemoryService", () => {
 
   test("reconcile returns empty when no changes", async () => {
     const llmClient = createMockLLMClient('{"updated_memory": "", "changes_summary": ""}');
-    service = new MemoryService(memoryStore, llmClient, modelRepo);
+    service = new MemoryService(memoryRepo, llmClient, modelRepo);
 
     const result = await service.reconcile("working", "тривиальный контент");
     expect(result.updatedMemory).toBe("");
@@ -92,9 +92,9 @@ describe("MemoryService", () => {
   });
 
   test("getMemoryBlocks combines longterm and working", () => {
-    memoryStore.data.longterm = "глобальные факты";
-    memoryStore.data.working = "проектные факты";
-    service = new MemoryService(memoryStore, createMockLLMClient("{}"), modelRepo);
+    memoryRepo.data.longterm = "глобальные факты";
+    memoryRepo.data.working = "проектные факты";
+    service = new MemoryService(memoryRepo, createMockLLMClient("{}"), modelRepo);
 
     const blocks = service.getMemoryBlocks();
     expect(blocks).toContain("Долговременная память");
@@ -104,50 +104,44 @@ describe("MemoryService", () => {
   });
 
   test("getMemoryBlocks returns empty string when no memory", () => {
-    service = new MemoryService(memoryStore, createMockLLMClient("{}"), modelRepo);
+    service = new MemoryService(memoryRepo, createMockLLMClient("{}"), modelRepo);
     expect(service.getMemoryBlocks()).toBe("");
   });
 
   test("readMemory returns content for type", () => {
-    memoryStore.data.longterm = "some memory";
-    service = new MemoryService(memoryStore, createMockLLMClient("{}"), modelRepo);
+    memoryRepo.data.longterm = "some memory";
+    service = new MemoryService(memoryRepo, createMockLLMClient("{}"), modelRepo);
     expect(service.readMemory("longterm")).toBe("some memory");
   });
 
   test("writeMemory writes content", () => {
-    service = new MemoryService(memoryStore, createMockLLMClient("{}"), modelRepo);
+    service = new MemoryService(memoryRepo, createMockLLMClient("{}"), modelRepo);
     service.writeMemory("working", "new content");
-    expect(memoryStore.data.working).toBe("new content");
+    expect(memoryRepo.data.working).toBe("new content");
   });
 
   test("appendMemory appends content", () => {
-    memoryStore.data.longterm = "existing";
-    service = new MemoryService(memoryStore, createMockLLMClient("{}"), modelRepo);
+    memoryRepo.data.longterm = "existing";
+    service = new MemoryService(memoryRepo, createMockLLMClient("{}"), modelRepo);
     service.appendMemory("longterm", "new");
-    expect(memoryStore.data.longterm).toContain("existing");
-    expect(memoryStore.data.longterm).toContain("new");
-  });
-
-  test("getMemoryPath returns path from store", () => {
-    service = new MemoryService(memoryStore, createMockLLMClient("{}"), modelRepo);
-    expect(service.getMemoryPath("longterm")).toBe("/mock/memory.md");
-    expect(service.getMemoryPath("working")).toBe("/mock/.ai/memory.md");
+    expect(memoryRepo.data.longterm).toContain("existing");
+    expect(memoryRepo.data.longterm).toContain("new");
   });
 
   test("getFactsModel returns facts model", () => {
-    service = new MemoryService(memoryStore, createMockLLMClient("{}"), modelRepo);
+    service = new MemoryService(memoryRepo, createMockLLMClient("{}"), modelRepo);
     expect(service.getFactsModel()).toBe(testModel);
   });
 
   test("checkShouldReconcile returns true at interval", () => {
-    service = new MemoryService(memoryStore, createMockLLMClient("{}"), modelRepo);
+    service = new MemoryService(memoryRepo, createMockLLMClient("{}"), modelRepo);
     expect(service.checkShouldReconcile(3, 5)).toBe(false);
     expect(service.checkShouldReconcile(5, 5)).toBe(true);
     expect(service.checkShouldReconcile(10, 5)).toBe(true);
   });
 
   test("checkShouldReconcile returns false when interval is 0", () => {
-    service = new MemoryService(memoryStore, createMockLLMClient("{}"), modelRepo);
+    service = new MemoryService(memoryRepo, createMockLLMClient("{}"), modelRepo);
     expect(service.checkShouldReconcile(100, 0)).toBe(false);
   });
 });

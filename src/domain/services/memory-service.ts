@@ -1,6 +1,6 @@
 import type { LLMRequest, LLMResponse, Model } from "../models";
 import type { LLMClient } from "../ports/llm-client";
-import type { MemoryStore, MemoryType } from "../ports/memory-store";
+import type { MemoryRepository, MemoryType } from "../ports/memory-repository";
 import type { ModelRepository } from "../ports/model-repository";
 
 export type ReconciliationResult = {
@@ -41,13 +41,13 @@ const EXTRACTION_PROMPT = `Ты — помощник по управлению �
 
 export class MemoryService {
   constructor(
-    private readonly memoryStore: MemoryStore,
+    private readonly memoryRepo: MemoryRepository,
     private readonly llmClient: LLMClient,
     private readonly modelRepo: ModelRepository,
   ) {}
 
   async reconcile(type: MemoryType, newContent: string): Promise<ReconciliationResult> {
-    const currentMemory = this.memoryStore.read(type);
+    const currentMemory = this.memoryRepo.read(type);
     const factsModel = this.modelRepo.getRole("facts");
     const modelId = factsModel?.id ?? "openai/gpt-5-nano";
 
@@ -84,12 +84,12 @@ export class MemoryService {
   getMemoryBlocks(): string {
     const parts: string[] = [];
 
-    const longTerm = this.memoryStore.read("longterm");
+    const longTerm = this.memoryRepo.read("longterm");
     if (longTerm) {
       parts.push(`[Долговременная память]\n${longTerm}`);
     }
 
-    const working = this.memoryStore.read("working");
+    const working = this.memoryRepo.read("working");
     if (working) {
       parts.push(`[Рабочая память проекта]\n${working}`);
     }
@@ -98,19 +98,15 @@ export class MemoryService {
   }
 
   readMemory(type: MemoryType): string {
-    return this.memoryStore.read(type);
+    return this.memoryRepo.read(type);
   }
 
   writeMemory(type: MemoryType, content: string): void {
-    this.memoryStore.write(type, content);
+    this.memoryRepo.write(type, content);
   }
 
   appendMemory(type: MemoryType, content: string): void {
-    this.memoryStore.append(type, content);
-  }
-
-  getMemoryPath(type: MemoryType): string {
-    return this.memoryStore.getPath(type);
+    this.memoryRepo.append(type, content);
   }
 
   getFactsModel(): Model | null {

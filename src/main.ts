@@ -1,6 +1,4 @@
 import OpenAI from "openai";
-import { resolve } from "node:path";
-import { homedir } from "node:os";
 
 import { loadConfig, applyDbOptions } from "./config";
 import { initDb } from "./db";
@@ -12,7 +10,8 @@ import { SqliteFactRepository } from "./storage/sqlite/fact-repository";
 import { SqliteModelRepository } from "./storage/sqlite/model-repository";
 import { SqliteOptionsRepository } from "./storage/sqlite/options-repository";
 import { SqliteCheckpointRepository } from "./storage/sqlite/checkpoint-repository";
-import { FileMemoryStore } from "./storage/file/memory-store";
+import { SqliteProfileRepository } from "./storage/sqlite/profile-repository";
+import { SqliteMemoryRepository } from "./storage/sqlite/memory-repository";
 
 // API
 import { OpenAILLMClient } from "./api/openai/llm-client";
@@ -23,6 +22,7 @@ import { ContextService } from "./domain/services/context-service";
 import { CostService } from "./domain/services/cost-service";
 import { ChatService } from "./domain/services/chat-service";
 import { MemoryService } from "./domain/services/memory-service";
+import { ProfileService } from "./domain/services/profile-service";
 
 // Presentation
 import { startRepl } from "./presentation/repl";
@@ -53,12 +53,8 @@ const messageRepo = new SqliteMessageRepository();
 const factRepo = new SqliteFactRepository();
 const modelRepo = new SqliteModelRepository();
 const checkpointRepo = new SqliteCheckpointRepository();
-
-const memoryDir = process.env.MEMORY_DIR || resolve(homedir(), ".config/ai_challenge_agent");
-const memoryStore = new FileMemoryStore(
-  resolve(memoryDir, "memory.md"),
-  resolve(process.cwd(), ".ai/memory.md"),
-);
+const profileRepo = new SqliteProfileRepository();
+const memoryRepo = new SqliteMemoryRepository();
 
 // --- API layer ---
 const llmClient = new OpenAILLMClient(openaiClient);
@@ -67,6 +63,7 @@ const llmClient = new OpenAILLMClient(openaiClient);
 const sessionService = new SessionService(sessionRepo, messageRepo);
 const contextService = new ContextService();
 const costService = new CostService(modelRepo);
+const profileService = new ProfileService(profileRepo, optionsRepo);
 const chatService = new ChatService(
   llmClient,
   sessionService,
@@ -75,8 +72,9 @@ const chatService = new ChatService(
   messageRepo,
   factRepo,
   modelRepo,
+  profileService,
 );
-const memoryService = new MemoryService(memoryStore, llmClient, modelRepo);
+const memoryService = new MemoryService(memoryRepo, llmClient, modelRepo);
 
 // --- Run ---
 if (!config.prompt) {
@@ -94,6 +92,7 @@ if (!config.prompt) {
     factRepo,
     llmClient,
     openaiClient,
+    profileService,
   });
 } else {
   // Single-shot mode
