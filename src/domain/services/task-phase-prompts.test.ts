@@ -20,20 +20,20 @@ function makeTask(overrides: Partial<Task> = {}): Task {
 
 describe("TaskPhasePrompts", () => {
   describe("buildPhasePrompt", () => {
-    test("planning промпт содержит название задачи", () => {
+    test("planning промпт содержит название задачи и фазу", () => {
       const prompt = TaskPhasePrompts.buildPhasePrompt(makeTask());
       expect(prompt).toContain("Реализовать фичу");
-      expect(prompt).toContain("ПЛАНИРОВАНИЯ");
+      expect(prompt).toContain("ПЛАНИРОВАНИЕ");
     });
 
     test("execution промпт содержит фазу выполнения", () => {
       const prompt = TaskPhasePrompts.buildPhasePrompt(makeTask({ phase: "execution" }));
-      expect(prompt).toContain("ВЫПОЛНЕНИЯ");
+      expect(prompt).toContain("ВЫПОЛНЕНИЕ");
     });
 
     test("validation промпт содержит фазу проверки", () => {
       const prompt = TaskPhasePrompts.buildPhasePrompt(makeTask({ phase: "validation" }));
-      expect(prompt).toContain("ПРОВЕРКИ");
+      expect(prompt).toContain("ПРОВЕРКА");
     });
 
     test("промпт включает currentStep если задан", () => {

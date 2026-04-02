@@ -19,7 +19,7 @@ describe("SqliteOptionsRepository", () => {
   });
 
   test("get returns default memory_interval", () => {
-    expect(repo.get("memory_interval")).toBe("5");
+    expect(repo.get("memory_interval")).toBe("15");
   });
 
   test("get returns null for unknown key", () => {

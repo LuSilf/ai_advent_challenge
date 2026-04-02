@@ -183,7 +183,7 @@ export function initDb(dbPath: string): void {
 
   // Дефолтные опции
   const defaultOptions: { key: string; value: string }[] = [
-    { key: "memory_interval", value: "5" },
+    { key: "memory_interval", value: "15" },
     { key: "system_prompt", value: "Отвечай кратко и по делу" },
     { key: "temperature", value: "0.3" },
     { key: "top_p", value: "" },

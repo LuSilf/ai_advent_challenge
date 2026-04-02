@@ -144,7 +144,7 @@ describe("/options", () => {
     const result = await handleCommand("/options", "", state, makeConfig());
     expect(result).toBeNull();
     // Default memory_interval should be set
-    expect(getOption("memory_interval")).toBe("5");
+    expect(getOption("memory_interval")).toBe("15");
   });
 });
 

@@ -391,7 +391,7 @@ describe("options", () => {
   beforeEach(() => { freshDb(); });
 
   test("default memory_interval is 5", () => {
-    expect(getOption("memory_interval")).toBe("5");
+    expect(getOption("memory_interval")).toBe("15");
   });
 
   test("getOption returns null for unknown key", () => {
