@@ -335,6 +335,21 @@ describe("presentation/repl handleCommand", () => {
     expect(tasks[0].phase).toBe("cancelled");
   });
 
+  test("/task done завершает задачу из любой фазы", async () => {
+    deps.taskService.createTask(state.sessionId, "Задача");
+    await handleCommand("/task", "done", state, deps);
+    const tasks = deps.taskService.getSessionTasks(state.sessionId);
+    expect(tasks[0].phase).toBe("done");
+  });
+
+  test("/task done из execution проходит через validation", async () => {
+    const task = deps.taskService.createTask(state.sessionId, "Задача");
+    deps.taskService.transition(task.id, "execution");
+    await handleCommand("/task", "done", state, deps);
+    const tasks = deps.taskService.getSessionTasks(state.sessionId);
+    expect(tasks[0].phase).toBe("done");
+  });
+
   test("/task cancel без активной задачи показывает ошибку", async () => {
     const result = await handleCommand("/task", "cancel", state, deps);
     expect(result).toBeNull();

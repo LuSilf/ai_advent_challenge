@@ -127,6 +127,7 @@ function printHelp(): void {
   console.log("  /task list         Список задач в сессии");
   console.log("  /task pause        Приостановить текущую задачу");
   console.log("  /task cancel       Отменить текущую задачу");
+  console.log("  /task done         Завершить текущую задачу");
   console.log("  /task switch       Переключиться на другую задачу");
   console.log(pc.bold("Настройки:"));
   console.log("  /options          Показать все настройки");
@@ -835,6 +836,23 @@ export async function handleCommand(
           }
           return null;
         }
+        case "done": {
+          const active = taskService.getActiveTask(state.sessionId);
+          if (!active) {
+            console.log(pc.red("Нет активной задачи"));
+            return null;
+          }
+          // Принудительный переход к done — проходим через промежуточные фазы если нужно
+          let current = active.phase;
+          const path: Record<string, string> = { planning: "execution", execution: "validation", validation: "done" };
+          while (current !== "done" && path[current]) {
+            const next = path[current];
+            taskService.transition(active.id, next as any);
+            current = next;
+          }
+          console.log(pc.green(`Задача #${active.id} "${active.title}" завершена`));
+          return null;
+        }
         case "switch": {
           const tasks = taskService.getSessionTasks(state.sessionId);
           const pausedTasks = tasks.filter((t) => t.phase === "paused");
@@ -1106,32 +1124,6 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
       // Обработка маркеров задач в ответе
       if (result.response.content && activeTask) {
         let taskUpdate = TaskPhasePrompts.parseTaskUpdate(result.response.content);
-
-        // Если LLM не сгенерировал переход — запускаем отдельный "судейский" вызов
-        const llmSummary = taskUpdate?.summary;
-        if (!taskUpdate?.transition || taskUpdate.transition === activeTask.phase) {
-          try {
-            const judgePrompt = TaskPhasePrompts.buildJudgePrompt(activeTask, text, result.response.content);
-            const judgeResult = await deps.llmClient.send({
-              messages: [{ id: 0, sessionId: 0, role: "user", content: judgePrompt, createdAt: "" }],
-              instructions: "Ответь СТРОГО одной строкой: PHASE: фаза | SUMMARY: резюме",
-              model: result.model.id,
-              params: { temperature: 0, maxCompletionTokens: 150 },
-            });
-            if (judgeResult.content) {
-              const judgeUpdate = TaskPhasePrompts.parseJudgeResponse(judgeResult.content);
-              if (judgeUpdate) {
-                // Судья определяет переход, но summary берём от LLM если он есть
-                taskUpdate = {
-                  transition: judgeUpdate.transition,
-                  summary: llmSummary ?? judgeUpdate.summary,
-                };
-              }
-            }
-          } catch {
-            // Если судья упал — продолжаем без обновления
-          }
-        }
 
         if (taskUpdate) {
           // Проверяем transition — если совпадает с текущей фазой, это не переход
