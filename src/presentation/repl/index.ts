@@ -966,7 +966,7 @@ async function generateTitle(
 }
 
 export async function startRepl(deps: ReplDeps): Promise<void> {
-  const { config, sessionService, chatService, memoryService, costService, modelRepo, optionsRepo, openaiClient } = deps;
+  const { config, sessionService, chatService, memoryService, costService, modelRepo, optionsRepo, openaiClient, taskService } = deps;
   const state = { sessionId: 0, messagesSinceReconciliation: 0 };
 
   const lastSession = sessionService.getLastSession();
@@ -1042,6 +1042,10 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
         systemPrompt = `${TaskPhasePrompts.buildAutoDetectPrompt()}\n\n${systemPrompt}`;
       }
 
+      // Буфер для перехвата маркеров задач при стриминге
+      let streamBuffer = "";
+      const MARKER_PREFIX = "<!--task-";
+
       const result = await chatService.sendMessage(state.sessionId, text, {
         historyLimit: config.historyLimit,
         systemPrompt,
@@ -1052,11 +1056,36 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
         maxCompletionTokens: config.maxCompletionTokens,
         reasoningEffort: config.reasoningEffort,
         reasoningSummary: config.reasoningSummary,
-        onDelta: (delta) => process.stdout.write(delta),
+        onDelta: (delta) => {
+          streamBuffer += delta;
+          // Если буфер содержит начало маркера — задерживаем вывод
+          const markerIdx = streamBuffer.lastIndexOf("<!--");
+          if (markerIdx !== -1 && !streamBuffer.includes("-->", markerIdx)) {
+            // Выводим всё до маркера
+            const safe = streamBuffer.slice(0, markerIdx);
+            if (safe) process.stdout.write(safe);
+            streamBuffer = streamBuffer.slice(markerIdx);
+          } else if (streamBuffer.includes("-->")) {
+            // Маркер завершён — выводим текст без маркера
+            const clean = TaskPhasePrompts.stripTaskMarkers(streamBuffer);
+            if (clean) process.stdout.write(clean);
+            streamBuffer = "";
+          } else {
+            // Нет маркера — выводим всё
+            process.stdout.write(streamBuffer);
+            streamBuffer = "";
+          }
+        },
       });
 
+      // Дописываем остаток буфера (если маркер не завершился)
+      if (streamBuffer) {
+        const clean = TaskPhasePrompts.stripTaskMarkers(streamBuffer);
+        if (clean) process.stdout.write(clean);
+      }
+
       if (!config.useStreaming) {
-        process.stdout.write(result.response.content);
+        process.stdout.write(TaskPhasePrompts.stripTaskMarkers(result.response.content));
       }
 
       process.stdout.write("\n");
