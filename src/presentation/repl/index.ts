@@ -1110,27 +1110,49 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
 
       // Обработка маркеров задач в ответе
       if (result.response.content && activeTask) {
-        const taskUpdate = TaskPhasePrompts.parseTaskUpdate(result.response.content);
+        let taskUpdate = TaskPhasePrompts.parseTaskUpdate(result.response.content);
+
+        // Если LLM не сгенерировал маркеры — запускаем отдельный "судейский" вызов
+        if (!taskUpdate) {
+          try {
+            const judgePrompt = TaskPhasePrompts.buildJudgePrompt(activeTask, text, result.response.content);
+            const judgeResult = await deps.llmClient.send({
+              messages: [{ id: 0, sessionId: 0, role: "user", content: judgePrompt, createdAt: "" }],
+              instructions: "Ты судья задачи. Ответь СТРОГО одной строкой в формате: PHASE: фаза | STEP: шаг | SUMMARY: резюме",
+              model: result.model.id,
+              params: { temperature: 0, maxCompletionTokens: 150 },
+            });
+            if (judgeResult.content) {
+              taskUpdate = TaskPhasePrompts.parseJudgeResponse(judgeResult.content);
+            }
+          } catch {
+            // Если судья упал — не критично, продолжаем без обновления
+          }
+        }
+
         if (taskUpdate) {
-          if (taskUpdate.transition) {
-            const ok = taskService.transition(activeTask.id, taskUpdate.transition);
+          // Проверяем transition — если совпадает с текущей фазой, это не переход
+          const isRealTransition = taskUpdate.transition && taskUpdate.transition !== activeTask.phase;
+
+          if (isRealTransition) {
+            const ok = taskService.transition(activeTask.id, taskUpdate.transition!);
             if (ok) {
               console.log(pc.cyan(`[Задача "${activeTask.title}"] → ${taskUpdate.transition}`));
             } else {
               console.log(pc.red(`[Задача] Невалидный переход: ${activeTask.phase} → ${taskUpdate.transition}`));
             }
           }
-          if (taskUpdate.currentStep || taskUpdate.expectedAction) {
+          if (taskUpdate.currentStep) {
             taskService.updateStep(
               activeTask.id,
-              taskUpdate.currentStep ?? "",
+              taskUpdate.currentStep,
               taskUpdate.expectedAction ?? "",
             );
           }
           if (taskUpdate.summary) {
             taskService.updateSummary(activeTask.id, taskUpdate.summary);
           }
-          // Перезаписываем content в результате, убирая маркер
+          // Убираем маркеры из вывода
           result.response.content = TaskPhasePrompts.stripTaskMarkers(result.response.content);
         }
       }

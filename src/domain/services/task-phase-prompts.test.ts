@@ -161,4 +161,36 @@ describe("TaskPhasePrompts", () => {
       expect(TaskPhasePrompts.parseTaskDetect("Обычный ответ")).toBeNull();
     });
   });
+
+  describe("parseJudgeResponse", () => {
+    test("парсит корректный ответ судьи", () => {
+      const text = "PHASE: execution | STEP: реализация функции | SUMMARY: план подтверждён, начинаем кодить";
+      const result = TaskPhasePrompts.parseJudgeResponse(text);
+      expect(result).not.toBeNull();
+      expect(result!.transition).toBe("execution");
+      expect(result!.currentStep).toBe("реализация функции");
+      expect(result!.summary).toBe("план подтверждён, начинаем кодить");
+    });
+
+    test("парсит ответ без перехода (та же фаза)", () => {
+      const text = "PHASE: planning | STEP: уточнение требований | SUMMARY: ждём ответы на вопросы";
+      const result = TaskPhasePrompts.parseJudgeResponse(text);
+      expect(result).not.toBeNull();
+      expect(result!.transition).toBe("planning");
+      expect(result!.currentStep).toBe("уточнение требований");
+    });
+
+    test("возвращает null для невалидного ответа", () => {
+      expect(TaskPhasePrompts.parseJudgeResponse("Не могу определить фазу")).toBeNull();
+      expect(TaskPhasePrompts.parseJudgeResponse("")).toBeNull();
+    });
+
+    test("buildJudgePrompt содержит контекст задачи", () => {
+      const task = makeTask({ phase: "planning" });
+      const prompt = TaskPhasePrompts.buildJudgePrompt(task, "Да, ок давай", "Отлично, приступаю...");
+      expect(prompt).toContain("Реализовать фичу");
+      expect(prompt).toContain("planning");
+      expect(prompt).toContain("Да, ок давай");
+    });
+  });
 });

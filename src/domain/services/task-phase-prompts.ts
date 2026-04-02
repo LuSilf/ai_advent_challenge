@@ -129,6 +129,51 @@ ${stepInfo}
     return `[Система: задача "${task.title}", фаза: ${task.phase}. ${phaseHint[task.phase] ?? ""}]`;
   }
 
+  /**
+   * Промпт для отдельного LLM-вызова — "судья" определяет состояние задачи
+   * по последнему обмену сообщениями.
+   */
+  static buildJudgePrompt(task: Task, userMessage: string, assistantResponse: string): string {
+    return `Ты судья задачи. Проанализируй диалог и определи текущее состояние задачи.
+
+Задача: "${task.title}"
+Текущая фаза: ${task.phase}
+
+Допустимые переходы:
+- planning → execution (план подтверждён пользователем)
+- execution → validation (код полностью написан)
+- execution → planning (нужно переосмыслить подход)
+- validation → done (пользователь подтвердил результат)
+- validation → execution (найдены баги или нужны изменения)
+
+Последнее сообщение пользователя:
+${userMessage}
+
+Ответ ассистента:
+${assistantResponse.slice(0, 500)}
+
+Ответь СТРОГО в формате (одна строка, ничего больше):
+PHASE: ${task.phase} | STEP: описание шага | SUMMARY: краткое резюме
+
+Если нужен переход фазы, замени ${task.phase} на новую фазу.
+Если переход НЕ нужен, оставь текущую фазу.`;
+  }
+
+  /**
+   * Парсит ответ судьи.
+   */
+  static parseJudgeResponse(text: string): TaskUpdateMarker | null {
+    const match = text.match(/PHASE:\s*(planning|execution|validation|done)\s*\|\s*STEP:\s*(.+?)\s*\|\s*SUMMARY:\s*(.+)/i);
+    if (!match) return null;
+
+    return {
+      transition: match[1].toLowerCase() as TaskPhase,
+      currentStep: match[2].trim(),
+      expectedAction: null,
+      summary: match[3].trim(),
+    };
+  }
+
   static stripTaskMarkers(text: string): string {
     return text
       .replace(/\n?<!--task-(update|detect)\n[\s\S]*?-->/g, "")
