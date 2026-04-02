@@ -1003,6 +1003,8 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
         if (phasePrompt) {
           systemPrompt = `${phasePrompt}\n\n${systemPrompt}`;
         }
+      } else {
+        systemPrompt = `${TaskPhasePrompts.buildAutoDetectPrompt()}\n\n${systemPrompt}`;
       }
 
       const result = await chatService.sendMessage(state.sessionId, text, {
@@ -1059,6 +1061,21 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
             taskService.updateSummary(activeTask.id, taskUpdate.summary);
           }
           // Перезаписываем content в результате, убирая маркер
+          result.response.content = TaskPhasePrompts.stripTaskMarkers(result.response.content);
+        }
+      }
+
+      // Автодетект новой задачи
+      if (result.response.content && !activeTask) {
+        const taskDetect = TaskPhasePrompts.parseTaskDetect(result.response.content);
+        if (taskDetect && rl) {
+          result.response.content = TaskPhasePrompts.stripTaskMarkers(result.response.content);
+          const answer = await askUserChoice(rl, pc.yellow(`\nСоздать задачу "${taskDetect.title}"? [д/н]: `));
+          if (answer === "д" || answer === "да" || answer === "y" || answer === "yes") {
+            const task = taskService.createTask(state.sessionId, taskDetect.title);
+            console.log(pc.green(`Создана задача #${task.id}: "${task.title}" [${task.phase}]`));
+          }
+        } else if (taskDetect) {
           result.response.content = TaskPhasePrompts.stripTaskMarkers(result.response.content);
         }
       }
