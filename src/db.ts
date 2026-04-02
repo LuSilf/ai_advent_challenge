@@ -121,6 +121,19 @@ export function initDb(dbPath: string): void {
       UNIQUE(profile_id, key)
     );
 
+    CREATE TABLE IF NOT EXISTS tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      phase TEXT NOT NULL DEFAULT 'planning' CHECK (phase IN ('planning', 'execution', 'validation', 'done', 'paused', 'cancelled')),
+      previous_phase TEXT CHECK (previous_phase IN ('planning', 'execution', 'validation') OR previous_phase IS NULL),
+      current_step TEXT,
+      expected_action TEXT,
+      summary TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS long_term_memories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       content TEXT NOT NULL,

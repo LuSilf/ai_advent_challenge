@@ -77,6 +77,21 @@ export type ProfilePreference = {
   value: string;
 };
 
+export type TaskPhase = "planning" | "execution" | "validation" | "done" | "paused" | "cancelled";
+
+export type Task = {
+  id: number;
+  sessionId: number;
+  title: string;
+  phase: TaskPhase;
+  previousPhase: TaskPhase | null;
+  currentStep: string | null;
+  expectedAction: string | null;
+  summary: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type GenerationParams = {
   temperature?: number;
   topP?: number;
