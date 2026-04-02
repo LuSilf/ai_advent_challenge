@@ -20,6 +20,7 @@ export type SendMessageOptions = {
   reasoningSummary?: string;
   onDelta?: (text: string) => void;
   onReasoningSummary?: (text: string) => void;
+  userPromptSuffix?: string;
 };
 
 export type SendMessageResult = {
@@ -78,9 +79,13 @@ export class ChatService {
     }
 
     // Добавляем текущее сообщение пользователя в контекст
+    // userPromptSuffix добавляется к сообщению для LLM, но НЕ сохраняется в БД
+    const llmUserContent = options.userPromptSuffix
+      ? `${userPrompt}\n\n${options.userPromptSuffix}`
+      : userPrompt;
     const allMessages = [
       ...context.messages,
-      { id: 0, sessionId, role: "user" as const, content: userPrompt, createdAt: "" },
+      { id: 0, sessionId, role: "user" as const, content: llmUserContent, createdAt: "" },
     ];
 
     // Build LLM request

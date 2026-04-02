@@ -1046,11 +1046,17 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
       let streamBuffer = "";
       const MARKER_PREFIX = "<!--task-";
 
+      // Напоминание о маркере в user-сообщении (не сохраняется в БД)
+      const taskReminder = activeTask
+        ? TaskPhasePrompts.buildTaskReminder(activeTask)
+        : undefined;
+
       const result = await chatService.sendMessage(state.sessionId, text, {
         historyLimit: config.historyLimit,
         systemPrompt,
         useStreaming: config.useStreaming,
         memoryBlocks: memoryService.getMemoryBlocks() || undefined,
+        userPromptSuffix: taskReminder,
         temperature: config.temperature,
         topP: config.topP,
         maxCompletionTokens: config.maxCompletionTokens,

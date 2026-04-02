@@ -52,14 +52,15 @@ describe("TaskPhasePrompts", () => {
       expect(TaskPhasePrompts.buildPhasePrompt(makeTask({ phase: "cancelled" }))).toBeNull();
     });
 
-    test("промпт содержит инструкцию о маркере task-update", () => {
+    test("промпт содержит инструкцию о маркерах", () => {
       const prompt = TaskPhasePrompts.buildPhasePrompt(makeTask());
-      expect(prompt).toContain("task-update");
+      expect(prompt).toContain("SUMMARY");
+      expect(prompt).toContain("TRANSITION");
     });
   });
 
   describe("parseTaskUpdate", () => {
-    test("парсит маркер с transition", () => {
+    test("парсит JSON маркер с transition", () => {
       const text = `Отлично, план готов!\n<!--task-update\n{"transition": "execution", "currentStep": "Реализация API", "expectedAction": "Написать endpoint", "summary": "План согласован"}\n-->`;
       const result = TaskPhasePrompts.parseTaskUpdate(text);
       expect(result).not.toBeNull();
@@ -69,7 +70,7 @@ describe("TaskPhasePrompts", () => {
       expect(result!.summary).toBe("План согласован");
     });
 
-    test("парсит маркер без transition (null)", () => {
+    test("парсит JSON маркер без transition (null)", () => {
       const text = `Работаем...\n<!--task-update\n{"transition": null, "currentStep": "Шаг 2", "expectedAction": "Тестировать", "summary": "Шаг 1 завершён"}\n-->`;
       const result = TaskPhasePrompts.parseTaskUpdate(text);
       expect(result).not.toBeNull();
@@ -77,25 +78,54 @@ describe("TaskPhasePrompts", () => {
       expect(result!.currentStep).toBe("Шаг 2");
     });
 
+    test("парсит простой текстовый маркер [TRANSITION: ...]", () => {
+      const text = `Код готов!\n[TRANSITION: validation]\n[STEP: проверка кода]\n[SUMMARY: реализация завершена]`;
+      const result = TaskPhasePrompts.parseTaskUpdate(text);
+      expect(result).not.toBeNull();
+      expect(result!.transition).toBe("validation");
+      expect(result!.currentStep).toBe("проверка кода");
+      expect(result!.summary).toBe("реализация завершена");
+    });
+
+    test("парсит простой маркер только с SUMMARY (без transition)", () => {
+      const text = `Уточняю вопросы...\n[SUMMARY: ожидаем ответы пользователя]`;
+      const result = TaskPhasePrompts.parseTaskUpdate(text);
+      expect(result).not.toBeNull();
+      expect(result!.transition).toBeNull();
+      expect(result!.summary).toBe("ожидаем ответы пользователя");
+    });
+
     test("возвращает null если маркера нет", () => {
       expect(TaskPhasePrompts.parseTaskUpdate("Просто текст")).toBeNull();
     });
 
-    test("парсит маркер с невалидным JSON", () => {
+    test("парсит маркер с невалидным JSON и без простых маркеров", () => {
       const text = `text\n<!--task-update\n{invalid}\n-->`;
       expect(TaskPhasePrompts.parseTaskUpdate(text)).toBeNull();
     });
   });
 
   describe("stripTaskMarkers", () => {
-    test("удаляет маркер task-update из текста", () => {
+    test("удаляет JSON маркер task-update из текста", () => {
       const text = `Ответ\n<!--task-update\n{"transition": "execution"}\n-->`;
       const clean = TaskPhasePrompts.stripTaskMarkers(text);
       expect(clean).toBe("Ответ");
     });
 
-    test("удаляет маркер task-detect из текста", () => {
+    test("удаляет JSON маркер task-detect из текста", () => {
       const text = `Ответ\n<!--task-detect\n{"title": "Новая задача"}\n-->`;
+      const clean = TaskPhasePrompts.stripTaskMarkers(text);
+      expect(clean).toBe("Ответ");
+    });
+
+    test("удаляет простые текстовые маркеры", () => {
+      const text = `Ответ\n[TRANSITION: execution]\n[STEP: шаг 1]\n[SUMMARY: резюме]`;
+      const clean = TaskPhasePrompts.stripTaskMarkers(text);
+      expect(clean).toBe("Ответ");
+    });
+
+    test("удаляет маркер TASK-DETECT", () => {
+      const text = `Ответ\n[TASK-DETECT: Новая задача]`;
       const clean = TaskPhasePrompts.stripTaskMarkers(text);
       expect(clean).toBe("Ответ");
     });
@@ -108,16 +138,23 @@ describe("TaskPhasePrompts", () => {
   describe("buildAutoDetectPrompt", () => {
     test("возвращает промпт автодетекта", () => {
       const prompt = TaskPhasePrompts.buildAutoDetectPrompt();
-      expect(prompt).toContain("task-detect");
+      expect(prompt).toContain("TASK-DETECT");
     });
   });
 
   describe("parseTaskDetect", () => {
-    test("парсит маркер task-detect", () => {
+    test("парсит JSON маркер task-detect", () => {
       const text = `Понял, вы хотите...\n<!--task-detect\n{"title": "Реализовать авторизацию"}\n-->`;
       const result = TaskPhasePrompts.parseTaskDetect(text);
       expect(result).not.toBeNull();
       expect(result!.title).toBe("Реализовать авторизацию");
+    });
+
+    test("парсит простой маркер [TASK-DETECT: ...]", () => {
+      const text = `Понял!\n[TASK-DETECT: Реализовать парсер JSON]`;
+      const result = TaskPhasePrompts.parseTaskDetect(text);
+      expect(result).not.toBeNull();
+      expect(result!.title).toBe("Реализовать парсер JSON");
     });
 
     test("возвращает null если маркера нет", () => {

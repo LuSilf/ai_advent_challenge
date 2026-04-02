@@ -12,6 +12,9 @@ export type TaskDetectMarker = {
 };
 
 const MARKER_RE = /<!--(task-update|task-detect)\n([\s\S]*?)\n-->/;
+const SIMPLE_TRANSITION_RE = /\[TRANSITION:\s*(planning|execution|validation|done)\]/i;
+const SIMPLE_STEP_RE = /\[STEP:\s*(.+?)\]/i;
+const SIMPLE_SUMMARY_RE = /\[SUMMARY:\s*(.+?)\]/i;
 
 export class TaskPhasePrompts {
   static buildPhasePrompt(task: Task): string | null {
@@ -24,90 +27,115 @@ export class TaskPhasePrompts {
       planning: `[ЗАДАЧА: "${task.title}" | ФАЗА: ПЛАНИРОВАНИЕ]
 ${stepInfo}
 
-ПРАВИЛА:
-1. Задавай уточняющие вопросы. НЕ пиши код.
-2. Предложи план по шагам.
-3. Переход к execution ТОЛЬКО когда пользователь ЯВНО подтвердил план ("да", "ок", "давай").
-4. Если ты задал вопросы — НЕ переходи, жди ответы.
+Задавай вопросы, предложи план. НЕ пиши код. Переходи к execution ТОЛЬКО если пользователь явно подтвердил план ("да", "ок", "давай").
 
-ОБЯЗАТЕЛЬНО добавь в конец КАЖДОГО ответа блок:
-<!--task-update
-{"transition": null или "execution", "currentStep": "что сейчас делаем", "expectedAction": "что ждём от пользователя", "summary": "резюме"}
--->
-Используй "transition": "execution" ТОЛЬКО если пользователь подтвердил план. Иначе null.`,
+В конце КАЖДОГО ответа ОБЯЗАТЕЛЬНО добавь строку:
+[SUMMARY: краткое резюме текущего состояния]
+Если пользователь подтвердил план, ТАКЖЕ добавь:
+[TRANSITION: execution]`,
 
       execution: `[ЗАДАЧА: "${task.title}" | ФАЗА: ВЫПОЛНЕНИЕ]
 ${stepInfo}
 
-ПРАВИЛА:
-1. Пиши код. Реализуй план. Давай ГОТОВУЮ реализацию, не описания.
-2. Переход к validation ТОЛЬКО когда ВЕСЬ код написан и ВСЕ шаги плана реализованы.
-3. Если код написан частично — НЕ переходи.
-4. Если подход не работает — откат к planning.
+Пиши код. Реализуй план. Давай ГОТОВУЮ реализацию. Переходи к validation ТОЛЬКО когда ВЕСЬ код написан.
 
-ОБЯЗАТЕЛЬНО добавь в конец КАЖДОГО ответа блок:
-<!--task-update
-{"transition": null или "validation" или "planning", "currentStep": "текущий шаг", "expectedAction": "что дальше", "summary": "что сделано"}
--->
-Используй "transition": "validation" ТОЛЬКО если вся реализация готова. Иначе null.`,
+В конце КАЖДОГО ответа ОБЯЗАТЕЛЬНО добавь строку:
+[SUMMARY: краткое резюме что сделано]
+[STEP: текущий шаг]
+Если ВСЯ реализация готова, ТАКЖЕ добавь:
+[TRANSITION: validation]`,
 
       validation: `[ЗАДАЧА: "${task.title}" | ФАЗА: ПРОВЕРКА]
 ${stepInfo}
 
-ПРАВИЛА:
-1. Проверь код: соответствует ли плану? Есть ли баги?
-2. Приведи примеры вызовов и ожидаемые результаты.
-3. Переход к done ТОЛЬКО когда пользователь ЯВНО подтвердил результат ("да", "ок", "всё верно").
-4. Если найдены проблемы — откат к execution.
+Проверь код. Приведи примеры вызовов. Переходи к done ТОЛЬКО если пользователь подтвердил результат.
 
-ОБЯЗАТЕЛЬНО добавь в конец КАЖДОГО ответа блок:
-<!--task-update
-{"transition": null или "done" или "execution", "currentStep": "что проверяем", "expectedAction": "что ждём", "summary": "результат проверки"}
--->
-Используй "transition": "done" ТОЛЬКО если пользователь подтвердил. Иначе null.`,
+В конце КАЖДОГО ответа ОБЯЗАТЕЛЬНО добавь строку:
+[SUMMARY: результат проверки]
+Если пользователь подтвердил, ТАКЖЕ добавь:
+[TRANSITION: done]
+Если найдены баги:
+[TRANSITION: execution]`,
     };
 
     return phasePrompts[task.phase] ?? null;
   }
 
   static buildAutoDetectPrompt(): string {
-    return `У пользователя нет активной задачи. Если пользователь описывает задачу или просит что-то реализовать/исправить/сделать, предложи создать задачу, добавив в конец ответа блок:
-<!--task-detect
-{"title": "краткое название задачи"}
--->
-Если это просто вопрос или беседа — не добавляй блок.`;
+    return `У пользователя нет активной задачи. Если пользователь описывает задачу или просит что-то реализовать/исправить/сделать, добавь в конец ответа:
+[TASK-DETECT: краткое название задачи]
+Если это просто вопрос или беседа — не добавляй.`;
   }
 
   static parseTaskUpdate(text: string): TaskUpdateMarker | null {
+    // Формат 1: JSON в HTML-комментарии <!--task-update\n{...}\n-->
     const match = text.match(MARKER_RE);
-    if (!match || match[1] !== "task-update") return null;
-
-    try {
-      const data = JSON.parse(match[2]);
-      return {
-        transition: data.transition ?? null,
-        currentStep: data.currentStep ?? null,
-        expectedAction: data.expectedAction ?? null,
-        summary: data.summary ?? null,
-      };
-    } catch {
-      return null;
+    if (match && match[1] === "task-update") {
+      try {
+        const data = JSON.parse(match[2]);
+        return {
+          transition: data.transition ?? null,
+          currentStep: data.currentStep ?? null,
+          expectedAction: data.expectedAction ?? null,
+          summary: data.summary ?? null,
+        };
+      } catch {
+        // fallthrough to simple format
+      }
     }
+
+    // Формат 2: простые текстовые маркеры [TRANSITION: ...] [STEP: ...] [SUMMARY: ...]
+    const transitionMatch = text.match(SIMPLE_TRANSITION_RE);
+    const stepMatch = text.match(SIMPLE_STEP_RE);
+    const summaryMatch = text.match(SIMPLE_SUMMARY_RE);
+
+    if (transitionMatch || stepMatch || summaryMatch) {
+      return {
+        transition: transitionMatch?.[1]?.toLowerCase() as TaskPhase ?? null,
+        currentStep: stepMatch?.[1] ?? null,
+        expectedAction: null,
+        summary: summaryMatch?.[1] ?? null,
+      };
+    }
+
+    return null;
   }
 
   static parseTaskDetect(text: string): TaskDetectMarker | null {
+    // Формат 1: JSON <!--task-detect\n{...}\n-->
     const match = text.match(MARKER_RE);
-    if (!match || match[1] !== "task-detect") return null;
-
-    try {
-      const data = JSON.parse(match[2]);
-      return data.title ? { title: data.title } : null;
-    } catch {
-      return null;
+    if (match && match[1] === "task-detect") {
+      try {
+        const data = JSON.parse(match[2]);
+        return data.title ? { title: data.title } : null;
+      } catch { /* fallthrough */ }
     }
+
+    // Формат 2: [TASK-DETECT: название]
+    const simple = text.match(/\[TASK-DETECT:\s*(.+?)\]/i);
+    if (simple) {
+      return { title: simple[1].trim() };
+    }
+
+    return null;
+  }
+
+  static buildTaskReminder(task: Task): string {
+    const phaseHint: Record<string, string> = {
+      planning: "НЕ пиши код. В конце ответа ОБЯЗАТЕЛЬНО напиши [SUMMARY: ...]. Если я подтвердил план — также [TRANSITION: execution].",
+      execution: "Пиши код. В конце ответа ОБЯЗАТЕЛЬНО напиши [SUMMARY: ...] и [STEP: ...]. Если всё готово — также [TRANSITION: validation].",
+      validation: "Проверяй. В конце ответа ОБЯЗАТЕЛЬНО напиши [SUMMARY: ...]. Если я подтвердил — также [TRANSITION: done].",
+    };
+    return `[Система: задача "${task.title}", фаза: ${task.phase}. ${phaseHint[task.phase] ?? ""}]`;
   }
 
   static stripTaskMarkers(text: string): string {
-    return text.replace(/\n?<!--task-(update|detect)\n[\s\S]*?-->/g, "").trim();
+    return text
+      .replace(/\n?<!--task-(update|detect)\n[\s\S]*?-->/g, "")
+      .replace(/\[TRANSITION:\s*(?:planning|execution|validation|done)\]/gi, "")
+      .replace(/\[STEP:\s*.+?\]/gi, "")
+      .replace(/\[SUMMARY:\s*.+?\]/gi, "")
+      .replace(/\[TASK-DETECT:\s*.+?\]/gi, "")
+      .trim();
   }
 }
