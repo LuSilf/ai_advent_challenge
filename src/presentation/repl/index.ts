@@ -23,6 +23,7 @@ import type { FactRepository } from "../../domain/ports/fact-repository";
 import type { LLMClient } from "../../domain/ports/llm-client";
 import type { ProfileService } from "../../domain/services/profile-service";
 import type { TaskService } from "../../domain/services/task-service";
+import { TaskPhasePrompts } from "../../domain/services/task-phase-prompts";
 
 export type ReplDeps = {
   config: AppConfig;
@@ -994,9 +995,19 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
         printOutputMarker();
       }
 
+      // Формируем системный промпт с фазой задачи
+      let systemPrompt = config.systemPrompt;
+      const activeTask = taskService.getActiveTask(state.sessionId);
+      if (activeTask) {
+        const phasePrompt = TaskPhasePrompts.buildPhasePrompt(activeTask);
+        if (phasePrompt) {
+          systemPrompt = `${phasePrompt}\n\n${systemPrompt}`;
+        }
+      }
+
       const result = await chatService.sendMessage(state.sessionId, text, {
         historyLimit: config.historyLimit,
-        systemPrompt: config.systemPrompt,
+        systemPrompt,
         useStreaming: config.useStreaming,
         memoryBlocks: memoryService.getMemoryBlocks() || undefined,
         temperature: config.temperature,
@@ -1022,6 +1033,33 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
         if (config.debug && result.model) {
           console.error(pc.dim(`  Модель: ${result.model.name} (${result.model.id})`));
           console.error(pc.dim(`  Цена: $${result.model.inputPrice}/1M in, $${result.model.outputPrice}/1M out`));
+        }
+      }
+
+      // Обработка маркеров задач в ответе
+      if (result.response.content && activeTask) {
+        const taskUpdate = TaskPhasePrompts.parseTaskUpdate(result.response.content);
+        if (taskUpdate) {
+          if (taskUpdate.transition) {
+            const ok = taskService.transition(activeTask.id, taskUpdate.transition);
+            if (ok) {
+              console.log(pc.cyan(`[Задача "${activeTask.title}"] → ${taskUpdate.transition}`));
+            } else {
+              console.log(pc.red(`[Задача] Невалидный переход: ${activeTask.phase} → ${taskUpdate.transition}`));
+            }
+          }
+          if (taskUpdate.currentStep || taskUpdate.expectedAction) {
+            taskService.updateStep(
+              activeTask.id,
+              taskUpdate.currentStep ?? "",
+              taskUpdate.expectedAction ?? "",
+            );
+          }
+          if (taskUpdate.summary) {
+            taskService.updateSummary(activeTask.id, taskUpdate.summary);
+          }
+          // Перезаписываем content в результате, убирая маркер
+          result.response.content = TaskPhasePrompts.stripTaskMarkers(result.response.content);
         }
       }
 
