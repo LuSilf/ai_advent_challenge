@@ -19,6 +19,8 @@ import { CostService } from "../../domain/services/cost-service";
 import { ChatService } from "../../domain/services/chat-service";
 import { MemoryService } from "../../domain/services/memory-service";
 import { ProfileService } from "../../domain/services/profile-service";
+import { TaskService } from "../../domain/services/task-service";
+import { SqliteTaskRepository } from "../../storage/sqlite/task-repository";
 import type { LLMClient, StreamEvent } from "../../domain/ports/llm-client";
 import type { LLMRequest, LLMResponse } from "../../domain/models";
 import type { AppConfig } from "../../config";
@@ -71,6 +73,7 @@ describe("presentation/repl handleCommand", () => {
     const checkpointRepo = new SqliteCheckpointRepository();
     const profileRepo = new SqliteProfileRepository();
     const memoryRepo = new SqliteMemoryRepository();
+    const taskRepo = new SqliteTaskRepository();
     const llmClient = createMockLLMClient();
 
     const sessionService = new SessionService(sessionRepo, messageRepo);
@@ -79,6 +82,7 @@ describe("presentation/repl handleCommand", () => {
     const profileService = new ProfileService(profileRepo, optionsRepo);
     const chatService = new ChatService(llmClient, sessionService, contextService, costService, messageRepo, factRepo, modelRepo, profileService);
     const memoryService = new MemoryService(memoryRepo, llmClient, modelRepo);
+    const taskService = new TaskService(taskRepo);
 
     deps = {
       config: createTestConfig(),
@@ -94,6 +98,7 @@ describe("presentation/repl handleCommand", () => {
       llmClient,
       openaiClient: {} as any,
       profileService,
+      taskService,
     };
 
     const id = sessionService.createSession(undefined, "full");
@@ -261,5 +266,52 @@ describe("presentation/repl handleCommand", () => {
     const id = deps.profileService.createProfile("test");
     await handleCommand("/profile", `delete ${id}`, state, deps);
     expect(deps.profileService.getProfile(id)).toBeNull();
+  });
+
+  // Task commands
+
+  test("/task без активной задачи показывает сообщение", async () => {
+    const result = await handleCommand("/task", "", state, deps);
+    expect(result).toBeNull();
+  });
+
+  test('/task create создаёт задачу', async () => {
+    await handleCommand("/task", 'create "Реализовать фичу"', state, deps);
+    const tasks = deps.taskService.getSessionTasks(state.sessionId);
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].title).toBe("Реализовать фичу");
+    expect(tasks[0].phase).toBe("planning");
+  });
+
+  test("/task create без описания показывает ошибку", async () => {
+    await handleCommand("/task", "create", state, deps);
+    const tasks = deps.taskService.getSessionTasks(state.sessionId);
+    expect(tasks).toHaveLength(0);
+  });
+
+  test("/task показывает активную задачу", async () => {
+    deps.taskService.createTask(state.sessionId, "Моя задача");
+    const result = await handleCommand("/task", "", state, deps);
+    expect(result).toBeNull();
+  });
+
+  test("/task list показывает задачи", async () => {
+    deps.taskService.createTask(state.sessionId, "Задача 1");
+    deps.taskService.createTask(state.sessionId, "Задача 2");
+    const result = await handleCommand("/task", "list", state, deps);
+    expect(result).toBeNull();
+  });
+
+  test("/task create паузит предыдущую активную задачу", async () => {
+    await handleCommand("/task", 'create "Задача 1"', state, deps);
+    await handleCommand("/task", 'create "Задача 2"', state, deps);
+    const tasks = deps.taskService.getSessionTasks(state.sessionId);
+    expect(tasks[0].phase).toBe("paused");
+    expect(tasks[1].phase).toBe("planning");
+  });
+
+  test("/task list пустой список", async () => {
+    const result = await handleCommand("/task", "list", state, deps);
+    expect(result).toBeNull();
   });
 });

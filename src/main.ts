@@ -12,6 +12,7 @@ import { SqliteOptionsRepository } from "./storage/sqlite/options-repository";
 import { SqliteCheckpointRepository } from "./storage/sqlite/checkpoint-repository";
 import { SqliteProfileRepository } from "./storage/sqlite/profile-repository";
 import { SqliteMemoryRepository } from "./storage/sqlite/memory-repository";
+import { SqliteTaskRepository } from "./storage/sqlite/task-repository";
 
 // API
 import { OpenAILLMClient } from "./api/openai/llm-client";
@@ -23,6 +24,7 @@ import { CostService } from "./domain/services/cost-service";
 import { ChatService } from "./domain/services/chat-service";
 import { MemoryService } from "./domain/services/memory-service";
 import { ProfileService } from "./domain/services/profile-service";
+import { TaskService } from "./domain/services/task-service";
 
 // Presentation
 import { startRepl } from "./presentation/repl";
@@ -55,6 +57,7 @@ const modelRepo = new SqliteModelRepository();
 const checkpointRepo = new SqliteCheckpointRepository();
 const profileRepo = new SqliteProfileRepository();
 const memoryRepo = new SqliteMemoryRepository();
+const taskRepo = new SqliteTaskRepository();
 
 // --- API layer ---
 const llmClient = new OpenAILLMClient(openaiClient);
@@ -75,6 +78,7 @@ const chatService = new ChatService(
   profileService,
 );
 const memoryService = new MemoryService(memoryRepo, llmClient, modelRepo);
+const taskService = new TaskService(taskRepo);
 
 // --- Run ---
 if (!config.prompt) {
@@ -93,6 +97,7 @@ if (!config.prompt) {
     llmClient,
     openaiClient,
     profileService,
+    taskService,
   });
 } else {
   // Single-shot mode

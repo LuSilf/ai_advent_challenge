@@ -22,6 +22,7 @@ import type { CheckpointRepository } from "../../domain/ports/checkpoint-reposit
 import type { FactRepository } from "../../domain/ports/fact-repository";
 import type { LLMClient } from "../../domain/ports/llm-client";
 import type { ProfileService } from "../../domain/services/profile-service";
+import type { TaskService } from "../../domain/services/task-service";
 
 export type ReplDeps = {
   config: AppConfig;
@@ -37,6 +38,7 @@ export type ReplDeps = {
   llmClient: LLMClient;
   openaiClient: OpenAI;
   profileService: ProfileService;
+  taskService: TaskService;
 };
 
 function printSessionInfo(sessionId: number, title: string | null, messageCount: number): void {
@@ -92,6 +94,13 @@ function printHelp(): void {
   console.log("  /profile switch <id>  Переключить активный профиль");
   console.log("  /profile edit         Редактировать профиль в $EDITOR (YAML)");
   console.log("  /profile delete <id>  Удалить профиль");
+  console.log(pc.bold("Задачи:"));
+  console.log("  /task              Показать текущую задачу");
+  console.log('  /task create <имя> Создать задачу');
+  console.log("  /task list         Список задач в сессии");
+  console.log("  /task pause        Приостановить текущую задачу");
+  console.log("  /task cancel       Отменить текущую задачу");
+  console.log("  /task switch       Переключиться на другую задачу");
   console.log(pc.bold("Настройки:"));
   console.log("  /options          Показать все настройки");
   console.log("  /set <ключ> <зн>  Установить значение настройки");
@@ -209,7 +218,7 @@ export async function handleCommand(
   deps: ReplDeps,
   rl?: ReturnType<typeof createInterface>,
 ): Promise<string | null> {
-  const { config, sessionService, memoryService, contextService, costService, modelRepo, optionsRepo, checkpointRepo } = deps;
+  const { config, sessionService, memoryService, contextService, costService, modelRepo, optionsRepo, checkpointRepo, taskService } = deps;
 
   switch (cmd) {
     case "/new": {
@@ -733,6 +742,55 @@ export async function handleCommand(
       applyDbOptions(config, (k) => optionsRepo.get(k));
       console.log(pc.green(`${key} = ${value}`));
       return null;
+    }
+    case "/task": {
+      const subCmd = args.split(/\s+/)[0] || "";
+      const subArgs = args.slice(subCmd.length).trim();
+
+      switch (subCmd) {
+        case "create": {
+          const title = subArgs.replace(/^["']|["']$/g, "").trim();
+          if (!title) {
+            console.log(pc.red('Укажите описание: /task create "описание"'));
+            return null;
+          }
+          const task = taskService.createTask(state.sessionId, title);
+          console.log(pc.green(`Создана задача #${task.id}: "${task.title}" [${task.phase}]`));
+          return null;
+        }
+        case "list": {
+          const tasks = taskService.getSessionTasks(state.sessionId);
+          if (tasks.length === 0) {
+            console.log(pc.dim("Нет задач в текущей сессии"));
+            return null;
+          }
+          for (const t of tasks) {
+            const active = !["paused", "done", "cancelled"].includes(t.phase);
+            const marker = active ? pc.yellow(" ←") : "";
+            const phaseColor = t.phase === "done" ? pc.green(t.phase) :
+              t.phase === "cancelled" ? pc.red(t.phase) :
+              t.phase === "paused" ? pc.dim(t.phase) :
+              pc.cyan(t.phase);
+            console.log(`  #${t.id} "${t.title}" [${phaseColor}]${marker}`);
+            if (t.currentStep) console.log(pc.dim(`      Шаг: ${t.currentStep}`));
+          }
+          return null;
+        }
+        default: {
+          // /task без аргументов — показать текущую
+          const active = taskService.getActiveTask(state.sessionId);
+          if (!active) {
+            console.log(pc.dim("Нет активной задачи"));
+            return null;
+          }
+          console.log(pc.bold(`Задача #${active.id}: "${active.title}"`));
+          console.log(`  Фаза: ${pc.cyan(active.phase)}`);
+          if (active.currentStep) console.log(`  Шаг: ${active.currentStep}`);
+          if (active.expectedAction) console.log(`  Ожидается: ${active.expectedAction}`);
+          if (active.summary) console.log(`  Резюме: ${pc.dim(active.summary)}`);
+          return null;
+        }
+      }
     }
     case "/help": {
       printHelp();
