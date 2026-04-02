@@ -59,6 +59,35 @@ function printSessionMessages(messages: ChatMessage[]): void {
   }
 }
 
+function showSessionTasks(taskService: import("../../domain/services/task-service").TaskService, sessionId: number): void {
+  const tasks = taskService.getSessionTasks(sessionId);
+  if (tasks.length === 0) return;
+
+  const active = tasks.find((t) => !["paused", "done", "cancelled"].includes(t.phase));
+  const paused = tasks.filter((t) => t.phase === "paused");
+
+  if (active) {
+    console.log(pc.cyan(`\nАктивная задача #${active.id}: "${active.title}" [${active.phase}]`));
+    if (active.summary) console.log(pc.dim(`  ${active.summary}`));
+    if (active.currentStep) console.log(`  Шаг: ${active.currentStep}`);
+    if (active.expectedAction) console.log(`  Ожидается: ${active.expectedAction}`);
+  } else if (paused.length === 1) {
+    // Единственная paused задача — авто-resume
+    const task = paused[0];
+    taskService.resumeTask(task.id);
+    console.log(pc.cyan(`\nВосстановлена задача #${task.id}: "${task.title}" [${task.previousPhase ?? task.phase}]`));
+    if (task.summary) console.log(pc.dim(`  ${task.summary}`));
+    if (task.currentStep) console.log(`  Шаг: ${task.currentStep}`);
+  } else if (paused.length > 1) {
+    console.log(pc.yellow("\nПриостановленные задачи:"));
+    for (const t of paused) {
+      console.log(`  #${t.id} "${t.title}" [${pc.dim(t.previousPhase ?? "paused")}]`);
+      if (t.summary) console.log(pc.dim(`      ${t.summary}`));
+    }
+    console.log(pc.dim("  Используйте /task switch для переключения"));
+  }
+}
+
 function printHelp(): void {
   console.log(pc.bold("Команды:"));
   console.log("  /new              Создать новую сессию");
@@ -252,6 +281,8 @@ export async function handleCommand(
         console.log(pc.red(`Сессия #${id} не найдена`));
         return null;
       }
+      // Автопауза задач в покидаемой сессии
+      taskService.pauseAllActive(state.sessionId);
       state.sessionId = id;
       state.messagesSinceReconciliation = 0;
       const count = sessionService.getMessageCount(id);
@@ -261,6 +292,8 @@ export async function handleCommand(
         content: m.content,
       }));
       printSessionMessages(msgs);
+      // Показ задач при входе в сессию
+      showSessionTasks(taskService, id);
       return null;
     }
     case "/clear": {
@@ -854,6 +887,7 @@ export async function handleCommand(
       return null;
     }
     case "/exit": {
+      taskService.pauseAllActive(state.sessionId);
       process.exit(0);
     }
     default: {
@@ -945,6 +979,7 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
       content: m.content,
     }));
     printSessionMessages(msgs);
+    showSessionTasks(deps.taskService, lastSession.id);
   } else {
     state.sessionId = sessionService.createSession(undefined, config.contextStrategy);
     console.log(pc.green(`Создана новая сессия #${state.sessionId} (стратегия: ${config.contextStrategy})`));

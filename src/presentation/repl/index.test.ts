@@ -344,4 +344,28 @@ describe("presentation/repl handleCommand", () => {
     const result = await handleCommand("/task", "switch", state, deps);
     expect(result).toBeNull();
   });
+
+  // Phase 6: восстановление сессии
+
+  test("/switch паузит задачи покидаемой сессии", async () => {
+    deps.taskService.createTask(state.sessionId, "Задача в старой сессии");
+    const oldSessionId = state.sessionId;
+    const newSessionId = deps.sessionService.createSession("new");
+    await handleCommand("/switch", String(newSessionId), state, deps);
+    const tasks = deps.taskService.getSessionTasks(oldSessionId);
+    expect(tasks[0].phase).toBe("paused");
+  });
+
+  test("/switch показывает задачи новой сессии", async () => {
+    const newSessionId = deps.sessionService.createSession("new");
+    deps.taskService.createTask(newSessionId, "Задача в новой сессии");
+    deps.taskService.pauseTask(
+      deps.taskService.getActiveTask(newSessionId)!.id
+    );
+    await handleCommand("/switch", String(newSessionId), state, deps);
+    // Единственная paused задача авто-resume-ится
+    const active = deps.taskService.getActiveTask(newSessionId);
+    expect(active).not.toBeNull();
+    expect(active!.title).toBe("Задача в новой сессии");
+  });
 });
