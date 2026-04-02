@@ -765,14 +765,70 @@ export async function handleCommand(
             return null;
           }
           for (const t of tasks) {
-            const active = !["paused", "done", "cancelled"].includes(t.phase);
-            const marker = active ? pc.yellow(" ←") : "";
+            const isActive = !["paused", "done", "cancelled"].includes(t.phase);
+            const marker = isActive ? pc.yellow(" ←") : "";
             const phaseColor = t.phase === "done" ? pc.green(t.phase) :
               t.phase === "cancelled" ? pc.red(t.phase) :
               t.phase === "paused" ? pc.dim(t.phase) :
               pc.cyan(t.phase);
             console.log(`  #${t.id} "${t.title}" [${phaseColor}]${marker}`);
             if (t.currentStep) console.log(pc.dim(`      Шаг: ${t.currentStep}`));
+          }
+          return null;
+        }
+        case "pause": {
+          const active = taskService.getActiveTask(state.sessionId);
+          if (!active) {
+            console.log(pc.red("Нет активной задачи для паузы"));
+            return null;
+          }
+          const ok = taskService.pauseTask(active.id);
+          if (ok) {
+            console.log(pc.yellow(`Задача #${active.id} "${active.title}" приостановлена`));
+          } else {
+            console.log(pc.red("Не удалось приостановить задачу"));
+          }
+          return null;
+        }
+        case "cancel": {
+          const active = taskService.getActiveTask(state.sessionId);
+          if (!active) {
+            console.log(pc.red("Нет активной задачи для отмены"));
+            return null;
+          }
+          const ok = taskService.cancelTask(active.id);
+          if (ok) {
+            console.log(pc.red(`Задача #${active.id} "${active.title}" отменена`));
+          } else {
+            console.log(pc.red("Не удалось отменить задачу"));
+          }
+          return null;
+        }
+        case "switch": {
+          const tasks = taskService.getSessionTasks(state.sessionId);
+          const pausedTasks = tasks.filter((t) => t.phase === "paused");
+          if (pausedTasks.length === 0) {
+            console.log(pc.dim("Нет приостановленных задач для переключения"));
+            return null;
+          }
+          for (const t of pausedTasks) {
+            const prev = t.previousPhase ? ` (была: ${t.previousPhase})` : "";
+            console.log(`  #${t.id} "${t.title}"${pc.dim(prev)}`);
+          }
+          if (rl) {
+            const answer = await askUserInput(rl, pc.yellow("Номер задачи: "));
+            const targetId = Number(answer);
+            const target = pausedTasks.find((t) => t.id === targetId);
+            if (!target) {
+              console.log(pc.red("Задача не найдена"));
+              return null;
+            }
+            const ok = taskService.resumeTask(target.id);
+            if (ok) {
+              console.log(pc.green(`Переключено на задачу #${target.id} "${target.title}"`));
+            }
+          } else {
+            console.log(pc.dim("Используйте /task switch в интерактивном режиме"));
           }
           return null;
         }

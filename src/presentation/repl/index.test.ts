@@ -314,4 +314,34 @@ describe("presentation/repl handleCommand", () => {
     const result = await handleCommand("/task", "list", state, deps);
     expect(result).toBeNull();
   });
+
+  test("/task pause приостанавливает активную задачу", async () => {
+    deps.taskService.createTask(state.sessionId, "Задача");
+    await handleCommand("/task", "pause", state, deps);
+    const tasks = deps.taskService.getSessionTasks(state.sessionId);
+    expect(tasks[0].phase).toBe("paused");
+    expect(tasks[0].previousPhase).toBe("planning");
+  });
+
+  test("/task pause без активной задачи показывает ошибку", async () => {
+    const result = await handleCommand("/task", "pause", state, deps);
+    expect(result).toBeNull();
+  });
+
+  test("/task cancel отменяет активную задачу", async () => {
+    deps.taskService.createTask(state.sessionId, "Задача");
+    await handleCommand("/task", "cancel", state, deps);
+    const tasks = deps.taskService.getSessionTasks(state.sessionId);
+    expect(tasks[0].phase).toBe("cancelled");
+  });
+
+  test("/task cancel без активной задачи показывает ошибку", async () => {
+    const result = await handleCommand("/task", "cancel", state, deps);
+    expect(result).toBeNull();
+  });
+
+  test("/task switch без paused задач показывает сообщение", async () => {
+    const result = await handleCommand("/task", "switch", state, deps);
+    expect(result).toBeNull();
+  });
 });

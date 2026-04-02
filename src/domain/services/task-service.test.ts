@@ -138,4 +138,148 @@ describe("TaskService", () => {
       expect(updated.summary).toBe("Обсуждаем план");
     });
   });
+
+  describe("transition", () => {
+    test("planning → execution допустим", () => {
+      const task = service.createTask(1, "Задача");
+      const ok = service.transition(task.id, "execution");
+      expect(ok).toBe(true);
+      expect(repo.findById(task.id)!.phase).toBe("execution");
+    });
+
+    test("execution → validation допустим", () => {
+      const task = service.createTask(1, "Задача");
+      service.transition(task.id, "execution");
+      const ok = service.transition(task.id, "validation");
+      expect(ok).toBe(true);
+      expect(repo.findById(task.id)!.phase).toBe("validation");
+    });
+
+    test("validation → done допустим", () => {
+      const task = service.createTask(1, "Задача");
+      service.transition(task.id, "execution");
+      service.transition(task.id, "validation");
+      const ok = service.transition(task.id, "done");
+      expect(ok).toBe(true);
+      expect(repo.findById(task.id)!.phase).toBe("done");
+    });
+
+    test("validation → execution (откат) допустим", () => {
+      const task = service.createTask(1, "Задача");
+      service.transition(task.id, "execution");
+      service.transition(task.id, "validation");
+      const ok = service.transition(task.id, "execution");
+      expect(ok).toBe(true);
+      expect(repo.findById(task.id)!.phase).toBe("execution");
+    });
+
+    test("execution → planning (откат) допустим", () => {
+      const task = service.createTask(1, "Задача");
+      service.transition(task.id, "execution");
+      const ok = service.transition(task.id, "planning");
+      expect(ok).toBe(true);
+      expect(repo.findById(task.id)!.phase).toBe("planning");
+    });
+
+    test("planning → done недопустим", () => {
+      const task = service.createTask(1, "Задача");
+      const ok = service.transition(task.id, "done");
+      expect(ok).toBe(false);
+      expect(repo.findById(task.id)!.phase).toBe("planning");
+    });
+
+    test("несуществующая задача возвращает false", () => {
+      expect(service.transition(999, "execution")).toBe(false);
+    });
+  });
+
+  describe("pauseTask", () => {
+    test("ставит задачу на паузу, сохраняя previousPhase", () => {
+      const task = service.createTask(1, "Задача");
+      service.transition(task.id, "execution");
+      const ok = service.pauseTask(task.id);
+      expect(ok).toBe(true);
+      const updated = repo.findById(task.id)!;
+      expect(updated.phase).toBe("paused");
+      expect(updated.previousPhase).toBe("execution");
+    });
+
+    test("нельзя запаузить done задачу", () => {
+      const task = service.createTask(1, "Задача");
+      service.transition(task.id, "execution");
+      service.transition(task.id, "validation");
+      service.transition(task.id, "done");
+      const ok = service.pauseTask(task.id);
+      expect(ok).toBe(false);
+    });
+
+    test("несуществующая задача возвращает false", () => {
+      expect(service.pauseTask(999)).toBe(false);
+    });
+  });
+
+  describe("resumeTask", () => {
+    test("возвращает задачу в previousPhase", () => {
+      const task = service.createTask(1, "Задача");
+      service.transition(task.id, "execution");
+      service.pauseTask(task.id);
+      const ok = service.resumeTask(task.id);
+      expect(ok).toBe(true);
+      expect(repo.findById(task.id)!.phase).toBe("execution");
+    });
+
+    test("паузит текущую активную при resume", () => {
+      const task1 = service.createTask(1, "Задача 1");
+      service.pauseTask(task1.id);
+      const task2 = service.createTask(1, "Задача 2");
+
+      service.resumeTask(task1.id);
+      expect(repo.findById(task1.id)!.phase).toBe("planning");
+      expect(repo.findById(task2.id)!.phase).toBe("paused");
+    });
+
+    test("нельзя resume не-paused задачу", () => {
+      const task = service.createTask(1, "Задача");
+      expect(service.resumeTask(task.id)).toBe(false);
+    });
+
+    test("несуществующая задача возвращает false", () => {
+      expect(service.resumeTask(999)).toBe(false);
+    });
+  });
+
+  describe("cancelTask", () => {
+    test("отменяет задачу", () => {
+      const task = service.createTask(1, "Задача");
+      const ok = service.cancelTask(task.id);
+      expect(ok).toBe(true);
+      expect(repo.findById(task.id)!.phase).toBe("cancelled");
+    });
+
+    test("нельзя отменить done задачу", () => {
+      const task = service.createTask(1, "Задача");
+      service.transition(task.id, "execution");
+      service.transition(task.id, "validation");
+      service.transition(task.id, "done");
+      expect(service.cancelTask(task.id)).toBe(false);
+    });
+  });
+
+  describe("pauseAllActive", () => {
+    test("паузит все активные задачи сессии", () => {
+      const task1 = service.createTask(1, "Задача 1");
+      // task1 is paused by createTask of task2
+      const task2 = service.createTask(1, "Задача 2");
+      // only task2 is active
+      service.pauseAllActive(1);
+      expect(repo.findById(task2.id)!.phase).toBe("paused");
+    });
+
+    test("не трогает задачи другой сессии", () => {
+      const task1 = service.createTask(1, "Задача сессии 1");
+      const task2 = service.createTask(2, "Задача сессии 2");
+      service.pauseAllActive(1);
+      expect(repo.findById(task2.id)!.phase).toBe("planning");
+    });
+  });
 });
