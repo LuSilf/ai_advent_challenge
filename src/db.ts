@@ -127,8 +127,6 @@ export function initDb(dbPath: string): void {
       title TEXT NOT NULL,
       phase TEXT NOT NULL DEFAULT 'planning' CHECK (phase IN ('planning', 'execution', 'validation', 'done', 'paused', 'cancelled')),
       previous_phase TEXT CHECK (previous_phase IN ('planning', 'execution', 'validation') OR previous_phase IS NULL),
-      current_step TEXT,
-      expected_action TEXT,
       summary TEXT,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))

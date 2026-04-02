@@ -2,8 +2,6 @@ import type { Task, TaskPhase } from "../models";
 
 export type TaskUpdateMarker = {
   transition: TaskPhase | null;
-  currentStep: string | null;
-  expectedAction: string | null;
   summary: string | null;
 };
 
@@ -13,19 +11,12 @@ export type TaskDetectMarker = {
 
 const MARKER_RE = /<!--(task-update|task-detect)\n([\s\S]*?)\n-->/;
 const SIMPLE_TRANSITION_RE = /\[TRANSITION:\s*(planning|execution|validation|done)\]/i;
-const SIMPLE_STEP_RE = /\[STEP:\s*(.+?)\]/i;
 const SIMPLE_SUMMARY_RE = /\[SUMMARY:\s*(.+?)\]/i;
 
 export class TaskPhasePrompts {
   static buildPhasePrompt(task: Task): string | null {
-    const stepInfo = [
-      task.currentStep ? `Шаг: ${task.currentStep}` : null,
-      task.expectedAction ? `Ожидается: ${task.expectedAction}` : null,
-    ].filter(Boolean).join("\n");
-
     const phasePrompts: Record<string, string> = {
       planning: `[ЗАДАЧА: "${task.title}" | ФАЗА: ПЛАНИРОВАНИЕ]
-${stepInfo}
 
 Задавай вопросы, предложи план. НЕ пиши код. Переходи к execution ТОЛЬКО если пользователь явно подтвердил план ("да", "ок", "давай").
 
@@ -35,18 +26,15 @@ ${stepInfo}
 [TRANSITION: execution]`,
 
       execution: `[ЗАДАЧА: "${task.title}" | ФАЗА: ВЫПОЛНЕНИЕ]
-${stepInfo}
 
 Пиши код. Реализуй план. Давай ГОТОВУЮ реализацию. Переходи к validation ТОЛЬКО когда ВЕСЬ код написан.
 
 В конце КАЖДОГО ответа ОБЯЗАТЕЛЬНО добавь строку:
 [SUMMARY: краткое резюме что сделано]
-[STEP: текущий шаг]
 Если ВСЯ реализация готова, ТАКЖЕ добавь:
 [TRANSITION: validation]`,
 
       validation: `[ЗАДАЧА: "${task.title}" | ФАЗА: ПРОВЕРКА]
-${stepInfo}
 
 Проверь код. Приведи примеры вызовов. Переходи к done ТОЛЬКО если пользователь подтвердил результат.
 
@@ -75,8 +63,6 @@ ${stepInfo}
         const data = JSON.parse(match[2]);
         return {
           transition: data.transition ?? null,
-          currentStep: data.currentStep ?? null,
-          expectedAction: data.expectedAction ?? null,
           summary: data.summary ?? null,
         };
       } catch {
@@ -84,16 +70,13 @@ ${stepInfo}
       }
     }
 
-    // Формат 2: простые текстовые маркеры [TRANSITION: ...] [STEP: ...] [SUMMARY: ...]
+    // Формат 2: простые текстовые маркеры [TRANSITION: ...] [SUMMARY: ...]
     const transitionMatch = text.match(SIMPLE_TRANSITION_RE);
-    const stepMatch = text.match(SIMPLE_STEP_RE);
     const summaryMatch = text.match(SIMPLE_SUMMARY_RE);
 
-    if (transitionMatch || stepMatch || summaryMatch) {
+    if (transitionMatch || summaryMatch) {
       return {
         transition: transitionMatch?.[1]?.toLowerCase() as TaskPhase ?? null,
-        currentStep: stepMatch?.[1] ?? null,
-        expectedAction: null,
         summary: summaryMatch?.[1] ?? null,
       };
     }
@@ -123,7 +106,7 @@ ${stepInfo}
   static buildTaskReminder(task: Task): string {
     const phaseHint: Record<string, string> = {
       planning: "НЕ пиши код. В конце ответа ОБЯЗАТЕЛЬНО напиши [SUMMARY: ...]. Если я подтвердил план — также [TRANSITION: execution].",
-      execution: "Пиши код. В конце ответа ОБЯЗАТЕЛЬНО напиши [SUMMARY: ...] и [STEP: ...]. Если всё готово — также [TRANSITION: validation].",
+      execution: "Пиши код. В конце ответа ОБЯЗАТЕЛЬНО напиши [SUMMARY: ...]. Если всё готово — также [TRANSITION: validation].",
       validation: "Проверяй. В конце ответа ОБЯЗАТЕЛЬНО напиши [SUMMARY: ...]. Если я подтвердил — также [TRANSITION: done].",
     };
     return `[Система: задача "${task.title}", фаза: ${task.phase}. ${phaseHint[task.phase] ?? ""}]`;
@@ -153,7 +136,7 @@ ${userMessage}
 ${assistantResponse.slice(0, 500)}
 
 Ответь СТРОГО в формате (одна строка, ничего больше):
-PHASE: ${task.phase} | STEP: описание шага | SUMMARY: краткое резюме
+PHASE: фаза | SUMMARY: резюме
 
 Если нужен переход фазы, замени ${task.phase} на новую фазу.
 Если переход НЕ нужен, оставь текущую фазу.`;
@@ -163,14 +146,12 @@ PHASE: ${task.phase} | STEP: описание шага | SUMMARY: краткое
    * Парсит ответ судьи.
    */
   static parseJudgeResponse(text: string): TaskUpdateMarker | null {
-    const match = text.match(/PHASE:\s*(planning|execution|validation|done)\s*\|\s*STEP:\s*(.+?)\s*\|\s*SUMMARY:\s*(.+)/i);
+    const match = text.match(/PHASE:\s*(planning|execution|validation|done)\s*\|\s*SUMMARY:\s*(.+)/i);
     if (!match) return null;
 
     return {
       transition: match[1].toLowerCase() as TaskPhase,
-      currentStep: match[2].trim(),
-      expectedAction: null,
-      summary: match[3].trim(),
+      summary: match[2].trim(),
     };
   }
 
@@ -178,7 +159,6 @@ PHASE: ${task.phase} | STEP: описание шага | SUMMARY: краткое
     return text
       .replace(/\n?<!--task-(update|detect)\n[\s\S]*?-->/g, "")
       .replace(/\[TRANSITION:\s*(?:planning|execution|validation|done)\]/gi, "")
-      .replace(/\[STEP:\s*.+?\]/gi, "")
       .replace(/\[SUMMARY:\s*.+?\]/gi, "")
       .replace(/\[TASK-DETECT:\s*.+?\]/gi, "")
       .trim();

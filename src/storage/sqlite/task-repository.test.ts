@@ -32,8 +32,6 @@ describe("SqliteTaskRepository", () => {
     expect(task!.phase).toBe("planning");
     expect(task!.previousPhase).toBeNull();
     expect(task!.sessionId).toBe(sessionId);
-    expect(task!.currentStep).toBeNull();
-    expect(task!.expectedAction).toBeNull();
     expect(task!.summary).toBeNull();
   });
 
@@ -99,14 +97,6 @@ describe("SqliteTaskRepository", () => {
     const task = repo.findById(id)!;
     expect(task.phase).toBe("paused");
     expect(task.previousPhase).toBe("planning");
-  });
-
-  test("update обновляет currentStep и expectedAction", () => {
-    const id = repo.create(sessionId, "Задача");
-    repo.update(id, { currentStep: "Шаг 1", expectedAction: "Написать код" });
-    const task = repo.findById(id)!;
-    expect(task.currentStep).toBe("Шаг 1");
-    expect(task.expectedAction).toBe("Написать код");
   });
 
   test("update обновляет summary", () => {

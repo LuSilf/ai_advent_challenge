@@ -85,8 +85,6 @@ export type Task = {
   title: string;
   phase: TaskPhase;
   previousPhase: TaskPhase | null;
-  currentStep: string | null;
-  expectedAction: string | null;
   summary: string | null;
   createdAt: string;
   updatedAt: string;

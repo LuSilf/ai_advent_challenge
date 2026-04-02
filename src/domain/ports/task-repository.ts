@@ -5,5 +5,5 @@ export interface TaskRepository {
   findById(id: number): Task | null;
   findBySessionId(sessionId: number): Task[];
   findActive(sessionId: number): Task | null;
-  update(id: number, fields: Partial<Pick<Task, "phase" | "previousPhase" | "currentStep" | "expectedAction" | "summary">>): void;
+  update(id: number, fields: Partial<Pick<Task, "phase" | "previousPhase" | "summary">>): void;
 }

@@ -69,15 +69,12 @@ function showSessionTasks(taskService: import("../../domain/services/task-servic
   if (active) {
     console.log(pc.cyan(`\nАктивная задача #${active.id}: "${active.title}" [${active.phase}]`));
     if (active.summary) console.log(pc.dim(`  ${active.summary}`));
-    if (active.currentStep) console.log(`  Шаг: ${active.currentStep}`);
-    if (active.expectedAction) console.log(`  Ожидается: ${active.expectedAction}`);
   } else if (paused.length === 1) {
     // Единственная paused задача — авто-resume
     const task = paused[0];
     taskService.resumeTask(task.id);
     console.log(pc.cyan(`\nВосстановлена задача #${task.id}: "${task.title}" [${task.previousPhase ?? task.phase}]`));
     if (task.summary) console.log(pc.dim(`  ${task.summary}`));
-    if (task.currentStep) console.log(`  Шаг: ${task.currentStep}`);
   } else if (paused.length > 1) {
     console.log(pc.yellow("\nПриостановленные задачи:"));
     for (const t of paused) {
@@ -806,7 +803,7 @@ export async function handleCommand(
               t.phase === "paused" ? pc.dim(t.phase) :
               pc.cyan(t.phase);
             console.log(`  #${t.id} "${t.title}" [${phaseColor}]${marker}`);
-            if (t.currentStep) console.log(pc.dim(`      Шаг: ${t.currentStep}`));
+            if (t.summary) console.log(pc.dim(`      ${t.summary}`));
           }
           return null;
         }
@@ -875,8 +872,6 @@ export async function handleCommand(
           }
           console.log(pc.bold(`Задача #${active.id}: "${active.title}"`));
           console.log(`  Фаза: ${pc.cyan(active.phase)}`);
-          if (active.currentStep) console.log(`  Шаг: ${active.currentStep}`);
-          if (active.expectedAction) console.log(`  Ожидается: ${active.expectedAction}`);
           if (active.summary) console.log(`  Резюме: ${pc.dim(active.summary)}`);
           return null;
         }
@@ -1118,7 +1113,7 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
             const judgePrompt = TaskPhasePrompts.buildJudgePrompt(activeTask, text, result.response.content);
             const judgeResult = await deps.llmClient.send({
               messages: [{ id: 0, sessionId: 0, role: "user", content: judgePrompt, createdAt: "" }],
-              instructions: "Ты судья задачи. Ответь СТРОГО одной строкой в формате: PHASE: фаза | STEP: шаг | SUMMARY: резюме",
+              instructions: "Ты судья задачи. Ответь СТРОГО одной строкой в формате: PHASE: фаза | SUMMARY: резюме",
               model: result.model.id,
               params: { temperature: 0, maxCompletionTokens: 150 },
             });
@@ -1141,13 +1136,6 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
             } else {
               console.log(pc.red(`[Задача] Невалидный переход: ${activeTask.phase} → ${taskUpdate.transition}`));
             }
-          }
-          if (taskUpdate.currentStep) {
-            taskService.updateStep(
-              activeTask.id,
-              taskUpdate.currentStep,
-              taskUpdate.expectedAction ?? "",
-            );
           }
           if (taskUpdate.summary) {
             taskService.updateSummary(activeTask.id, taskUpdate.summary);

@@ -17,8 +17,6 @@ function createMockRepo(): TaskRepository & { tasks: Map<number, Task> } {
         title,
         phase: "planning" as TaskPhase,
         previousPhase: null,
-        currentStep: null,
-        expectedAction: null,
         summary: null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -40,13 +38,11 @@ function createMockRepo(): TaskRepository & { tasks: Map<number, Task> } {
         ) ?? null
       );
     },
-    update(id: number, fields: Partial<Pick<Task, "phase" | "previousPhase" | "currentStep" | "expectedAction" | "summary">>): void {
+    update(id: number, fields: Partial<Pick<Task, "phase" | "previousPhase" | "summary">>): void {
       const task = tasks.get(id);
       if (!task) return;
       if (fields.phase !== undefined) task.phase = fields.phase;
       if (fields.previousPhase !== undefined) task.previousPhase = fields.previousPhase;
-      if (fields.currentStep !== undefined) task.currentStep = fields.currentStep;
-      if (fields.expectedAction !== undefined) task.expectedAction = fields.expectedAction;
       if (fields.summary !== undefined) task.summary = fields.summary;
       task.updatedAt = new Date().toISOString();
     },
@@ -115,17 +111,6 @@ describe("TaskService", () => {
 
     test("возвращает пустой массив если задач нет", () => {
       expect(service.getSessionTasks(1)).toHaveLength(0);
-    });
-  });
-
-  describe("updateStep", () => {
-    test("обновляет currentStep и expectedAction", () => {
-      const task = service.createTask(1, "Задача");
-      service.updateStep(task.id, "Шаг 1", "Написать код");
-
-      const updated = repo.findById(task.id)!;
-      expect(updated.currentStep).toBe("Шаг 1");
-      expect(updated.expectedAction).toBe("Написать код");
     });
   });
 

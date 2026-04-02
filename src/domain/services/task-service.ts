@@ -91,10 +91,6 @@ export class TaskService {
     }
   }
 
-  updateStep(taskId: number, currentStep: string, expectedAction: string): void {
-    this.taskRepo.update(taskId, { currentStep, expectedAction });
-  }
-
   updateSummary(taskId: number, summary: string): void {
     this.taskRepo.update(taskId, { summary });
   }

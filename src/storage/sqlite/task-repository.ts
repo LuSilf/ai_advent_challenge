@@ -8,8 +8,6 @@ type DbTask = {
   title: string;
   phase: TaskPhase;
   previous_phase: TaskPhase | null;
-  current_step: string | null;
-  expected_action: string | null;
   summary: string | null;
   created_at: string;
   updated_at: string;
@@ -22,8 +20,6 @@ function toTask(row: DbTask): Task {
     title: row.title,
     phase: row.phase,
     previousPhase: row.previous_phase,
-    currentStep: row.current_step,
-    expectedAction: row.expected_action,
     summary: row.summary,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -64,7 +60,7 @@ export class SqliteTaskRepository implements TaskRepository {
     return row ? toTask(row) : null;
   }
 
-  update(id: number, fields: Partial<Pick<Task, "phase" | "previousPhase" | "currentStep" | "expectedAction" | "summary">>): void {
+  update(id: number, fields: Partial<Pick<Task, "phase" | "previousPhase" | "summary">>): void {
     const db = getDb();
     const sets: string[] = [];
     const values: unknown[] = [];
@@ -76,14 +72,6 @@ export class SqliteTaskRepository implements TaskRepository {
     if (fields.previousPhase !== undefined) {
       sets.push("previous_phase = ?");
       values.push(fields.previousPhase);
-    }
-    if (fields.currentStep !== undefined) {
-      sets.push("current_step = ?");
-      values.push(fields.currentStep);
-    }
-    if (fields.expectedAction !== undefined) {
-      sets.push("expected_action = ?");
-      values.push(fields.expectedAction);
     }
     if (fields.summary !== undefined) {
       sets.push("summary = ?");
