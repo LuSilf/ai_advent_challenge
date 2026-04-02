@@ -1107,21 +1107,29 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
       if (result.response.content && activeTask) {
         let taskUpdate = TaskPhasePrompts.parseTaskUpdate(result.response.content);
 
-        // Если LLM не сгенерировал маркеры — запускаем отдельный "судейский" вызов
-        if (!taskUpdate) {
+        // Если LLM не сгенерировал переход — запускаем отдельный "судейский" вызов
+        const llmSummary = taskUpdate?.summary;
+        if (!taskUpdate?.transition || taskUpdate.transition === activeTask.phase) {
           try {
             const judgePrompt = TaskPhasePrompts.buildJudgePrompt(activeTask, text, result.response.content);
             const judgeResult = await deps.llmClient.send({
               messages: [{ id: 0, sessionId: 0, role: "user", content: judgePrompt, createdAt: "" }],
-              instructions: "Ты судья задачи. Ответь СТРОГО одной строкой в формате: PHASE: фаза | SUMMARY: резюме",
+              instructions: "Ответь СТРОГО одной строкой: PHASE: фаза | SUMMARY: резюме",
               model: result.model.id,
               params: { temperature: 0, maxCompletionTokens: 150 },
             });
             if (judgeResult.content) {
-              taskUpdate = TaskPhasePrompts.parseJudgeResponse(judgeResult.content);
+              const judgeUpdate = TaskPhasePrompts.parseJudgeResponse(judgeResult.content);
+              if (judgeUpdate) {
+                // Судья определяет переход, но summary берём от LLM если он есть
+                taskUpdate = {
+                  transition: judgeUpdate.transition,
+                  summary: llmSummary ?? judgeUpdate.summary,
+                };
+              }
             }
           } catch {
-            // Если судья упал — не критично, продолжаем без обновления
+            // Если судья упал — продолжаем без обновления
           }
         }
 

@@ -117,29 +117,28 @@ export class TaskPhasePrompts {
    * по последнему обмену сообщениями.
    */
   static buildJudgePrompt(task: Task, userMessage: string, assistantResponse: string): string {
-    return `Ты судья задачи. Проанализируй диалог и определи текущее состояние задачи.
+    const transitionRules: Record<string, string> = {
+      planning: `Если пользователь подтвердил план (сказал "да", "ок", "давай", "согласен", "утверждаю", "приступай", "реализуй", "пиши код") → PHASE: execution
+Если пользователь НЕ подтвердил или задаёт вопросы → PHASE: planning`,
+      execution: `Если ассистент написал ГОТОВЫЙ код (есть блок кода в ответе) → PHASE: validation
+Если код не написан или написан частично → PHASE: execution`,
+      validation: `Если пользователь подтвердил результат (сказал "да", "ок", "готово", "всё верно", "принято", "завершай", "done") → PHASE: done
+Если пользователь просит изменения или нашёл баги → PHASE: execution
+Если пользователь не высказался явно → PHASE: validation`,
+    };
 
-Задача: "${task.title}"
-Текущая фаза: ${task.phase}
+    const rules = transitionRules[task.phase] ?? `Оставь текущую фазу: ${task.phase}`;
 
-Допустимые переходы:
-- planning → execution (план подтверждён пользователем)
-- execution → validation (код полностью написан)
-- execution → planning (нужно переосмыслить подход)
-- validation → done (пользователь подтвердил результат)
-- validation → execution (найдены баги или нужны изменения)
+    return `Определи фазу задачи. Текущая фаза: ${task.phase}. Задача: "${task.title}".
 
-Последнее сообщение пользователя:
-${userMessage}
+Правила:
+${rules}
 
-Ответ ассистента:
-${assistantResponse.slice(0, 500)}
+Сообщение пользователя: "${userMessage}"
+Ответ ассистента (начало): "${assistantResponse.slice(0, 300)}"
 
-Ответь СТРОГО в формате (одна строка, ничего больше):
-PHASE: фаза | SUMMARY: резюме
-
-Если нужен переход фазы, замени ${task.phase} на новую фазу.
-Если переход НЕ нужен, оставь текущую фазу.`;
+Ответь ОДНОЙ строкой:
+PHASE: фаза | SUMMARY: краткое резюме`;
   }
 
   /**
