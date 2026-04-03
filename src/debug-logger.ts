@@ -84,23 +84,15 @@ export function printOutputMarker(): void {
 
 export type DebugContext = {
   messageCount?: number;
-  longTermMemory?: string;
-  workingMemory?: string;
-  factsBlock?: string;
 };
 
 export function printRequestDebug(config: AppConfig, model?: string, ctx?: DebugContext): void {
   const messageCount = ctx?.messageCount;
-  const factsCount = ctx?.factsBlock ? 1 : 0;
   debugPrintHeader("Request Debug");
   debugPrintField("Requesting", `${config.baseUrl}/responses`);
   debugPrintField("Model", model ?? "(unknown)");
-  debugPrintField("Context strategy", config.contextStrategy);
   if (messageCount !== undefined) {
     debugPrintField("Messages in context", messageCount);
-  }
-  if (factsCount !== undefined && factsCount > 0) {
-    debugPrintField("Facts in context", factsCount);
   }
   debugPrintField("Timeout", `${config.effectiveTimeoutMs}ms`);
   debugPrintField("Stream", config.useStreaming ? "enabled" : "disabled");
@@ -126,21 +118,6 @@ export function printRequestDebug(config: AppConfig, model?: string, ctx?: Debug
   }
 
   debugPrintSection("Prompts");
-
-  if (ctx?.longTermMemory) {
-    debugPrintPromptBlock("Долговременная память", ctx.longTermMemory);
-    console.error("");
-  }
-
-  if (ctx?.workingMemory) {
-    debugPrintPromptBlock("Рабочая память проекта", ctx.workingMemory);
-    console.error("");
-  }
-
-  if (ctx?.factsBlock) {
-    debugPrintPromptBlock("Facts block", ctx.factsBlock);
-    console.error("");
-  }
 
   debugPrintPromptBlock("System prompt", config.systemPrompt || "(пусто)");
   console.error("");

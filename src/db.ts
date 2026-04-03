@@ -67,15 +67,6 @@ export function initDb(dbPath: string): void {
       created_at TEXT DEFAULT (datetime('now'))
     );
 
-    CREATE TABLE IF NOT EXISTS facts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-      key TEXT NOT NULL,
-      value TEXT NOT NULL,
-      updated_at TEXT DEFAULT (datetime('now')),
-      UNIQUE(session_id, key)
-    );
-
     CREATE TABLE IF NOT EXISTS checkpoints (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -121,30 +112,13 @@ export function initDb(dbPath: string): void {
       UNIQUE(profile_id, key)
     );
 
-    CREATE TABLE IF NOT EXISTS tasks (
+    CREATE TABLE IF NOT EXISTS invariants (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-      title TEXT NOT NULL,
-      phase TEXT NOT NULL DEFAULT 'planning' CHECK (phase IN ('planning', 'execution', 'validation', 'done', 'paused', 'cancelled')),
-      previous_phase TEXT CHECK (previous_phase IN ('planning', 'execution', 'validation') OR previous_phase IS NULL),
-      summary TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+      content TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
     );
 
-    CREATE TABLE IF NOT EXISTS long_term_memories (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      content TEXT NOT NULL,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS working_memories (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      content TEXT NOT NULL,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
-    );
   `);
 
   // Предзаполнение моделей
@@ -169,7 +143,6 @@ export function initDb(dbPath: string): void {
   const defaultRoles: ModelRole[] = [
     { role: "chat", model_id: "openai/gpt-5-nano" },
     { role: "title", model_id: "openai/gpt-5-nano" },
-    { role: "facts", model_id: "openai/gpt-5-nano" },
   ];
 
   const insertRole = db.prepare(
@@ -181,12 +154,10 @@ export function initDb(dbPath: string): void {
 
   // Дефолтные опции
   const defaultOptions: { key: string; value: string }[] = [
-    { key: "memory_interval", value: "15" },
     { key: "system_prompt", value: "Отвечай кратко и по делу" },
     { key: "temperature", value: "0.3" },
     { key: "top_p", value: "" },
     { key: "debug", value: "false" },
-    { key: "context_strategy", value: "full" },
   ];
   const insertOption = db.prepare(
     "INSERT OR IGNORE INTO options (key, value) VALUES (?, ?)"
@@ -290,45 +261,6 @@ export function clearMessages(sessionId: number): void {
   db.run("DELETE FROM messages WHERE session_id = ?", [sessionId]);
 }
 
-// --- Context strategy ---
-
-export function getSessionStrategy(sessionId: number): string {
-  const row = db.query<{ context_strategy: string }, [number]>(
-    "SELECT context_strategy FROM sessions WHERE id = ?"
-  ).get(sessionId);
-  return row?.context_strategy ?? "full";
-}
-
-export function setSessionStrategy(sessionId: number, strategy: string): void {
-  db.run(
-    "UPDATE sessions SET context_strategy = ?, updated_at = datetime('now') WHERE id = ?",
-    [strategy, sessionId]
-  );
-}
-
-// --- Facts ---
-
-export type Fact = { key: string; value: string };
-
-export function getFacts(sessionId: number): Fact[] {
-  return db.query<Fact, [number]>(
-    "SELECT key, value FROM facts WHERE session_id = ? ORDER BY key ASC"
-  ).all(sessionId);
-}
-
-export function upsertFacts(sessionId: number, facts: Fact[]): void {
-  const stmt = db.prepare(
-    "INSERT INTO facts (session_id, key, value, updated_at) VALUES (?, ?, ?, datetime('now')) ON CONFLICT(session_id, key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')"
-  );
-  for (const fact of facts) {
-    stmt.run(sessionId, fact.key, fact.value);
-  }
-}
-
-export function clearFacts(sessionId: number): void {
-  db.run("DELETE FROM facts WHERE session_id = ?", [sessionId]);
-}
-
 // --- Checkpoints & Branching ---
 
 export function createCheckpoint(sessionId: number): number {
@@ -357,7 +289,10 @@ export function createBranch(
   title?: string,
   contextStrategy?: string
 ): number {
-  const parentStrategy = getSessionStrategy(parentSessionId);
+  const parentRow = db.query<{ context_strategy: string }, [number]>(
+    "SELECT context_strategy FROM sessions WHERE id = ?"
+  ).get(parentSessionId);
+  const parentStrategy = parentRow?.context_strategy ?? "full";
   const result = db.run(
     "INSERT INTO sessions (title, context_strategy, parent_session_id, branch_point_message_id) VALUES (?, ?, ?, ?)",
     [title ?? null, contextStrategy ?? parentStrategy, parentSessionId, branchPointMessageId]

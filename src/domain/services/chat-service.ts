@@ -1,18 +1,16 @@
-import type { CostInfo, LLMRequest, LLMResponse, Model, Message } from "../models";
+import type { LLMRequest, LLMResponse, Model, Message } from "../models";
 import type { LLMClient, StreamEvent } from "../ports/llm-client";
 import type { MessageRepository } from "../ports/message-repository";
-import type { FactRepository } from "../ports/fact-repository";
 import type { ModelRepository } from "../ports/model-repository";
 import type { SessionService } from "./session-service";
-import type { ContextService, ContextResult } from "./context-service";
 import type { CostService } from "./cost-service";
 import type { ProfileService } from "./profile-service";
+import type { InvariantService } from "./invariant-service";
 
 export type SendMessageOptions = {
   historyLimit: number;
   systemPrompt: string;
   useStreaming: boolean;
-  memoryBlocks?: string;
   temperature?: number;
   topP?: number;
   maxCompletionTokens?: number;
@@ -20,7 +18,6 @@ export type SendMessageOptions = {
   reasoningSummary?: string;
   onDelta?: (text: string) => void;
   onReasoningSummary?: (text: string) => void;
-  userPromptSuffix?: string;
 };
 
 export type SendMessageResult = {
@@ -30,16 +27,17 @@ export type SendMessageResult = {
   rawResponse?: unknown;
 };
 
+import type { CostInfo } from "../models";
+
 export class ChatService {
   constructor(
     private readonly llmClient: LLMClient,
     private readonly sessionService: SessionService,
-    private readonly contextService: ContextService,
     private readonly costService: CostService,
     private readonly messageRepo: MessageRepository,
-    private readonly factRepo: FactRepository,
     private readonly modelRepo: ModelRepository,
     private readonly profileService?: ProfileService,
+    private readonly invariantService?: InvariantService,
   ) {}
 
   async sendMessage(
@@ -50,11 +48,11 @@ export class ChatService {
     const chatModel = this.modelRepo.getRole("chat");
     const model = chatModel ?? { id: "openai/gpt-5-nano", name: "GPT-5 Nano", inputPrice: 0.05, outputPrice: 0.40, contextSize: 400_000 };
 
-    // Build context from history
-    const strategy = this.sessionService.getStrategy(sessionId);
+    // Get message history
     const messages = this.messageRepo.getBySession(sessionId);
-    const facts = this.factRepo.getBySession(sessionId);
-    const context = this.contextService.buildContext(messages, facts, strategy, options.historyLimit);
+    const historyMessages = options.historyLimit > 0
+      ? messages.slice(-options.historyLimit)
+      : messages;
 
     // Save user message
     this.messageRepo.add(sessionId, "user", userPrompt);
@@ -62,30 +60,25 @@ export class ChatService {
     // Build instructions
     let instructions = options.systemPrompt;
 
-    // Добавляем профиль в system prompt
+    // Добавляем профиль и инварианты в system prompt
     if (this.profileService) {
       const activeProfile = this.profileService.getActiveProfile();
       if (activeProfile) {
         const profileBlock = this.profileService.buildProfileBlock(activeProfile);
         instructions = `${profileBlock}\n\n${instructions}`;
+
+        if (this.invariantService) {
+          const invariantsBlock = this.invariantService.buildInvariantsBlock(activeProfile.id);
+          if (invariantsBlock) {
+            instructions = `${invariantsBlock}\n\n${instructions}`;
+          }
+        }
       }
     }
 
-    if (options.memoryBlocks) {
-      instructions = `${options.memoryBlocks}\n\n${instructions}`;
-    }
-    if (context.factsBlock) {
-      instructions = `${context.factsBlock}\n\n${instructions}`;
-    }
-
-    // Добавляем текущее сообщение пользователя в контекст
-    // userPromptSuffix добавляется к сообщению для LLM, но НЕ сохраняется в БД
-    const llmUserContent = options.userPromptSuffix
-      ? `${userPrompt}\n\n${options.userPromptSuffix}`
-      : userPrompt;
-    const allMessages = [
-      ...context.messages,
-      { id: 0, sessionId, role: "user" as const, content: llmUserContent, createdAt: "" },
+    const allMessages: Message[] = [
+      ...historyMessages,
+      { id: 0, sessionId, role: "user" as const, content: userPrompt, createdAt: "" },
     ];
 
     // Build LLM request

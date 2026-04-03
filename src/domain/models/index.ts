@@ -18,11 +18,6 @@ export type Session = {
 
 export type SessionWithCount = Session & { messageCount: number };
 
-export type Fact = {
-  key: string;
-  value: string;
-};
-
 export type Model = {
   id: string;
   name: string;
@@ -77,17 +72,11 @@ export type ProfilePreference = {
   value: string;
 };
 
-export type TaskPhase = "planning" | "execution" | "validation" | "done" | "paused" | "cancelled";
-
-export type Task = {
+export type Invariant = {
   id: number;
-  sessionId: number;
-  title: string;
-  phase: TaskPhase;
-  previousPhase: TaskPhase | null;
-  summary: string | null;
+  profileId: number;
+  content: string;
   createdAt: string;
-  updatedAt: string;
 };
 
 export type GenerationParams = {

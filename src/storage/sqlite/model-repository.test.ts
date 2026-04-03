@@ -58,11 +58,10 @@ describe("SqliteModelRepository", () => {
 
   test("getRoles returns all default roles with model names", () => {
     const roles = repo.getRoles();
-    expect(roles.length).toBe(3);
+    expect(roles.length).toBe(2);
     const roleNames = roles.map((r) => r.role);
     expect(roleNames).toContain("chat");
     expect(roleNames).toContain("title");
-    expect(roleNames).toContain("facts");
     // Check camelCase format
     expect(roles[0].modelId).toBeDefined();
     expect(roles[0].modelName).toBeDefined();

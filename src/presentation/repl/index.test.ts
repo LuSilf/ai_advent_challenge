@@ -6,21 +6,17 @@ import { initDb } from "../../db";
 
 import { SqliteSessionRepository } from "../../storage/sqlite/session-repository";
 import { SqliteMessageRepository } from "../../storage/sqlite/message-repository";
-import { SqliteFactRepository } from "../../storage/sqlite/fact-repository";
 import { SqliteModelRepository } from "../../storage/sqlite/model-repository";
 import { SqliteOptionsRepository } from "../../storage/sqlite/options-repository";
 import { SqliteCheckpointRepository } from "../../storage/sqlite/checkpoint-repository";
 import { SqliteProfileRepository } from "../../storage/sqlite/profile-repository";
-import { SqliteMemoryRepository } from "../../storage/sqlite/memory-repository";
+import { SqliteInvariantRepository } from "../../storage/sqlite/invariant-repository";
 
 import { SessionService } from "../../domain/services/session-service";
-import { ContextService } from "../../domain/services/context-service";
 import { CostService } from "../../domain/services/cost-service";
 import { ChatService } from "../../domain/services/chat-service";
-import { MemoryService } from "../../domain/services/memory-service";
 import { ProfileService } from "../../domain/services/profile-service";
-import { TaskService } from "../../domain/services/task-service";
-import { SqliteTaskRepository } from "../../storage/sqlite/task-repository";
+import { InvariantService } from "../../domain/services/invariant-service";
 import type { LLMClient, StreamEvent } from "../../domain/ports/llm-client";
 import type { LLMRequest, LLMResponse } from "../../domain/models";
 import type { AppConfig } from "../../config";
@@ -59,50 +55,42 @@ function createTestConfig(): AppConfig {
 
 describe("presentation/repl handleCommand", () => {
   let deps: ReplDeps;
-  let state: { sessionId: number; messagesSinceReconciliation: number };
+  let state: { sessionId: number };
 
   beforeEach(() => {
     const dbPath = freshDb();
-    const tempDir = join(tmpdir(), `test-mem-${Date.now()}`);
 
     const sessionRepo = new SqliteSessionRepository();
     const messageRepo = new SqliteMessageRepository();
-    const factRepo = new SqliteFactRepository();
     const modelRepo = new SqliteModelRepository();
     const optionsRepo = new SqliteOptionsRepository();
     const checkpointRepo = new SqliteCheckpointRepository();
     const profileRepo = new SqliteProfileRepository();
-    const memoryRepo = new SqliteMemoryRepository();
-    const taskRepo = new SqliteTaskRepository();
+    const invariantRepo = new SqliteInvariantRepository();
     const llmClient = createMockLLMClient();
 
     const sessionService = new SessionService(sessionRepo, messageRepo);
-    const contextService = new ContextService();
     const costService = new CostService(modelRepo);
     const profileService = new ProfileService(profileRepo, optionsRepo);
-    const chatService = new ChatService(llmClient, sessionService, contextService, costService, messageRepo, factRepo, modelRepo, profileService);
-    const memoryService = new MemoryService(memoryRepo, llmClient, modelRepo);
-    const taskService = new TaskService(taskRepo);
+    const invariantService = new InvariantService(invariantRepo);
+    const chatService = new ChatService(llmClient, sessionService, costService, messageRepo, modelRepo, profileService, invariantService);
 
     deps = {
       config: createTestConfig(),
       sessionService,
       chatService,
-      memoryService,
-      contextService,
       costService,
       modelRepo,
       optionsRepo,
       checkpointRepo,
-      factRepo,
       llmClient,
       openaiClient: {} as any,
       profileService,
-      taskService,
+      invariantService,
     };
 
     const id = sessionService.createSession(undefined, "full");
-    state = { sessionId: id, messagesSinceReconciliation: 0 };
+    state = { sessionId: id };
   });
 
   test("/new creates new session", async () => {
@@ -145,21 +133,6 @@ describe("presentation/repl handleCommand", () => {
     expect(deps.sessionService.getSession(state.sessionId)!.title).toBe("новое имя");
   });
 
-  test("/strategy shows current strategy", async () => {
-    const result = await handleCommand("/strategy", "", state, deps);
-    expect(result).toBeNull();
-  });
-
-  test("/strategy changes strategy", async () => {
-    await handleCommand("/strategy", "sliding", state, deps);
-    expect(deps.sessionService.getStrategy(state.sessionId)).toBe("sliding");
-  });
-
-  test("/strategy rejects invalid", async () => {
-    await handleCommand("/strategy", "invalid", state, deps);
-    expect(deps.sessionService.getStrategy(state.sessionId)).toBe("full");
-  });
-
   test("/models shows models", async () => {
     const result = await handleCommand("/models", "", state, deps);
     expect(result).toBeNull();
@@ -181,30 +154,8 @@ describe("presentation/repl handleCommand", () => {
   });
 
   test("/set changes option", async () => {
-    await handleCommand("/set", "memory_interval 10", state, deps);
-    expect(deps.optionsRepo.get("memory_interval")).toBe("10");
-  });
-
-  test("/save_facts saves to working memory", async () => {
-    await handleCommand("/save_facts", "project fact", state, deps);
-    expect(deps.memoryService.readMemory("working")).toContain("project fact");
-  });
-
-  test("/facts shows working memory", async () => {
-    deps.memoryService.writeMemory("working", "test memory");
-    const result = await handleCommand("/facts", "", state, deps);
-    expect(result).toBeNull();
-  });
-
-  test("/memory shows longterm memory", async () => {
-    deps.memoryService.writeMemory("longterm", "test longterm");
-    const result = await handleCommand("/memory", "", state, deps);
-    expect(result).toBeNull();
-  });
-
-  test("/remember without rl falls back to append", async () => {
-    await handleCommand("/remember", "запомни это", state, deps);
-    expect(deps.memoryService.readMemory("longterm")).toContain("запомни это");
+    await handleCommand("/set", "custom_key 10", state, deps);
+    expect(deps.optionsRepo.get("custom_key")).toBe("10");
   });
 
   test("/help returns null", async () => {
@@ -268,119 +219,50 @@ describe("presentation/repl handleCommand", () => {
     expect(deps.profileService.getProfile(id)).toBeNull();
   });
 
-  // Task commands
+  // Invariant commands
 
-  test("/task без активной задачи показывает сообщение", async () => {
-    const result = await handleCommand("/task", "", state, deps);
+  test("/invariant without profile shows error", async () => {
+    const result = await handleCommand("/invariant", "", state, deps);
     expect(result).toBeNull();
   });
 
-  test('/task create создаёт задачу', async () => {
-    await handleCommand("/task", 'create "Реализовать фичу"', state, deps);
-    const tasks = deps.taskService.getSessionTasks(state.sessionId);
-    expect(tasks).toHaveLength(1);
-    expect(tasks[0].title).toBe("Реализовать фичу");
-    expect(tasks[0].phase).toBe("planning");
+  test("/invariant add creates invariant", async () => {
+    const id = deps.profileService.createProfile("test");
+    deps.profileService.setActiveProfile(id);
+    await handleCommand("/invariant", "add Только TypeScript", state, deps);
+    const invariants = deps.invariantService.getByProfile(id);
+    expect(invariants).toHaveLength(1);
+    expect(invariants[0].content).toBe("Только TypeScript");
   });
 
-  test("/task create без описания показывает ошибку", async () => {
-    await handleCommand("/task", "create", state, deps);
-    const tasks = deps.taskService.getSessionTasks(state.sessionId);
-    expect(tasks).toHaveLength(0);
-  });
-
-  test("/task показывает активную задачу", async () => {
-    deps.taskService.createTask(state.sessionId, "Моя задача");
-    const result = await handleCommand("/task", "", state, deps);
+  test("/invariant shows list of invariants", async () => {
+    const id = deps.profileService.createProfile("test");
+    deps.profileService.setActiveProfile(id);
+    deps.invariantService.add(id, "правило 1");
+    deps.invariantService.add(id, "правило 2");
+    const result = await handleCommand("/invariant", "", state, deps);
     expect(result).toBeNull();
   });
 
-  test("/task list показывает задачи", async () => {
-    deps.taskService.createTask(state.sessionId, "Задача 1");
-    deps.taskService.createTask(state.sessionId, "Задача 2");
-    const result = await handleCommand("/task", "list", state, deps);
+  test("/invariant delete removes invariant", async () => {
+    const id = deps.profileService.createProfile("test");
+    deps.profileService.setActiveProfile(id);
+    const inv = deps.invariantService.add(id, "правило");
+    await handleCommand("/invariant", `delete ${inv.id}`, state, deps);
+    expect(deps.invariantService.getByProfile(id)).toHaveLength(0);
+  });
+
+  test("/invariant add without text shows error", async () => {
+    const id = deps.profileService.createProfile("test");
+    deps.profileService.setActiveProfile(id);
+    await handleCommand("/invariant", "add", state, deps);
+    expect(deps.invariantService.getByProfile(id)).toHaveLength(0);
+  });
+
+  test("/invariant shows empty when no invariants", async () => {
+    const id = deps.profileService.createProfile("test");
+    deps.profileService.setActiveProfile(id);
+    const result = await handleCommand("/invariant", "", state, deps);
     expect(result).toBeNull();
-  });
-
-  test("/task create паузит предыдущую активную задачу", async () => {
-    await handleCommand("/task", 'create "Задача 1"', state, deps);
-    await handleCommand("/task", 'create "Задача 2"', state, deps);
-    const tasks = deps.taskService.getSessionTasks(state.sessionId);
-    expect(tasks[0].phase).toBe("paused");
-    expect(tasks[1].phase).toBe("planning");
-  });
-
-  test("/task list пустой список", async () => {
-    const result = await handleCommand("/task", "list", state, deps);
-    expect(result).toBeNull();
-  });
-
-  test("/task pause приостанавливает активную задачу", async () => {
-    deps.taskService.createTask(state.sessionId, "Задача");
-    await handleCommand("/task", "pause", state, deps);
-    const tasks = deps.taskService.getSessionTasks(state.sessionId);
-    expect(tasks[0].phase).toBe("paused");
-    expect(tasks[0].previousPhase).toBe("planning");
-  });
-
-  test("/task pause без активной задачи показывает ошибку", async () => {
-    const result = await handleCommand("/task", "pause", state, deps);
-    expect(result).toBeNull();
-  });
-
-  test("/task cancel отменяет активную задачу", async () => {
-    deps.taskService.createTask(state.sessionId, "Задача");
-    await handleCommand("/task", "cancel", state, deps);
-    const tasks = deps.taskService.getSessionTasks(state.sessionId);
-    expect(tasks[0].phase).toBe("cancelled");
-  });
-
-  test("/task done завершает задачу из любой фазы", async () => {
-    deps.taskService.createTask(state.sessionId, "Задача");
-    await handleCommand("/task", "done", state, deps);
-    const tasks = deps.taskService.getSessionTasks(state.sessionId);
-    expect(tasks[0].phase).toBe("done");
-  });
-
-  test("/task done из execution проходит через validation", async () => {
-    const task = deps.taskService.createTask(state.sessionId, "Задача");
-    deps.taskService.transition(task.id, "execution");
-    await handleCommand("/task", "done", state, deps);
-    const tasks = deps.taskService.getSessionTasks(state.sessionId);
-    expect(tasks[0].phase).toBe("done");
-  });
-
-  test("/task cancel без активной задачи показывает ошибку", async () => {
-    const result = await handleCommand("/task", "cancel", state, deps);
-    expect(result).toBeNull();
-  });
-
-  test("/task switch без paused задач показывает сообщение", async () => {
-    const result = await handleCommand("/task", "switch", state, deps);
-    expect(result).toBeNull();
-  });
-
-  // Phase 6: восстановление сессии
-
-  test("/switch паузит задачи покидаемой сессии", async () => {
-    deps.taskService.createTask(state.sessionId, "Задача в старой сессии");
-    const oldSessionId = state.sessionId;
-    const newSessionId = deps.sessionService.createSession("new");
-    await handleCommand("/switch", String(newSessionId), state, deps);
-    const tasks = deps.taskService.getSessionTasks(oldSessionId);
-    expect(tasks[0].phase).toBe("paused");
-  });
-
-  test("/switch показывает задачи новой сессии", async () => {
-    const newSessionId = deps.sessionService.createSession("new");
-    deps.taskService.createTask(newSessionId, "Задача в новой сессии");
-    deps.taskService.pauseTask(
-      deps.taskService.getActiveTask(newSessionId)!.id
-    );
-    await handleCommand("/switch", String(newSessionId), state, deps);
-    // Единственная paused задача авто-resume-ится
-    const active = deps.taskService.getActiveTask(newSessionId);
-    expect(active).not.toBeNull();
-    expect(active!.title).toBe("Задача в новой сессии");
   });
 });

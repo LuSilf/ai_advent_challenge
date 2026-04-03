@@ -220,8 +220,4 @@ export function applyDbOptions(config: AppConfig, getOption: (key: string) => st
     }
   }
 
-  const contextStrategy = getOption("context_strategy");
-  if (contextStrategy && (contextStrategy === "full" || contextStrategy === "sliding")) {
-    config.contextStrategy = contextStrategy;
-  }
 }

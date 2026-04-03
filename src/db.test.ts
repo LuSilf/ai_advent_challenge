@@ -1,7 +1,6 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { unlinkSync } from "node:fs";
 
 import {
   initDb,
@@ -16,11 +15,6 @@ import {
   getMessages,
   getMessageCount,
   clearMessages,
-  getSessionStrategy,
-  setSessionStrategy,
-  getFacts,
-  upsertFacts,
-  clearFacts,
   createCheckpoint,
   getLastCheckpoint,
   createBranch,
@@ -70,7 +64,6 @@ describe("db", () => {
   test("getLastSession returns most recently updated", () => {
     const id1 = createSession("первая");
     const id2 = createSession("вторая");
-    // addMessage updates updated_at, making id1 the most recent
     addMessage(id1, "user", "bump");
     const last = getLastSession();
     expect(last).not.toBeNull();
@@ -165,64 +158,6 @@ describe("db", () => {
     expect(getSession(id)).not.toBeNull();
   });
 
-  test("createSession with contextStrategy", () => {
-    const id = createSession("test", "sliding");
-    const session = getSession(id);
-    expect(session!.context_strategy).toBe("sliding");
-  });
-
-  test("createSession default strategy is full", () => {
-    const id = createSession();
-    expect(getSessionStrategy(id)).toBe("full");
-  });
-
-  test("getSessionStrategy and setSessionStrategy", () => {
-    const id = createSession();
-    expect(getSessionStrategy(id)).toBe("full");
-    setSessionStrategy(id, "sliding");
-    expect(getSessionStrategy(id)).toBe("sliding");
-    setSessionStrategy(id, "facts");
-    expect(getSessionStrategy(id)).toBe("facts");
-  });
-
-  // --- Facts ---
-
-  test("getFacts returns empty for new session", () => {
-    const id = createSession();
-    expect(getFacts(id)).toEqual([]);
-  });
-
-  test("upsertFacts inserts and updates facts", () => {
-    const id = createSession();
-    upsertFacts(id, [
-      { key: "цель", value: "тестирование" },
-      { key: "язык", value: "TypeScript" }
-    ]);
-    const facts = getFacts(id);
-    expect(facts).toHaveLength(2);
-    expect(facts[0]).toEqual({ key: "цель", value: "тестирование" });
-    expect(facts[1]).toEqual({ key: "язык", value: "TypeScript" });
-
-    // upsert обновляет
-    upsertFacts(id, [{ key: "язык", value: "Python" }]);
-    const updated = getFacts(id);
-    expect(updated.find((f) => f.key === "язык")!.value).toBe("Python");
-  });
-
-  test("clearFacts removes all facts", () => {
-    const id = createSession();
-    upsertFacts(id, [{ key: "a", value: "b" }]);
-    clearFacts(id);
-    expect(getFacts(id)).toEqual([]);
-  });
-
-  test("facts cascade deleted with session", () => {
-    const id = createSession();
-    upsertFacts(id, [{ key: "a", value: "b" }]);
-    deleteSession(id);
-    expect(getFacts(id)).toEqual([]);
-  });
-
   // --- Checkpoints & Branching ---
 
   test("createCheckpoint saves last message id", () => {
@@ -262,7 +197,7 @@ describe("db", () => {
     addMessage(id, "user", "msg3");
 
     const msgs = getMessages(id);
-    const checkpointMsgId = msgs[1].id; // after msg2
+    const checkpointMsgId = msgs[1].id;
 
     const branchId = createBranch(id, checkpointMsgId, "branch1");
     const branchMsgs = getMessages(branchId);
@@ -274,14 +209,6 @@ describe("db", () => {
     expect(branchSession!.parent_session_id).toBe(id);
     expect(branchSession!.branch_point_message_id).toBe(checkpointMsgId);
     expect(branchSession!.title).toBe("branch1");
-  });
-
-  test("createBranch inherits parent strategy", () => {
-    const id = createSession("parent", "sliding");
-    addMessage(id, "user", "msg1");
-    const msgs = getMessages(id);
-    const branchId = createBranch(id, msgs[0].id);
-    expect(getSessionStrategy(branchId)).toBe("sliding");
   });
 
   // --- Models ---
@@ -321,11 +248,10 @@ describe("db", () => {
 
   test("listModelRoles returns all default roles", () => {
     const roles = listModelRoles();
-    expect(roles.length).toBe(3);
+    expect(roles.length).toBe(2);
     const roleNames = roles.map((r) => r.role);
     expect(roleNames).toContain("chat");
     expect(roleNames).toContain("title");
-    expect(roleNames).toContain("facts");
   });
 
   test("setModelForRole changes model for role", () => {
@@ -343,9 +269,6 @@ describe("db", () => {
 
   test("calculateCost computes correctly", () => {
     const model = getModel("openai/gpt-5-nano")!;
-    // input: 0.05 $/1M, output: 0.40 $/1M
-    // 1000 in tokens = 0.05 * 1000 / 1_000_000 = 0.00005
-    // 500 out tokens = 0.40 * 500 / 1_000_000 = 0.0002
     const info = calculateCost(model, 1000, 500);
     expect(info.inputTokens).toBe(1000);
     expect(info.outputTokens).toBe(500);
@@ -390,10 +313,6 @@ describe("db", () => {
 describe("options", () => {
   beforeEach(() => { freshDb(); });
 
-  test("default memory_interval is 5", () => {
-    expect(getOption("memory_interval")).toBe("15");
-  });
-
   test("getOption returns null for unknown key", () => {
     expect(getOption("unknown_key")).toBeNull();
   });
@@ -404,14 +323,14 @@ describe("options", () => {
   });
 
   test("setOption updates existing option", () => {
-    setOption("memory_interval", "10");
-    expect(getOption("memory_interval")).toBe("10");
+    setOption("system_prompt", "новый промпт");
+    expect(getOption("system_prompt")).toBe("новый промпт");
   });
 
   test("listOptions returns all options", () => {
     const opts = listOptions();
     expect(opts.length).toBeGreaterThanOrEqual(1);
     const keys = opts.map((o) => o.key);
-    expect(keys).toContain("memory_interval");
+    expect(keys).toContain("system_prompt");
   });
 });

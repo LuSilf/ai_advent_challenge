@@ -18,8 +18,8 @@ describe("SqliteOptionsRepository", () => {
     repo = new SqliteOptionsRepository();
   });
 
-  test("get returns default memory_interval", () => {
-    expect(repo.get("memory_interval")).toBe("15");
+  test("get returns default system_prompt", () => {
+    expect(repo.get("system_prompt")).toBe("Отвечай кратко и по делу");
   });
 
   test("get returns null for unknown key", () => {
@@ -32,14 +32,14 @@ describe("SqliteOptionsRepository", () => {
   });
 
   test("set updates existing option", () => {
-    repo.set("memory_interval", "10");
-    expect(repo.get("memory_interval")).toBe("10");
+    repo.set("system_prompt", "новый промпт");
+    expect(repo.get("system_prompt")).toBe("новый промпт");
   });
 
   test("getAll returns all options", () => {
     const opts = repo.getAll();
     expect(opts.length).toBeGreaterThanOrEqual(1);
     const keys = opts.map((o) => o.key);
-    expect(keys).toContain("memory_interval");
+    expect(keys).toContain("system_prompt");
   });
 });

@@ -6,25 +6,21 @@ import { initDb } from "./db";
 // Storage
 import { SqliteSessionRepository } from "./storage/sqlite/session-repository";
 import { SqliteMessageRepository } from "./storage/sqlite/message-repository";
-import { SqliteFactRepository } from "./storage/sqlite/fact-repository";
 import { SqliteModelRepository } from "./storage/sqlite/model-repository";
 import { SqliteOptionsRepository } from "./storage/sqlite/options-repository";
 import { SqliteCheckpointRepository } from "./storage/sqlite/checkpoint-repository";
 import { SqliteProfileRepository } from "./storage/sqlite/profile-repository";
-import { SqliteMemoryRepository } from "./storage/sqlite/memory-repository";
-import { SqliteTaskRepository } from "./storage/sqlite/task-repository";
+import { SqliteInvariantRepository } from "./storage/sqlite/invariant-repository";
 
 // API
 import { OpenAILLMClient } from "./api/openai/llm-client";
 
 // Domain services
 import { SessionService } from "./domain/services/session-service";
-import { ContextService } from "./domain/services/context-service";
 import { CostService } from "./domain/services/cost-service";
 import { ChatService } from "./domain/services/chat-service";
-import { MemoryService } from "./domain/services/memory-service";
 import { ProfileService } from "./domain/services/profile-service";
-import { TaskService } from "./domain/services/task-service";
+import { InvariantService } from "./domain/services/invariant-service";
 
 // Presentation
 import { startRepl } from "./presentation/repl";
@@ -52,33 +48,28 @@ const openaiClient = new OpenAI({
 // --- Storage layer ---
 const sessionRepo = new SqliteSessionRepository();
 const messageRepo = new SqliteMessageRepository();
-const factRepo = new SqliteFactRepository();
 const modelRepo = new SqliteModelRepository();
 const checkpointRepo = new SqliteCheckpointRepository();
 const profileRepo = new SqliteProfileRepository();
-const memoryRepo = new SqliteMemoryRepository();
-const taskRepo = new SqliteTaskRepository();
+const invariantRepo = new SqliteInvariantRepository();
 
 // --- API layer ---
 const llmClient = new OpenAILLMClient(openaiClient);
 
 // --- Domain services ---
 const sessionService = new SessionService(sessionRepo, messageRepo);
-const contextService = new ContextService();
 const costService = new CostService(modelRepo);
 const profileService = new ProfileService(profileRepo, optionsRepo);
+const invariantService = new InvariantService(invariantRepo);
 const chatService = new ChatService(
   llmClient,
   sessionService,
-  contextService,
   costService,
   messageRepo,
-  factRepo,
   modelRepo,
   profileService,
+  invariantService,
 );
-const memoryService = new MemoryService(memoryRepo, llmClient, modelRepo);
-const taskService = new TaskService(taskRepo);
 
 // --- Run ---
 if (!config.prompt) {
@@ -87,17 +78,14 @@ if (!config.prompt) {
     config,
     sessionService,
     chatService,
-    memoryService,
-    contextService,
     costService,
     modelRepo,
     optionsRepo,
     checkpointRepo,
-    factRepo,
     llmClient,
     openaiClient,
     profileService,
-    taskService,
+    invariantService,
   });
 } else {
   // Single-shot mode
@@ -120,8 +108,6 @@ if (!config.prompt) {
   if (config.debug) {
     printRequestDebug(config, modelId, {
       messageCount: sessionService.getMessageCount(sessionId),
-      longTermMemory: memoryService.readMemory("longterm") || undefined,
-      workingMemory: memoryService.readMemory("working") || undefined,
     });
   }
 
@@ -136,7 +122,6 @@ if (!config.prompt) {
       historyLimit: config.historyLimit,
       systemPrompt: config.systemPrompt,
       useStreaming: config.useStreaming,
-      memoryBlocks: memoryService.getMemoryBlocks() || undefined,
       temperature: config.temperature,
       topP: config.topP,
       maxCompletionTokens: config.maxCompletionTokens,

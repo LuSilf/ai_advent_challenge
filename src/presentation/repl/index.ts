@@ -1,7 +1,7 @@
 import { createInterface } from "node:readline";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
-import { writeFileSync, readFileSync, unlinkSync, mkdirSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import pc from "picocolors";
 import type OpenAI from "openai";
@@ -13,33 +13,26 @@ import { printOutputMarker, printRequestDebug, printResponseDebug, type DebugCon
 
 import type { SessionService } from "../../domain/services/session-service";
 import type { ChatService } from "../../domain/services/chat-service";
-import type { MemoryService } from "../../domain/services/memory-service";
-import type { ContextService } from "../../domain/services/context-service";
 import type { CostService } from "../../domain/services/cost-service";
 import type { ModelRepository } from "../../domain/ports/model-repository";
 import type { OptionsRepository } from "../../domain/ports/options-repository";
 import type { CheckpointRepository } from "../../domain/ports/checkpoint-repository";
-import type { FactRepository } from "../../domain/ports/fact-repository";
 import type { LLMClient } from "../../domain/ports/llm-client";
 import type { ProfileService } from "../../domain/services/profile-service";
-import type { TaskService } from "../../domain/services/task-service";
-import { TaskPhasePrompts } from "../../domain/services/task-phase-prompts";
+import type { InvariantService } from "../../domain/services/invariant-service";
 
 export type ReplDeps = {
   config: AppConfig;
   sessionService: SessionService;
   chatService: ChatService;
-  memoryService: MemoryService;
-  contextService: ContextService;
   costService: CostService;
   modelRepo: ModelRepository;
   optionsRepo: OptionsRepository;
   checkpointRepo: CheckpointRepository;
-  factRepo: FactRepository;
   llmClient: LLMClient;
   openaiClient: OpenAI;
   profileService: ProfileService;
-  taskService: TaskService;
+  invariantService: InvariantService;
 };
 
 function printSessionInfo(sessionId: number, title: string | null, messageCount: number): void {
@@ -59,32 +52,6 @@ function printSessionMessages(messages: ChatMessage[]): void {
   }
 }
 
-function showSessionTasks(taskService: import("../../domain/services/task-service").TaskService, sessionId: number): void {
-  const tasks = taskService.getSessionTasks(sessionId);
-  if (tasks.length === 0) return;
-
-  const active = tasks.find((t) => !["paused", "done", "cancelled"].includes(t.phase));
-  const paused = tasks.filter((t) => t.phase === "paused");
-
-  if (active) {
-    console.log(pc.cyan(`\nАктивная задача #${active.id}: "${active.title}" [${active.phase}]`));
-    if (active.summary) console.log(pc.dim(`  ${active.summary}`));
-  } else if (paused.length === 1) {
-    // Единственная paused задача — авто-resume
-    const task = paused[0];
-    taskService.resumeTask(task.id);
-    console.log(pc.cyan(`\nВосстановлена задача #${task.id}: "${task.title}" [${task.previousPhase ?? task.phase}]`));
-    if (task.summary) console.log(pc.dim(`  ${task.summary}`));
-  } else if (paused.length > 1) {
-    console.log(pc.yellow("\nПриостановленные задачи:"));
-    for (const t of paused) {
-      console.log(`  #${t.id} "${t.title}" [${pc.dim(t.previousPhase ?? "paused")}]`);
-      if (t.summary) console.log(pc.dim(`      ${t.summary}`));
-    }
-    console.log(pc.dim("  Используйте /task switch для переключения"));
-  }
-}
-
 function printHelp(): void {
   console.log(pc.bold("Команды:"));
   console.log("  /new              Создать новую сессию");
@@ -95,15 +62,6 @@ function printHelp(): void {
   console.log("  /rename текст     Переименовать текущую сессию");
   console.log("  /history          Показать историю текущей сессии");
   console.log("  /edit             Открыть $EDITOR для ввода промпта");
-  console.log(pc.bold("Память:"));
-  console.log("  /remember <текст> Сохранить в долговременную память (глобальная)");
-  console.log("  /save_facts <текст> Сохранить в рабочую память (проект)");
-  console.log("  /memory           Показать долговременную память");
-  console.log("  /facts            Показать рабочую память проекта");
-  console.log("  /edit_memory      Редактировать долговременную память ($EDITOR)");
-  console.log("  /edit_facts       Редактировать рабочую память ($EDITOR)");
-  console.log(pc.bold("Стратегии контекста:"));
-  console.log("  /strategy [name]  Показать/сменить стратегию (full|sliding)");
   console.log(pc.bold("Модели:"));
   console.log("  /models           Список доступных моделей с ценами");
   console.log("  /roles            Текущий маппинг ролей на модели");
@@ -121,14 +79,10 @@ function printHelp(): void {
   console.log("  /profile switch <id>  Переключить активный профиль");
   console.log("  /profile edit         Редактировать профиль в $EDITOR (YAML)");
   console.log("  /profile delete <id>  Удалить профиль");
-  console.log(pc.bold("Задачи:"));
-  console.log("  /task              Показать текущую задачу");
-  console.log('  /task create <имя> Создать задачу');
-  console.log("  /task list         Список задач в сессии");
-  console.log("  /task pause        Приостановить текущую задачу");
-  console.log("  /task cancel       Отменить текущую задачу");
-  console.log("  /task done         Завершить текущую задачу");
-  console.log("  /task switch       Переключиться на другую задачу");
+  console.log(pc.bold("Инварианты:"));
+  console.log("  /invariant            Показать инварианты активного профиля");
+  console.log("  /invariant add <текст> Добавить инвариант");
+  console.log("  /invariant delete <id> Удалить инвариант");
   console.log(pc.bold("Настройки:"));
   console.log("  /options          Показать все настройки");
   console.log("  /set <ключ> <зн>  Установить значение настройки");
@@ -242,17 +196,16 @@ async function askUserEdit(rl: ReturnType<typeof createInterface>, text: string)
 export async function handleCommand(
   cmd: string,
   args: string,
-  state: { sessionId: number; messagesSinceReconciliation: number },
+  state: { sessionId: number },
   deps: ReplDeps,
   rl?: ReturnType<typeof createInterface>,
 ): Promise<string | null> {
-  const { config, sessionService, memoryService, contextService, costService, modelRepo, optionsRepo, checkpointRepo, taskService } = deps;
+  const { config, sessionService, costService, modelRepo, optionsRepo, checkpointRepo } = deps;
 
   switch (cmd) {
     case "/new": {
       state.sessionId = sessionService.createSession(undefined, config.contextStrategy);
-      state.messagesSinceReconciliation = 0;
-      console.log(pc.green(`Создана новая сессия #${state.sessionId} (стратегия: ${config.contextStrategy})`));
+      console.log(pc.green(`Создана новая сессия #${state.sessionId}`));
       return null;
     }
     case "/list": {
@@ -279,10 +232,7 @@ export async function handleCommand(
         console.log(pc.red(`Сессия #${id} не найдена`));
         return null;
       }
-      // Автопауза задач в покидаемой сессии
-      taskService.pauseAllActive(state.sessionId);
       state.sessionId = id;
-      state.messagesSinceReconciliation = 0;
       const count = sessionService.getMessageCount(id);
       printSessionInfo(id, session.title, count);
       const msgs = sessionService.getHistory(id, config.historyLimit).map((m) => ({
@@ -290,8 +240,6 @@ export async function handleCommand(
         content: m.content,
       }));
       printSessionMessages(msgs);
-      // Показ задач при входе в сессию
-      showSessionTasks(taskService, id);
       return null;
     }
     case "/clear": {
@@ -359,68 +307,6 @@ export async function handleCommand(
         return null;
       }
     }
-    case "/strategy": {
-      if (!args.trim()) {
-        const current = sessionService.getStrategy(state.sessionId);
-        console.log(pc.cyan(`Текущая стратегия: ${current}`));
-        console.log(pc.dim("Доступные: full, sliding"));
-        return null;
-      }
-      const name = args.trim().toLowerCase();
-      if (!contextService.isValidStrategy(name)) {
-        console.log(pc.red(`Неизвестная стратегия: ${name}. Доступные: full, sliding`));
-        return null;
-      }
-      sessionService.setStrategy(state.sessionId, name);
-      console.log(pc.green(`Стратегия сменена на: ${name}`));
-      return null;
-    }
-    case "/facts": {
-      const content = memoryService.readMemory("working");
-      if (!content) {
-        console.log(pc.dim("Рабочая память пуста"));
-        return null;
-      }
-      console.log(pc.bold("Рабочая память проекта:"));
-      console.log(content);
-      return null;
-    }
-    case "/memory": {
-      const content = memoryService.readMemory("longterm");
-      if (!content) {
-        console.log(pc.dim("Долговременная память пуста"));
-        return null;
-      }
-      console.log(pc.bold("Долговременная память:"));
-      console.log(content);
-      return null;
-    }
-    case "/edit_memory": {
-      const currentContent = memoryService.readMemory("longterm");
-      if (rl) {
-        const edited = await askUserEdit(rl, currentContent);
-        if (edited !== currentContent) {
-          memoryService.writeMemory("longterm", edited);
-          console.log(pc.green("Долговременная память обновлена"));
-        } else {
-          console.log(pc.dim("Без изменений"));
-        }
-      }
-      return null;
-    }
-    case "/edit_facts": {
-      const currentContent = memoryService.readMemory("working");
-      if (rl) {
-        const edited = await askUserEdit(rl, currentContent);
-        if (edited !== currentContent) {
-          memoryService.writeMemory("working", edited);
-          console.log(pc.green("Рабочая память обновлена"));
-        } else {
-          console.log(pc.dim("Без изменений"));
-        }
-      }
-      return null;
-    }
     case "/checkpoint": {
       try {
         const msgId = checkpointRepo.create(state.sessionId);
@@ -440,8 +326,7 @@ export async function handleCommand(
       const newId = sessionService.createBranch(state.sessionId, checkpoint.messageId, branchTitle);
       state.sessionId = newId;
       const count = sessionService.getMessageCount(newId);
-      const strategy = sessionService.getStrategy(newId);
-      console.log(pc.green(`Создана ветка #${newId} (${count} сообщений, стратегия: ${strategy})`));
+      console.log(pc.green(`Создана ветка #${newId} (${count} сообщений)`));
       return null;
     }
     case "/branches": {
@@ -455,8 +340,7 @@ export async function handleCommand(
         const b = branches[i];
         const marker = b.id === state.sessionId ? pc.yellow(" ←") : "";
         const name = b.title ? `"${b.title}"` : "(без названия)";
-        const strategy = sessionService.getStrategy(b.id);
-        console.log(`  ${i + 1}. #${b.id} ${name} — ${b.messageCount} сообщ., стратегия: ${strategy}${marker}`);
+        console.log(`  ${i + 1}. #${b.id} ${name} — ${b.messageCount} сообщ.${marker}`);
       }
       return null;
     }
@@ -470,9 +354,7 @@ export async function handleCommand(
       const branch = branches[idx];
       state.sessionId = branch.id;
       const count = sessionService.getMessageCount(branch.id);
-      const strategy = sessionService.getStrategy(branch.id);
       printSessionInfo(branch.id, branch.title, count);
-      console.log(pc.dim(`Стратегия: ${strategy}`));
       return null;
     }
     case "/models": {
@@ -526,7 +408,7 @@ export async function handleCommand(
         return null;
       }
       const [role, modelId] = parts;
-      const validRoles = ["chat", "title", "facts"];
+      const validRoles = ["chat", "title"];
       if (!validRoles.includes(role)) {
         console.log(pc.red(`Неизвестная роль: ${role}. Доступные: ${validRoles.join(", ")}`));
         return null;
@@ -537,77 +419,6 @@ export async function handleCommand(
       } catch (e) {
         console.log(pc.red(e instanceof Error ? e.message : String(e)));
       }
-      return null;
-    }
-    case "/remember": {
-      const text = args.trim();
-      if (!text) {
-        console.log(pc.red("Использование: /remember <текст>"));
-        return null;
-      }
-
-      if (!rl) {
-        memoryService.appendMemory("longterm", text);
-        console.log(pc.green("Сохранено в долговременную память"));
-        return null;
-      }
-
-      const factsModel = memoryService.getFactsModel();
-      try {
-        const stopSpinner = startSpinner("Анализ долговременной памяти...");
-        const result = await memoryService.reconcile("longterm", text);
-        stopSpinner();
-
-        if (!result.changesSummary || !result.updatedMemory) {
-          console.log(pc.dim("Изменений не обнаружено"));
-          if (factsModel) {
-            console.log(pc.dim(costService.formatMemoryCost(result.inputTokens, result.outputTokens, factsModel, "Без изменений")));
-          }
-          return null;
-        }
-
-        console.log(pc.yellow("Изменения в долговременной памяти:"));
-        console.log(pc.dim(result.changesSummary));
-        const answer = await askUserChoice(rl, pc.yellow("[д]а / [н]ет / [и]зменить: "));
-
-        if (answer === "д" || answer === "да" || answer === "y" || answer === "yes") {
-          memoryService.writeMemory("longterm", result.updatedMemory);
-          console.log(pc.green("Долговременная память обновлена"));
-          if (factsModel) {
-            console.log(pc.dim(costService.formatMemoryCost(result.inputTokens, result.outputTokens, factsModel, "Сохранено в долговременную память")));
-          }
-        } else if (answer === "и" || answer === "изменить" || answer === "e" || answer === "edit") {
-          const edited = await askUserEdit(rl, result.updatedMemory);
-          if (edited) {
-            memoryService.writeMemory("longterm", edited);
-            console.log(pc.green("Долговременная память обновлена (отредактировано)"));
-            if (factsModel) {
-              console.log(pc.dim(costService.formatMemoryCost(result.inputTokens, result.outputTokens, factsModel, "Сохранено в долговременную память")));
-            }
-          }
-        } else {
-          console.log(pc.dim("Изменения отклонены"));
-          if (factsModel) {
-            console.log(pc.dim(costService.formatMemoryCost(result.inputTokens, result.outputTokens, factsModel, "Изменения отклонены")));
-          }
-        }
-      } catch (e) {
-        if (config.debug) {
-          console.error(pc.dim(`[Memory] Ошибка: ${e instanceof Error ? e.message : String(e)}`));
-        }
-        memoryService.appendMemory("longterm", text);
-        console.log(pc.green("Сохранено в долговременную память (без реконсиляции)"));
-      }
-      return null;
-    }
-    case "/save_facts": {
-      const text = args.trim();
-      if (!text) {
-        console.log(pc.red("Использование: /save_facts <текст>"));
-        return null;
-      }
-      memoryService.appendMemory("working", text);
-      console.log(pc.green("Сохранено в рабочую память"));
       return null;
     }
     case "/profile": {
@@ -750,6 +561,56 @@ export async function handleCommand(
         }
       }
     }
+    case "/invariant": {
+      const { profileService, invariantService } = deps;
+      const activeProfile = profileService.getActiveProfile();
+      if (!activeProfile) {
+        console.log(pc.red("Нет активного профиля. Создайте: /profile create <имя>"));
+        return null;
+      }
+
+      const subCmd = args.split(/\s+/)[0] || "";
+      const subArgs = args.slice(subCmd.length).trim();
+
+      switch (subCmd) {
+        case "add": {
+          const text = subArgs.trim();
+          if (!text) {
+            console.log(pc.red("Использование: /invariant add <текст>"));
+            return null;
+          }
+          const inv = invariantService.add(activeProfile.id, text);
+          console.log(pc.green(`Добавлен инвариант #${inv.id}: "${text}"`));
+          return null;
+        }
+        case "delete": {
+          const id = Number(subArgs);
+          if (!Number.isInteger(id) || id < 1) {
+            console.log(pc.red("Использование: /invariant delete <id>"));
+            return null;
+          }
+          if (invariantService.delete(id)) {
+            console.log(pc.green(`Инвариант #${id} удалён`));
+          } else {
+            console.log(pc.red(`Инвариант #${id} не найден`));
+          }
+          return null;
+        }
+        default: {
+          // /invariant без аргументов — показать список
+          const invariants = invariantService.getByProfile(activeProfile.id);
+          if (invariants.length === 0) {
+            console.log(pc.dim("Нет инвариантов"));
+            return null;
+          }
+          console.log(pc.bold(`Инварианты профиля "${activeProfile.name}":`));
+          for (const inv of invariants) {
+            console.log(`  #${inv.id} ${inv.content}`);
+          }
+          return null;
+        }
+      }
+    }
     case "/options": {
       const opts = optionsRepo.getAll();
       if (opts.length === 0) {
@@ -775,189 +636,16 @@ export async function handleCommand(
       console.log(pc.green(`${key} = ${value}`));
       return null;
     }
-    case "/task": {
-      const subCmd = args.split(/\s+/)[0] || "";
-      const subArgs = args.slice(subCmd.length).trim();
-
-      switch (subCmd) {
-        case "create": {
-          const title = subArgs.replace(/^["']|["']$/g, "").trim();
-          if (!title) {
-            console.log(pc.red('Укажите описание: /task create "описание"'));
-            return null;
-          }
-          const task = taskService.createTask(state.sessionId, title);
-          console.log(pc.green(`Создана задача #${task.id}: "${task.title}" [${task.phase}]`));
-          return null;
-        }
-        case "list": {
-          const tasks = taskService.getSessionTasks(state.sessionId);
-          if (tasks.length === 0) {
-            console.log(pc.dim("Нет задач в текущей сессии"));
-            return null;
-          }
-          for (const t of tasks) {
-            const isActive = !["paused", "done", "cancelled"].includes(t.phase);
-            const marker = isActive ? pc.yellow(" ←") : "";
-            const phaseColor = t.phase === "done" ? pc.green(t.phase) :
-              t.phase === "cancelled" ? pc.red(t.phase) :
-              t.phase === "paused" ? pc.dim(t.phase) :
-              pc.cyan(t.phase);
-            console.log(`  #${t.id} "${t.title}" [${phaseColor}]${marker}`);
-            if (t.summary) console.log(pc.dim(`      ${t.summary}`));
-          }
-          return null;
-        }
-        case "pause": {
-          const active = taskService.getActiveTask(state.sessionId);
-          if (!active) {
-            console.log(pc.red("Нет активной задачи для паузы"));
-            return null;
-          }
-          const ok = taskService.pauseTask(active.id);
-          if (ok) {
-            console.log(pc.yellow(`Задача #${active.id} "${active.title}" приостановлена`));
-          } else {
-            console.log(pc.red("Не удалось приостановить задачу"));
-          }
-          return null;
-        }
-        case "cancel": {
-          const active = taskService.getActiveTask(state.sessionId);
-          if (!active) {
-            console.log(pc.red("Нет активной задачи для отмены"));
-            return null;
-          }
-          const ok = taskService.cancelTask(active.id);
-          if (ok) {
-            console.log(pc.red(`Задача #${active.id} "${active.title}" отменена`));
-          } else {
-            console.log(pc.red("Не удалось отменить задачу"));
-          }
-          return null;
-        }
-        case "done": {
-          const active = taskService.getActiveTask(state.sessionId);
-          if (!active) {
-            console.log(pc.red("Нет активной задачи"));
-            return null;
-          }
-          // Принудительный переход к done — проходим через промежуточные фазы если нужно
-          let current = active.phase;
-          const path: Record<string, string> = { planning: "execution", execution: "validation", validation: "done" };
-          while (current !== "done" && path[current]) {
-            const next = path[current];
-            taskService.transition(active.id, next as any);
-            current = next;
-          }
-          console.log(pc.green(`Задача #${active.id} "${active.title}" завершена`));
-          return null;
-        }
-        case "switch": {
-          const tasks = taskService.getSessionTasks(state.sessionId);
-          const pausedTasks = tasks.filter((t) => t.phase === "paused");
-          if (pausedTasks.length === 0) {
-            console.log(pc.dim("Нет приостановленных задач для переключения"));
-            return null;
-          }
-          for (const t of pausedTasks) {
-            const prev = t.previousPhase ? ` (была: ${t.previousPhase})` : "";
-            console.log(`  #${t.id} "${t.title}"${pc.dim(prev)}`);
-          }
-          if (rl) {
-            const answer = await askUserInput(rl, pc.yellow("Номер задачи: "));
-            const targetId = Number(answer);
-            const target = pausedTasks.find((t) => t.id === targetId);
-            if (!target) {
-              console.log(pc.red("Задача не найдена"));
-              return null;
-            }
-            const ok = taskService.resumeTask(target.id);
-            if (ok) {
-              console.log(pc.green(`Переключено на задачу #${target.id} "${target.title}"`));
-            }
-          } else {
-            console.log(pc.dim("Используйте /task switch в интерактивном режиме"));
-          }
-          return null;
-        }
-        default: {
-          // /task без аргументов — показать текущую
-          const active = taskService.getActiveTask(state.sessionId);
-          if (!active) {
-            console.log(pc.dim("Нет активной задачи"));
-            return null;
-          }
-          console.log(pc.bold(`Задача #${active.id}: "${active.title}"`));
-          console.log(`  Фаза: ${pc.cyan(active.phase)}`);
-          if (active.summary) console.log(`  Резюме: ${pc.dim(active.summary)}`);
-          return null;
-        }
-      }
-    }
     case "/help": {
       printHelp();
       return null;
     }
     case "/exit": {
-      taskService.pauseAllActive(state.sessionId);
       process.exit(0);
     }
     default: {
       console.log(pc.red(`Неизвестная команда: ${cmd}. Введите /help`));
       return null;
-    }
-  }
-}
-
-async function suggestMemorySave(
-  deps: ReplDeps,
-  rl: ReturnType<typeof createInterface>,
-  newContent: string,
-): Promise<void> {
-  const { memoryService, costService, config } = deps;
-  const factsModel = memoryService.getFactsModel();
-
-  try {
-    const stopSpinner = startSpinner("Анализ рабочей памяти...");
-    const result = await memoryService.reconcile("working", newContent);
-    stopSpinner();
-
-    if (!result.changesSummary || !result.updatedMemory) {
-      if (factsModel) {
-        console.log(pc.dim(costService.formatMemoryCost(result.inputTokens, result.outputTokens, factsModel, "Фактов не обнаружено")));
-      }
-      return;
-    }
-
-    console.log(pc.yellow("\n💡 Изменения в рабочей памяти:"));
-    console.log(pc.dim(result.changesSummary));
-    const answer = await askUserChoice(rl, pc.yellow("[д]а / [н]ет / [и]зменить: "));
-
-    if (answer === "д" || answer === "да" || answer === "y" || answer === "yes") {
-      memoryService.writeMemory("working", result.updatedMemory);
-      if (factsModel) {
-        console.log(pc.dim(costService.formatMemoryCost(result.inputTokens, result.outputTokens, factsModel, "Сохранено в рабочую память")));
-      }
-    } else if (answer === "и" || answer === "изменить" || answer === "e" || answer === "edit") {
-      const edited = await askUserEdit(rl, result.updatedMemory);
-      if (edited) {
-        memoryService.writeMemory("working", edited);
-        if (factsModel) {
-          console.log(pc.dim(costService.formatMemoryCost(result.inputTokens, result.outputTokens, factsModel, "Сохранено в рабочую память")));
-        }
-      }
-    } else {
-      if (factsModel) {
-        console.log(pc.dim(costService.formatMemoryCost(result.inputTokens, result.outputTokens, factsModel, "Факты отклонены")));
-      }
-    }
-  } catch (e) {
-    if (config.debug) {
-      console.error(pc.dim(`[Memory] Ошибка реконсиляции: ${e instanceof Error ? e.message : String(e)}`));
-    }
-    if (factsModel) {
-      console.log(pc.dim(costService.formatMemoryCost(0, 0, factsModel, "Ошибка работы с памятью")));
     }
   }
 }
@@ -979,8 +667,8 @@ async function generateTitle(
 }
 
 export async function startRepl(deps: ReplDeps): Promise<void> {
-  const { config, sessionService, chatService, memoryService, costService, modelRepo, optionsRepo, openaiClient, taskService } = deps;
-  const state = { sessionId: 0, messagesSinceReconciliation: 0 };
+  const { config, sessionService, chatService, costService, modelRepo, optionsRepo, openaiClient } = deps;
+  const state = { sessionId: 0 };
 
   const lastSession = sessionService.getLastSession();
   if (lastSession) {
@@ -992,13 +680,12 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
       content: m.content,
     }));
     printSessionMessages(msgs);
-    showSessionTasks(deps.taskService, lastSession.id);
   } else {
     state.sessionId = sessionService.createSession(undefined, config.contextStrategy);
-    console.log(pc.green(`Создана новая сессия #${state.sessionId} (стратегия: ${config.contextStrategy})`));
+    console.log(pc.green(`Создана новая сессия #${state.sessionId}`));
   }
 
-  console.log(pc.dim("Стратегия: " + sessionService.getStrategy(state.sessionId) + " | /new | /help"));
+  console.log(pc.dim("/new | /help"));
 
   const rl = createInterface({
     input: process.stdin,
@@ -1034,8 +721,6 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
       if (config.debug) {
         printRequestDebug(config, modelId, {
           messageCount: sessionService.getMessageCount(state.sessionId),
-          longTermMemory: memoryService.readMemory("longterm") || undefined,
-          workingMemory: memoryService.readMemory("working") || undefined,
         });
       }
 
@@ -1043,68 +728,22 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
         printOutputMarker();
       }
 
-      // Формируем системный промпт с фазой задачи
-      let systemPrompt = config.systemPrompt;
-      const activeTask = taskService.getActiveTask(state.sessionId);
-      if (activeTask) {
-        const phasePrompt = TaskPhasePrompts.buildPhasePrompt(activeTask);
-        if (phasePrompt) {
-          systemPrompt = `${phasePrompt}\n\n${systemPrompt}`;
-        }
-      } else {
-        systemPrompt = `${TaskPhasePrompts.buildAutoDetectPrompt()}\n\n${systemPrompt}`;
-      }
-
-      // Буфер для перехвата маркеров задач при стриминге
-      let streamBuffer = "";
-      const MARKER_PREFIX = "<!--task-";
-
-      // Напоминание о маркере в user-сообщении (не сохраняется в БД)
-      const taskReminder = activeTask
-        ? TaskPhasePrompts.buildTaskReminder(activeTask)
-        : undefined;
-
       const result = await chatService.sendMessage(state.sessionId, text, {
         historyLimit: config.historyLimit,
-        systemPrompt,
+        systemPrompt: config.systemPrompt,
         useStreaming: config.useStreaming,
-        memoryBlocks: memoryService.getMemoryBlocks() || undefined,
-        userPromptSuffix: taskReminder,
         temperature: config.temperature,
         topP: config.topP,
         maxCompletionTokens: config.maxCompletionTokens,
         reasoningEffort: config.reasoningEffort,
         reasoningSummary: config.reasoningSummary,
         onDelta: (delta) => {
-          streamBuffer += delta;
-          // Если буфер содержит начало маркера — задерживаем вывод
-          const markerIdx = streamBuffer.lastIndexOf("<!--");
-          if (markerIdx !== -1 && !streamBuffer.includes("-->", markerIdx)) {
-            // Выводим всё до маркера
-            const safe = streamBuffer.slice(0, markerIdx);
-            if (safe) process.stdout.write(safe);
-            streamBuffer = streamBuffer.slice(markerIdx);
-          } else if (streamBuffer.includes("-->")) {
-            // Маркер завершён — выводим текст без маркера
-            const clean = TaskPhasePrompts.stripTaskMarkers(streamBuffer);
-            if (clean) process.stdout.write(clean);
-            streamBuffer = "";
-          } else {
-            // Нет маркера — выводим всё
-            process.stdout.write(streamBuffer);
-            streamBuffer = "";
-          }
+          process.stdout.write(delta);
         },
       });
 
-      // Дописываем остаток буфера (если маркер не завершился)
-      if (streamBuffer) {
-        const clean = TaskPhasePrompts.stripTaskMarkers(streamBuffer);
-        if (clean) process.stdout.write(clean);
-      }
-
       if (!config.useStreaming) {
-        process.stdout.write(TaskPhasePrompts.stripTaskMarkers(result.response.content));
+        process.stdout.write(result.response.content);
       }
 
       process.stdout.write("\n");
@@ -1121,45 +760,6 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
         }
       }
 
-      // Обработка маркеров задач в ответе
-      if (result.response.content && activeTask) {
-        let taskUpdate = TaskPhasePrompts.parseTaskUpdate(result.response.content);
-
-        if (taskUpdate) {
-          // Проверяем transition — если совпадает с текущей фазой, это не переход
-          const isRealTransition = taskUpdate.transition && taskUpdate.transition !== activeTask.phase;
-
-          if (isRealTransition) {
-            const ok = taskService.transition(activeTask.id, taskUpdate.transition!);
-            if (ok) {
-              console.log(pc.cyan(`[Задача "${activeTask.title}"] → ${taskUpdate.transition}`));
-            } else {
-              console.log(pc.red(`[Задача] Невалидный переход: ${activeTask.phase} → ${taskUpdate.transition}`));
-            }
-          }
-          if (taskUpdate.summary) {
-            taskService.updateSummary(activeTask.id, taskUpdate.summary);
-          }
-          // Убираем маркеры из вывода
-          result.response.content = TaskPhasePrompts.stripTaskMarkers(result.response.content);
-        }
-      }
-
-      // Автодетект новой задачи
-      if (result.response.content && !activeTask) {
-        const taskDetect = TaskPhasePrompts.parseTaskDetect(result.response.content);
-        if (taskDetect && rl) {
-          result.response.content = TaskPhasePrompts.stripTaskMarkers(result.response.content);
-          const answer = await askUserChoice(rl, pc.yellow(`\nСоздать задачу "${taskDetect.title}"? [д/н]: `));
-          if (answer === "д" || answer === "да" || answer === "y" || answer === "yes") {
-            const task = taskService.createTask(state.sessionId, taskDetect.title);
-            console.log(pc.green(`Создана задача #${task.id}: "${task.title}" [${task.phase}]`));
-          }
-        } else if (taskDetect) {
-          result.response.content = TaskPhasePrompts.stripTaskMarkers(result.response.content);
-        }
-      }
-
       if (result.response.content) {
         // Auto-title
         const session = sessionService.getSession(state.sessionId);
@@ -1172,15 +772,6 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
               })
               .catch(() => {});
           }
-        }
-
-        // Memory reconciliation interval
-        state.messagesSinceReconciliation++;
-        const interval = Number(optionsRepo.get("memory_interval") ?? "5");
-        if (interval > 0 && state.messagesSinceReconciliation >= interval) {
-          state.messagesSinceReconciliation = 0;
-          const dialogContent = `Пользователь: ${text}\nАссистент: ${result.response.content}`;
-          await suggestMemorySave(deps, rl, dialogContent);
         }
       }
     } catch (error) {

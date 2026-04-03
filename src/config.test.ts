@@ -161,21 +161,9 @@ describe("applyDbOptions", () => {
     expect(config.debug).toBe(true);
   });
 
-  test("applies context_strategy from DB", () => {
-    const config = makeConfig();
-    applyDbOptions(config, (key) => key === "context_strategy" ? "sliding" : null);
-    expect(config.contextStrategy).toBe("sliding");
-  });
-
   test("ignores invalid temperature", () => {
     const config = makeConfig({ temperature: 0.5 });
     applyDbOptions(config, (key) => key === "temperature" ? "abc" : null);
     expect(config.temperature).toBe(0.5);
-  });
-
-  test("ignores invalid context_strategy", () => {
-    const config = makeConfig();
-    applyDbOptions(config, (key) => key === "context_strategy" ? "invalid" : null);
-    expect(config.contextStrategy).toBe("full");
   });
 });
