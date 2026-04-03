@@ -55,26 +55,8 @@ export type LLMResponse = {
   outputTokens: number;
 };
 
-export type Profile = {
-  id: number;
-  name: string;
-  userName: string | null;
-  language: string | null;
-  style: string | null;
-  format: string | null;
-  restrictions: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type ProfilePreference = {
-  key: string;
-  value: string;
-};
-
 export type Invariant = {
   id: number;
-  profileId: number;
   content: string;
   createdAt: string;
 };

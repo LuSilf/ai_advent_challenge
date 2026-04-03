@@ -8,13 +8,13 @@ function createMockRepo(): InvariantRepository & { invariants: Invariant[] } {
   let nextId = 1;
   return {
     invariants,
-    add(profileId, content) {
+    add(content) {
       const id = nextId++;
-      invariants.push({ id, profileId, content, createdAt: new Date().toISOString() });
+      invariants.push({ id, content, createdAt: new Date().toISOString() });
       return id;
     },
-    getByProfile(profileId) {
-      return invariants.filter((i) => i.profileId === profileId);
+    getAll() {
+      return [...invariants];
     },
     delete(id) {
       const idx = invariants.findIndex((i) => i.id === id);
@@ -35,36 +35,32 @@ describe("InvariantService", () => {
   });
 
   test("add creates invariant", () => {
-    const inv = service.add(1, "Только REST API");
+    const inv = service.add("Только REST API");
     expect(inv.id).toBe(1);
     expect(inv.content).toBe("Только REST API");
-    expect(inv.profileId).toBe(1);
   });
 
-  test("getByProfile returns invariants", () => {
-    service.add(1, "правило 1");
-    service.add(1, "правило 2");
-    service.add(2, "другой профиль");
-
-    expect(service.getByProfile(1)).toHaveLength(2);
-    expect(service.getByProfile(2)).toHaveLength(1);
+  test("getAll returns invariants", () => {
+    service.add("правило 1");
+    service.add("правило 2");
+    expect(service.getAll()).toHaveLength(2);
   });
 
   test("delete removes invariant", () => {
-    const inv = service.add(1, "правило");
+    const inv = service.add("правило");
     expect(service.delete(inv.id)).toBe(true);
-    expect(service.getByProfile(1)).toHaveLength(0);
+    expect(service.getAll()).toHaveLength(0);
   });
 
   test("buildInvariantsBlock returns null for empty list", () => {
-    expect(service.buildInvariantsBlock(1)).toBeNull();
+    expect(service.buildInvariantsBlock()).toBeNull();
   });
 
   test("buildInvariantsBlock formats invariants", () => {
-    service.add(1, "Только TypeScript");
-    service.add(1, "Архитектура: hexagonal");
+    service.add("Только TypeScript");
+    service.add("Архитектура: hexagonal");
 
-    const block = service.buildInvariantsBlock(1);
+    const block = service.buildInvariantsBlock();
     expect(block).not.toBeNull();
     expect(block).toContain("ИНВАРИАНТЫ");
     expect(block).toContain("1. Только TypeScript");

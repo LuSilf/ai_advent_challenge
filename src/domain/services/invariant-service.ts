@@ -4,21 +4,21 @@ import type { InvariantRepository } from "../ports/invariant-repository";
 export class InvariantService {
   constructor(private readonly invariantRepo: InvariantRepository) {}
 
-  add(profileId: number, content: string): Invariant {
-    const id = this.invariantRepo.add(profileId, content);
-    return { id, profileId, content, createdAt: new Date().toISOString() };
+  add(content: string): Invariant {
+    const id = this.invariantRepo.add(content);
+    return { id, content, createdAt: new Date().toISOString() };
   }
 
-  getByProfile(profileId: number): Invariant[] {
-    return this.invariantRepo.getByProfile(profileId);
+  getAll(): Invariant[] {
+    return this.invariantRepo.getAll();
   }
 
   delete(id: number): boolean {
     return this.invariantRepo.delete(id);
   }
 
-  buildInvariantsBlock(profileId: number): string | null {
-    const invariants = this.invariantRepo.getByProfile(profileId);
+  buildInvariantsBlock(): string | null {
+    const invariants = this.invariantRepo.getAll();
     if (invariants.length === 0) return null;
 
     const lines = [

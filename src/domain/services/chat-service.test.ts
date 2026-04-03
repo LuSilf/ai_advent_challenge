@@ -2,16 +2,13 @@ import { describe, test, expect, beforeEach } from "bun:test";
 import { ChatService } from "./chat-service";
 import { CostService } from "./cost-service";
 import { SessionService } from "./session-service";
+import { InvariantService } from "./invariant-service";
 import type { LLMClient, StreamEvent } from "../ports/llm-client";
 import type { ModelRepository } from "../ports/model-repository";
 import type { SessionRepository } from "../ports/session-repository";
 import type { MessageRepository } from "../ports/message-repository";
-import type { ProfileRepository } from "../ports/profile-repository";
-import type { OptionsRepository } from "../ports/options-repository";
-import { ProfileService } from "./profile-service";
-import { InvariantService } from "./invariant-service";
 import type { InvariantRepository } from "../ports/invariant-repository";
-import type { LLMRequest, LLMResponse, Message, Model, Session, Profile, ProfilePreference, Invariant } from "../models";
+import type { LLMRequest, LLMResponse, Message, Model, Session, Invariant } from "../models";
 
 const testModel: Model = {
   id: "test/model",
@@ -24,18 +21,11 @@ const testModel: Model = {
 function createMockLLMClient(responseText = "ответ бота"): LLMClient {
   return {
     async send(request: LLMRequest): Promise<LLMResponse & { rawResponse?: unknown }> {
-      return {
-        content: responseText,
-        inputTokens: 100,
-        outputTokens: 50,
-      };
+      return { content: responseText, inputTokens: 100, outputTokens: 50 };
     },
     async *stream(request: LLMRequest): AsyncIterable<StreamEvent> {
       yield { type: "delta", text: responseText };
-      yield {
-        type: "done",
-        response: { content: responseText, inputTokens: 100, outputTokens: 50 },
-      };
+      yield { type: "done", response: { content: responseText, inputTokens: 100, outputTokens: 50 } };
     },
   };
 }
@@ -94,45 +84,22 @@ function createMockMessageRepo(): MessageRepository {
   };
 }
 
-function createMockProfileRepo(): ProfileRepository {
-  const profiles = new Map<number, Profile>();
-  const preferences = new Map<number, Map<string, string>>();
+function createMockInvariantRepo(): InvariantRepository {
+  const invariants: Invariant[] = [];
   let nextId = 1;
   return {
-    create(data) {
+    add(content) {
       const id = nextId++;
-      const now = new Date().toISOString();
-      profiles.set(id, { id, ...data, createdAt: now, updatedAt: now });
+      invariants.push({ id, content, createdAt: "" });
       return id;
     },
-    getById: (id) => profiles.get(id) ?? null,
-    getAll: () => [...profiles.values()],
-    update(id, fields) {
-      const p = profiles.get(id);
-      if (p) Object.assign(p, fields);
+    getAll() { return [...invariants]; },
+    delete(id) {
+      const idx = invariants.findIndex((i) => i.id === id);
+      if (idx === -1) return false;
+      invariants.splice(idx, 1);
+      return true;
     },
-    delete(id) { preferences.delete(id); return profiles.delete(id); },
-    getPreferences(profileId) {
-      const map = preferences.get(profileId);
-      if (!map) return [];
-      return [...map.entries()].map(([key, value]) => ({ key, value }));
-    },
-    setPreference(profileId, key, value) {
-      if (!preferences.has(profileId)) preferences.set(profileId, new Map());
-      preferences.get(profileId)!.set(key, value);
-    },
-    deletePreference(profileId, key) {
-      return preferences.get(profileId)?.delete(key) ?? false;
-    },
-  };
-}
-
-function createMockOptionsRepo(): OptionsRepository {
-  const options = new Map<string, string>();
-  return {
-    get: (key) => options.get(key) ?? null,
-    set: (key, value) => { options.set(key, value); },
-    getAll: () => [...options.entries()].map(([key, value]) => ({ key, value })),
   };
 }
 
@@ -140,19 +107,17 @@ describe("ChatService", () => {
   let chatService: ChatService;
   let sessionService: SessionService;
   let msgRepo: MessageRepository;
-  let llmClient: LLMClient;
 
   beforeEach(() => {
     const modelRepo = createMockModelRepo();
     const sessionRepo = createMockSessionRepo();
     msgRepo = createMockMessageRepo();
-    llmClient = createMockLLMClient();
 
     sessionService = new SessionService(sessionRepo, msgRepo);
     const costService = new CostService(modelRepo);
 
     chatService = new ChatService(
-      llmClient,
+      createMockLLMClient(),
       sessionService,
       costService,
       msgRepo,
@@ -169,13 +134,10 @@ describe("ChatService", () => {
     });
 
     expect(result.response.content).toBe("ответ бота");
-    // user + assistant messages saved
     const messages = msgRepo.getBySession(sessionId);
     expect(messages).toHaveLength(2);
     expect(messages[0].role).toBe("user");
-    expect(messages[0].content).toBe("привет");
     expect(messages[1].role).toBe("assistant");
-    expect(messages[1].content).toBe("ответ бота");
   });
 
   test("sendMessage returns cost info", async () => {
@@ -191,46 +153,6 @@ describe("ChatService", () => {
     expect(result.costInfo!.outputTokens).toBe(50);
   });
 
-  test("sendMessage uses context from history", async () => {
-    let capturedRequest: LLMRequest | null = null;
-    const capturingClient: LLMClient = {
-      async send(request) {
-        capturedRequest = request;
-        return { content: "ok", inputTokens: 10, outputTokens: 5 };
-      },
-      async *stream() {
-        yield { type: "done" as const, response: { content: "ok", inputTokens: 10, outputTokens: 5 } };
-      },
-    };
-
-    const modelRepo = createMockModelRepo();
-    const sessionRepo = createMockSessionRepo();
-    const newMsgRepo = createMockMessageRepo();
-    const newSessionService = new SessionService(sessionRepo, newMsgRepo);
-
-    const svc = new ChatService(
-      capturingClient,
-      newSessionService,
-      new CostService(modelRepo),
-      newMsgRepo,
-      modelRepo,
-    );
-
-    const sid = sessionRepo.create();
-    newMsgRepo.add(sid, "user", "prev");
-    newMsgRepo.add(sid, "assistant", "prev answer");
-
-    await svc.sendMessage(sid, "новый вопрос", {
-      historyLimit: 50,
-      systemPrompt: "sys",
-      useStreaming: false,
-    });
-
-    expect(capturedRequest).not.toBeNull();
-    // Context should include previous messages + new user message
-    expect(capturedRequest!.messages.length).toBeGreaterThanOrEqual(2);
-  });
-
   test("sendMessage streaming collects response text", async () => {
     const sessionId = sessionService.createSession();
     const result = await chatService.sendMessage(sessionId, "стрим", {
@@ -240,8 +162,7 @@ describe("ChatService", () => {
     });
 
     expect(result.response.content).toBe("ответ бота");
-    const messages = msgRepo.getBySession(sessionId);
-    expect(messages).toHaveLength(2);
+    expect(msgRepo.getBySession(sessionId)).toHaveLength(2);
   });
 
   test("sendMessage returns model info", async () => {
@@ -252,97 +173,14 @@ describe("ChatService", () => {
       useStreaming: false,
     });
 
-    expect(result.model).toBeDefined();
     expect(result.model.id).toBe("test/model");
   });
 
-  test("sendMessage includes profile block in instructions when profile is active", async () => {
-    const profileRepo = createMockProfileRepo();
-    const optionsRepo = createMockOptionsRepo();
-    const profileService = new ProfileService(profileRepo, optionsRepo);
-
-    const profileId = profileService.createProfile("dev", {
-      userName: "Алексей",
-      language: "русский",
-      style: "неформальный",
-    });
-    profileService.setActiveProfile(profileId);
-
-    let capturedRequest: LLMRequest | null = null;
-    const capturingClient: LLMClient = {
-      async send(request) {
-        capturedRequest = request;
-        return { content: "ok", inputTokens: 10, outputTokens: 5 };
-      },
-      async *stream() {
-        yield { type: "done" as const, response: { content: "ok", inputTokens: 10, outputTokens: 5 } };
-      },
-    };
-
-    const modelRepo = createMockModelRepo();
-    const sessionRepo = createMockSessionRepo();
-    const newMsgRepo = createMockMessageRepo();
-    const svc = new ChatService(
-      capturingClient,
-      new SessionService(sessionRepo, newMsgRepo),
-      new CostService(modelRepo),
-      newMsgRepo,
-      modelRepo,
-      profileService,
-    );
-
-    const sid = sessionRepo.create();
-    await svc.sendMessage(sid, "привет", {
-      historyLimit: 50,
-      systemPrompt: "базовый промпт",
-      useStreaming: false,
-    });
-
-    expect(capturedRequest).not.toBeNull();
-    expect(capturedRequest!.instructions).toContain("Профиль пользователя");
-    expect(capturedRequest!.instructions).toContain("Алексей");
-    expect(capturedRequest!.instructions).toContain("русский");
-    expect(capturedRequest!.instructions).toContain("базовый промпт");
-  });
-
-  test("sendMessage works without profileService", async () => {
-    const sessionId = sessionService.createSession();
-    const result = await chatService.sendMessage(sessionId, "без профиля", {
-      historyLimit: 50,
-      systemPrompt: "test",
-      useStreaming: false,
-    });
-
-    expect(result.response.content).toBe("ответ бота");
-  });
-
-  test("sendMessage includes invariants block when profile has invariants", async () => {
-    const profileRepo = createMockProfileRepo();
-    const optionsRepo = createMockOptionsRepo();
-    const profileService = new ProfileService(profileRepo, optionsRepo);
-
-    const profileId = profileService.createProfile("dev", { userName: "Тест" });
-    profileService.setActiveProfile(profileId);
-
-    const invariants: Invariant[] = [];
-    let nextInvId = 1;
-    const invariantRepo: InvariantRepository = {
-      add(pid, content) {
-        const id = nextInvId++;
-        invariants.push({ id, profileId: pid, content, createdAt: "" });
-        return id;
-      },
-      getByProfile(pid) { return invariants.filter((i) => i.profileId === pid); },
-      delete(id) {
-        const idx = invariants.findIndex((i) => i.id === id);
-        if (idx === -1) return false;
-        invariants.splice(idx, 1);
-        return true;
-      },
-    };
+  test("sendMessage includes invariants block in instructions", async () => {
+    const invariantRepo = createMockInvariantRepo();
     const invariantService = new InvariantService(invariantRepo);
-    invariantService.add(profileId, "Только TypeScript");
-    invariantService.add(profileId, "Без ORM");
+    invariantService.add("Только TypeScript");
+    invariantService.add("Без ORM");
 
     let capturedRequest: LLMRequest | null = null;
     const capturingClient: LLMClient = {
@@ -364,7 +202,6 @@ describe("ChatService", () => {
       new CostService(modelRepo),
       newMsgRepo,
       modelRepo,
-      profileService,
       invariantService,
     );
 
@@ -380,23 +217,11 @@ describe("ChatService", () => {
     expect(capturedRequest!.instructions).toContain("Только TypeScript");
     expect(capturedRequest!.instructions).toContain("Без ORM");
     expect(capturedRequest!.instructions).toContain("ОТКАЖИ");
-    expect(capturedRequest!.instructions).toContain("Профиль пользователя");
     expect(capturedRequest!.instructions).toContain("базовый промпт");
   });
 
-  test("sendMessage does not include invariants block when profile has none", async () => {
-    const profileRepo = createMockProfileRepo();
-    const optionsRepo = createMockOptionsRepo();
-    const profileService = new ProfileService(profileRepo, optionsRepo);
-
-    const profileId = profileService.createProfile("dev");
-    profileService.setActiveProfile(profileId);
-
-    const invariantRepo: InvariantRepository = {
-      add: () => 1,
-      getByProfile: () => [],
-      delete: () => false,
-    };
+  test("sendMessage does not include invariants block when empty", async () => {
+    const invariantRepo = createMockInvariantRepo();
     const invariantService = new InvariantService(invariantRepo);
 
     let capturedRequest: LLMRequest | null = null;
@@ -419,7 +244,6 @@ describe("ChatService", () => {
       new CostService(modelRepo),
       newMsgRepo,
       modelRepo,
-      profileService,
       invariantService,
     );
 

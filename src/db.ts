@@ -92,29 +92,8 @@ export function initDb(dbPath: string): void {
       value TEXT NOT NULL
     );
 
-    CREATE TABLE IF NOT EXISTS profiles (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      user_name TEXT,
-      language TEXT,
-      style TEXT,
-      format TEXT,
-      restrictions TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS profile_preferences (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-      key TEXT NOT NULL,
-      value TEXT NOT NULL,
-      UNIQUE(profile_id, key)
-    );
-
     CREATE TABLE IF NOT EXISTS invariants (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
       content TEXT NOT NULL,
       created_at TEXT DEFAULT (datetime('now'))
     );

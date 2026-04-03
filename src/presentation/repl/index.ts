@@ -18,7 +18,6 @@ import type { ModelRepository } from "../../domain/ports/model-repository";
 import type { OptionsRepository } from "../../domain/ports/options-repository";
 import type { CheckpointRepository } from "../../domain/ports/checkpoint-repository";
 import type { LLMClient } from "../../domain/ports/llm-client";
-import type { ProfileService } from "../../domain/services/profile-service";
 import type { InvariantService } from "../../domain/services/invariant-service";
 
 export type ReplDeps = {
@@ -31,7 +30,6 @@ export type ReplDeps = {
   checkpointRepo: CheckpointRepository;
   llmClient: LLMClient;
   openaiClient: OpenAI;
-  profileService: ProfileService;
   invariantService: InvariantService;
 };
 
@@ -72,15 +70,8 @@ function printHelp(): void {
   console.log("  /branches         Список веток");
   console.log("  /switch-branch N  Переключиться на ветку N");
   console.log();
-  console.log(pc.bold("Профиль:"));
-  console.log("  /profile              Показать активный профиль");
-  console.log("  /profile create <имя> Создать профиль");
-  console.log("  /profile list         Список профилей");
-  console.log("  /profile switch <id>  Переключить активный профиль");
-  console.log("  /profile edit         Редактировать профиль в $EDITOR (YAML)");
-  console.log("  /profile delete <id>  Удалить профиль");
   console.log(pc.bold("Инварианты:"));
-  console.log("  /invariant            Показать инварианты активного профиля");
+  console.log("  /invariant            Показать все инварианты");
   console.log("  /invariant add <текст> Добавить инвариант");
   console.log("  /invariant delete <id> Удалить инвариант");
   console.log(pc.bold("Настройки:"));
@@ -126,56 +117,6 @@ async function askUserInput(rl: ReturnType<typeof createInterface>, prompt: stri
     };
     rl.on("line", onLine);
   });
-}
-
-function profileToYaml(profile: { name: string; userName?: string | null; language?: string | null; style?: string | null; format?: string | null; restrictions?: string | null }, preferences: { key: string; value: string }[] = []): string {
-  const lines = [
-    `name: ${profile.name}`,
-    `user_name: ${profile.userName || ""}`,
-    `language: ${profile.language || ""}`,
-    `style: ${profile.style || ""}`,
-    `format: ${profile.format || ""}`,
-    `restrictions: ${profile.restrictions || ""}`,
-    "",
-    "# Произвольные предпочтения (ключ: значение)",
-    "preferences:",
-  ];
-  if (preferences.length > 0) {
-    for (const p of preferences) {
-      lines.push(`  ${p.key}: ${p.value}`);
-    }
-  } else {
-    lines.push("  # example_key: example_value");
-  }
-  return lines.join("\n");
-}
-
-function yamlToProfile(yaml: string): { fields: Record<string, string>; preferences: { key: string; value: string }[] } {
-  const fields: Record<string, string> = {};
-  const preferences: { key: string; value: string }[] = [];
-  let inPreferences = false;
-
-  for (const line of yaml.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-
-    if (trimmed === "preferences:") {
-      inPreferences = true;
-      continue;
-    }
-
-    const match = trimmed.match(/^(\w+):\s*(.*)/);
-    if (!match) continue;
-
-    const [, key, value] = match;
-    if (inPreferences) {
-      if (value) preferences.push({ key, value });
-    } else {
-      fields[key] = value;
-    }
-  }
-
-  return { fields, preferences };
 }
 
 async function askUserEdit(rl: ReturnType<typeof createInterface>, text: string): Promise<string> {
@@ -421,154 +362,8 @@ export async function handleCommand(
       }
       return null;
     }
-    case "/profile": {
-      const { profileService } = deps;
-      const subArgs = args.trim();
-
-      if (!subArgs) {
-        // Показать активный профиль
-        const active = profileService.getActiveProfile();
-        if (!active) {
-          console.log(pc.dim("Нет активного профиля"));
-        } else {
-          console.log(pc.bold(`Профиль #${active.id}: "${active.name}"`));
-          console.log(profileService.buildProfileBlock(active));
-        }
-        return null;
-      }
-
-      const parts = subArgs.split(/\s+/);
-      const subCmd = parts[0];
-      const subCmdArgs = parts.slice(1).join(" ");
-
-      switch (subCmd) {
-        case "create": {
-          let name = subCmdArgs.trim();
-          if (!name) {
-            if (!rl) {
-              console.log(pc.red("Использование: /profile create <имя>"));
-              return null;
-            }
-            name = await askUserInput(rl, pc.cyan("Имя профиля: "));
-            if (!name) {
-              console.log(pc.red("Имя профиля обязательно"));
-              return null;
-            }
-          }
-
-          let userName: string | undefined;
-          let language: string | undefined;
-          let style: string | undefined;
-          let format: string | undefined;
-          let restrictions: string | undefined;
-
-          if (rl) {
-            console.log(pc.dim("Заполните поля профиля (Enter — пропустить):"));
-            userName = await askUserInput(rl, pc.cyan("  Имя пользователя: ")) || undefined;
-            language = await askUserInput(rl, pc.cyan("  Язык ответов: ")) || undefined;
-            style = await askUserInput(rl, pc.cyan("  Стиль (формальный/неформальный/технический): ")) || undefined;
-            format = await askUserInput(rl, pc.cyan("  Формат (краткий/развёрнутый/с примерами): ")) || undefined;
-            restrictions = await askUserInput(rl, pc.cyan("  Ограничения: ")) || undefined;
-          }
-
-          const id = profileService.createProfile(name, { userName, language, style, format, restrictions });
-          profileService.setActiveProfile(id);
-          console.log(pc.green(`Создан и активирован профиль #${id}: "${name}"`));
-          return null;
-        }
-        case "list": {
-          const profiles = profileService.getAllProfiles();
-          if (profiles.length === 0) {
-            console.log(pc.dim("Нет профилей"));
-            return null;
-          }
-          const active = profileService.getActiveProfile();
-          for (const p of profiles) {
-            const marker = active && p.id === active.id ? pc.yellow(" ←") : "";
-            const details = [p.userName, p.language, p.style].filter(Boolean).join(", ");
-            console.log(`  #${p.id} "${p.name}"${details ? ` (${details})` : ""}${marker}`);
-          }
-          return null;
-        }
-        case "switch": {
-          const id = Number(subCmdArgs);
-          if (!Number.isInteger(id) || id < 1) {
-            console.log(pc.red("Использование: /profile switch <id>"));
-            return null;
-          }
-          const profile = profileService.getProfile(id);
-          if (!profile) {
-            console.log(pc.red(`Профиль #${id} не найден`));
-            return null;
-          }
-          profileService.setActiveProfile(id);
-          console.log(pc.green(`Активный профиль: #${id} "${profile.name}"`));
-          return null;
-        }
-        case "edit": {
-          const active = profileService.getActiveProfile();
-          if (!active) {
-            console.log(pc.red("Нет активного профиля. Создайте: /profile create <имя>"));
-            return null;
-          }
-          if (!rl) return null;
-
-          const prefs = profileService.getPreferences(active.id);
-          const yaml = profileToYaml(active, prefs);
-          const edited = await askUserEdit(rl, yaml);
-
-          if (edited === yaml) {
-            console.log(pc.dim("Без изменений"));
-            return null;
-          }
-
-          const { fields, preferences } = yamlToProfile(edited);
-
-          const standardFields: Record<string, string> = {
-            name: "name", user_name: "userName", language: "language",
-            style: "style", format: "format", restrictions: "restrictions",
-          };
-
-          const updateFields: Record<string, string | null> = {};
-          for (const [yamlKey, domainKey] of Object.entries(standardFields)) {
-            if (yamlKey in fields) {
-              updateFields[domainKey] = fields[yamlKey] || null;
-            }
-          }
-          if (Object.keys(updateFields).length > 0) {
-            profileService.updateProfile(active.id, updateFields as any);
-          }
-
-          profileService.replacePreferences(active.id, preferences);
-
-          console.log(pc.green("Профиль обновлён"));
-          return null;
-        }
-        case "delete": {
-          const id = Number(subCmdArgs);
-          if (!Number.isInteger(id) || id < 1) {
-            console.log(pc.red("Использование: /profile delete <id>"));
-            return null;
-          }
-          profileService.deleteProfile(id);
-          console.log(pc.green(`Профиль #${id} удалён`));
-          return null;
-        }
-        default: {
-          console.log(pc.red(`Неизвестная подкоманда: /profile ${subCmd}`));
-          console.log(pc.dim("Доступные: create, list, switch, edit, delete"));
-          return null;
-        }
-      }
-    }
     case "/invariant": {
-      const { profileService, invariantService } = deps;
-      const activeProfile = profileService.getActiveProfile();
-      if (!activeProfile) {
-        console.log(pc.red("Нет активного профиля. Создайте: /profile create <имя>"));
-        return null;
-      }
-
+      const { invariantService } = deps;
       const subCmd = args.split(/\s+/)[0] || "";
       const subArgs = args.slice(subCmd.length).trim();
 
@@ -579,7 +374,7 @@ export async function handleCommand(
             console.log(pc.red("Использование: /invariant add <текст>"));
             return null;
           }
-          const inv = invariantService.add(activeProfile.id, text);
+          const inv = invariantService.add(text);
           console.log(pc.green(`Добавлен инвариант #${inv.id}: "${text}"`));
           return null;
         }
@@ -597,13 +392,12 @@ export async function handleCommand(
           return null;
         }
         default: {
-          // /invariant без аргументов — показать список
-          const invariants = invariantService.getByProfile(activeProfile.id);
+          const invariants = invariantService.getAll();
           if (invariants.length === 0) {
             console.log(pc.dim("Нет инвариантов"));
             return null;
           }
-          console.log(pc.bold(`Инварианты профиля "${activeProfile.name}":`));
+          console.log(pc.bold("Инварианты:"));
           for (const inv of invariants) {
             console.log(`  #${inv.id} ${inv.content}`);
           }

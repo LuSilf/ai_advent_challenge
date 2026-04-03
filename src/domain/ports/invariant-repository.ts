@@ -1,7 +1,7 @@
 import type { Invariant } from "../models";
 
 export interface InvariantRepository {
-  add(profileId: number, content: string): number;
-  getByProfile(profileId: number): Invariant[];
+  add(content: string): number;
+  getAll(): Invariant[];
   delete(id: number): boolean;
 }

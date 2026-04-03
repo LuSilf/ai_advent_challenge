@@ -4,7 +4,6 @@ import type { MessageRepository } from "../ports/message-repository";
 import type { ModelRepository } from "../ports/model-repository";
 import type { SessionService } from "./session-service";
 import type { CostService } from "./cost-service";
-import type { ProfileService } from "./profile-service";
 import type { InvariantService } from "./invariant-service";
 
 export type SendMessageOptions = {
@@ -36,7 +35,6 @@ export class ChatService {
     private readonly costService: CostService,
     private readonly messageRepo: MessageRepository,
     private readonly modelRepo: ModelRepository,
-    private readonly profileService?: ProfileService,
     private readonly invariantService?: InvariantService,
   ) {}
 
@@ -60,19 +58,11 @@ export class ChatService {
     // Build instructions
     let instructions = options.systemPrompt;
 
-    // Добавляем профиль и инварианты в system prompt
-    if (this.profileService) {
-      const activeProfile = this.profileService.getActiveProfile();
-      if (activeProfile) {
-        const profileBlock = this.profileService.buildProfileBlock(activeProfile);
-        instructions = `${profileBlock}\n\n${instructions}`;
-
-        if (this.invariantService) {
-          const invariantsBlock = this.invariantService.buildInvariantsBlock(activeProfile.id);
-          if (invariantsBlock) {
-            instructions = `${invariantsBlock}\n\n${instructions}`;
-          }
-        }
+    // Добавляем инварианты в system prompt
+    if (this.invariantService) {
+      const invariantsBlock = this.invariantService.buildInvariantsBlock();
+      if (invariantsBlock) {
+        instructions = `${invariantsBlock}\n\n${instructions}`;
       }
     }
 

@@ -9,7 +9,6 @@ import { SqliteMessageRepository } from "./storage/sqlite/message-repository";
 import { SqliteModelRepository } from "./storage/sqlite/model-repository";
 import { SqliteOptionsRepository } from "./storage/sqlite/options-repository";
 import { SqliteCheckpointRepository } from "./storage/sqlite/checkpoint-repository";
-import { SqliteProfileRepository } from "./storage/sqlite/profile-repository";
 import { SqliteInvariantRepository } from "./storage/sqlite/invariant-repository";
 
 // API
@@ -19,7 +18,6 @@ import { OpenAILLMClient } from "./api/openai/llm-client";
 import { SessionService } from "./domain/services/session-service";
 import { CostService } from "./domain/services/cost-service";
 import { ChatService } from "./domain/services/chat-service";
-import { ProfileService } from "./domain/services/profile-service";
 import { InvariantService } from "./domain/services/invariant-service";
 
 // Presentation
@@ -50,7 +48,6 @@ const sessionRepo = new SqliteSessionRepository();
 const messageRepo = new SqliteMessageRepository();
 const modelRepo = new SqliteModelRepository();
 const checkpointRepo = new SqliteCheckpointRepository();
-const profileRepo = new SqliteProfileRepository();
 const invariantRepo = new SqliteInvariantRepository();
 
 // --- API layer ---
@@ -59,7 +56,6 @@ const llmClient = new OpenAILLMClient(openaiClient);
 // --- Domain services ---
 const sessionService = new SessionService(sessionRepo, messageRepo);
 const costService = new CostService(modelRepo);
-const profileService = new ProfileService(profileRepo, optionsRepo);
 const invariantService = new InvariantService(invariantRepo);
 const chatService = new ChatService(
   llmClient,
@@ -67,7 +63,6 @@ const chatService = new ChatService(
   costService,
   messageRepo,
   modelRepo,
-  profileService,
   invariantService,
 );
 
@@ -84,7 +79,6 @@ if (!config.prompt) {
     checkpointRepo,
     llmClient,
     openaiClient,
-    profileService,
     invariantService,
   });
 } else {
