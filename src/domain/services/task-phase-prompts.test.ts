@@ -40,10 +40,11 @@ describe("TaskPhasePrompts", () => {
       expect(TaskPhasePrompts.buildPhasePrompt(makeTask({ phase: "cancelled" }))).toBeNull();
     });
 
-    test("промпт содержит инструкцию о маркерах", () => {
+    test("промпт содержит инструкцию о маркерах в JSON формате", () => {
       const prompt = TaskPhasePrompts.buildPhasePrompt(makeTask());
-      expect(prompt).toContain("SUMMARY");
-      expect(prompt).toContain("TRANSITION");
+      expect(prompt).toContain("<!--task-update");
+      expect(prompt).toContain('"summary"');
+      expect(prompt).toContain('"transition"');
     });
   });
 
@@ -123,7 +124,7 @@ describe("TaskPhasePrompts", () => {
   describe("buildAutoDetectPrompt", () => {
     test("возвращает промпт автодетекта", () => {
       const prompt = TaskPhasePrompts.buildAutoDetectPrompt();
-      expect(prompt).toContain("TASK-DETECT");
+      expect(prompt).toContain("task-detect");
     });
   });
 
@@ -147,34 +148,48 @@ describe("TaskPhasePrompts", () => {
     });
   });
 
-  describe("parseJudgeResponse", () => {
-    test("парсит корректный ответ судьи", () => {
-      const text = "PHASE: execution | SUMMARY: план подтверждён, начинаем кодить";
-      const result = TaskPhasePrompts.parseJudgeResponse(text);
-      expect(result).not.toBeNull();
-      expect(result!.transition).toBe("execution");
-      expect(result!.summary).toBe("план подтверждён, начинаем кодить");
-    });
-
-    test("парсит ответ без перехода (та же фаза)", () => {
-      const text = "PHASE: planning | SUMMARY: ждём ответы на вопросы";
-      const result = TaskPhasePrompts.parseJudgeResponse(text);
-      expect(result).not.toBeNull();
-      expect(result!.transition).toBe("planning");
-      expect(result!.summary).toBe("ждём ответы на вопросы");
-    });
-
-    test("возвращает null для невалидного ответа", () => {
-      expect(TaskPhasePrompts.parseJudgeResponse("Не могу определить фазу")).toBeNull();
-      expect(TaskPhasePrompts.parseJudgeResponse("")).toBeNull();
-    });
-
-    test("buildJudgePrompt содержит контекст задачи", () => {
+  describe("buildInvalidTransitionMessage", () => {
+    test("содержит текущую фазу и попытку перехода", () => {
       const task = makeTask({ phase: "planning" });
-      const prompt = TaskPhasePrompts.buildJudgePrompt(task, "Да, ок давай", "Отлично, приступаю...");
-      expect(prompt).toContain("Реализовать фичу");
-      expect(prompt).toContain("planning");
-      expect(prompt).toContain("Да, ок давай");
+      const msg = TaskPhasePrompts.buildInvalidTransitionMessage(task, "done");
+      expect(msg).toContain("planning → done");
+      expect(msg).toContain("запрещён");
+    });
+
+    test("содержит допустимые переходы", () => {
+      const task = makeTask({ phase: "planning" });
+      const msg = TaskPhasePrompts.buildInvalidTransitionMessage(task, "done");
+      expect(msg).toContain("execution");
+      expect(msg).toContain("cancelled");
+    });
+
+    test("содержит граф переходов", () => {
+      const task = makeTask({ phase: "planning" });
+      const msg = TaskPhasePrompts.buildInvalidTransitionMessage(task, "done");
+      expect(msg).toContain("validation");
+      expect(msg).toContain("терминальное");
     });
   });
+
+  describe("buildPhasePrompt содержит граф переходов", () => {
+    test("planning промпт содержит допустимые переходы", () => {
+      const prompt = TaskPhasePrompts.buildPhasePrompt(makeTask())!;
+      expect(prompt).toContain("execution");
+      expect(prompt).toContain("cancelled");
+      expect(prompt).toContain("Допустимые переходы");
+    });
+
+    test("planning промпт содержит граф переходов", () => {
+      const prompt = TaskPhasePrompts.buildPhasePrompt(makeTask())!;
+      expect(prompt).toContain("Граф переходов");
+      expect(prompt).toContain("терминальное");
+    });
+
+    test("промпт содержит инструкцию JSON-формата маркера", () => {
+      const prompt = TaskPhasePrompts.buildPhasePrompt(makeTask())!;
+      expect(prompt).toContain("<!--task-update");
+      expect(prompt).toContain('"transition"');
+    });
+  });
+
 });

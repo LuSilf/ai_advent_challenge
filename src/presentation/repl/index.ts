@@ -24,6 +24,7 @@ import type { LLMClient } from "../../domain/ports/llm-client";
 import type { ProfileService } from "../../domain/services/profile-service";
 import type { TaskService } from "../../domain/services/task-service";
 import { TaskPhasePrompts } from "../../domain/services/task-phase-prompts";
+import { TaskStateMachine } from "../../domain/services/task-state-machine";
 
 export type ReplDeps = {
   config: AppConfig;
@@ -1067,26 +1068,87 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
         }
       }
 
-      // Обработка маркеров задач в ответе
+      // Обработка маркеров задач в ответе с retry при невалидном переходе
       if (result.response.content && activeTask) {
         let taskUpdate = TaskPhasePrompts.parseTaskUpdate(result.response.content);
 
         if (taskUpdate) {
-          // Проверяем transition — если совпадает с текущей фазой, это не переход
-          const isRealTransition = taskUpdate.transition && taskUpdate.transition !== activeTask.phase;
-
-          if (isRealTransition) {
-            const ok = taskService.transition(activeTask.id, taskUpdate.transition!);
-            if (ok) {
-              console.log(pc.cyan(`[Задача "${activeTask.title}"] → ${taskUpdate.transition}`));
-            } else {
-              console.log(pc.red(`[Задача] Невалидный переход: ${activeTask.phase} → ${taskUpdate.transition}`));
-            }
-          }
           if (taskUpdate.summary) {
             taskService.updateSummary(activeTask.id, taskUpdate.summary);
           }
-          // Убираем маркеры из вывода
+
+          const isRealTransition = taskUpdate.transition && taskUpdate.transition !== activeTask.phase;
+
+          if (isRealTransition) {
+            const currentTask = taskService.getActiveTask(state.sessionId) ?? activeTask;
+            const ok = taskService.transition(currentTask.id, taskUpdate.transition!);
+            if (ok) {
+              console.log(pc.cyan(`[Задача "${currentTask.title}"] → ${taskUpdate.transition}`));
+            } else {
+              // Retry-логика: до 5 попыток
+              const MAX_RETRIES = 5;
+              let retrySuccess = false;
+
+              for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+                const errorMsg = TaskPhasePrompts.buildInvalidTransitionMessage(currentTask, taskUpdate.transition!);
+                console.log(pc.red(`[Задача] Невалидный переход: ${currentTask.phase} → ${taskUpdate.transition}`));
+
+                const stopRetrySpinner = startSpinner(`Повторный запрос (попытка ${attempt}/${MAX_RETRIES})...`);
+                try {
+                  const retryResult = await chatService.sendMessage(state.sessionId, errorMsg, {
+                    historyLimit: config.historyLimit,
+                    systemPrompt,
+                    useStreaming: false,
+                    memoryBlocks: memoryService.getMemoryBlocks() || undefined,
+                    temperature: config.temperature,
+                    topP: config.topP,
+                    maxCompletionTokens: config.maxCompletionTokens,
+                    reasoningEffort: config.reasoningEffort,
+                    reasoningSummary: config.reasoningSummary,
+                  });
+                  stopRetrySpinner();
+
+                  const retryUpdate = TaskPhasePrompts.parseTaskUpdate(retryResult.response.content);
+                  if (retryUpdate?.summary) {
+                    taskService.updateSummary(currentTask.id, retryUpdate.summary);
+                  }
+
+                  const retryContent = TaskPhasePrompts.stripTaskMarkers(retryResult.response.content);
+                  if (retryContent) {
+                    process.stdout.write(retryContent + "\n");
+                  }
+
+                  if (retryResult.costInfo) {
+                    console.log(pc.dim(costService.formatCost(retryResult.costInfo)));
+                  }
+
+                  if (retryUpdate?.transition && retryUpdate.transition !== currentTask.phase) {
+                    const retryOk = taskService.transition(currentTask.id, retryUpdate.transition);
+                    if (retryOk) {
+                      console.log(pc.cyan(`[Задача "${currentTask.title}"] → ${retryUpdate.transition}`));
+                      retrySuccess = true;
+                      break;
+                    }
+                    // Невалидный снова — продолжаем retry
+                    taskUpdate = retryUpdate;
+                  } else {
+                    // Нет перехода — LLM скорректировался
+                    retrySuccess = true;
+                    break;
+                  }
+                } catch (retryError) {
+                  stopRetrySpinner();
+                  console.log(pc.red(`[Retry] Ошибка: ${retryError instanceof Error ? retryError.message : String(retryError)}`));
+                  break;
+                }
+              }
+
+              if (!retrySuccess) {
+                console.log(pc.yellow(`[Задача] Не удалось получить валидный переход после ${MAX_RETRIES} попыток`));
+              }
+            }
+          }
+
           result.response.content = TaskPhasePrompts.stripTaskMarkers(result.response.content);
         }
       }

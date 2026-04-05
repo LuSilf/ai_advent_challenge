@@ -1,4 +1,5 @@
 import type { Task, TaskPhase } from "../models";
+import { TaskStateMachine } from "./task-state-machine";
 
 export type TaskUpdateMarker = {
   transition: TaskPhase | null;
@@ -15,35 +16,56 @@ const SIMPLE_SUMMARY_RE = /\[SUMMARY:\s*(.+?)\]/i;
 
 export class TaskPhasePrompts {
   static buildPhasePrompt(task: Task): string | null {
+    const allowed = TaskStateMachine.getAllowedTransitions(task.phase);
+    const allowedStr = allowed.length > 0 ? allowed.join(", ") : "(нет — терминальное состояние)";
+
     const phasePrompts: Record<string, string> = {
       planning: `[ЗАДАЧА: "${task.title}" | ФАЗА: ПЛАНИРОВАНИЕ]
 
 Задавай вопросы, предложи план. НЕ пиши код. Переходи к execution ТОЛЬКО если пользователь явно подтвердил план ("да", "ок", "давай").
 
-В конце КАЖДОГО ответа ОБЯЗАТЕЛЬНО добавь строку:
-[SUMMARY: краткое резюме текущего состояния]
-Если пользователь подтвердил план, ТАКЖЕ добавь:
-[TRANSITION: execution]`,
+Допустимые переходы из текущей фазы: ${allowedStr}
+
+Граф переходов:
+${TaskStateMachine.describeTransitions()}
+
+В конце КАЖДОГО ответа ОБЯЗАТЕЛЬНО добавь блок:
+<!--task-update
+{"transition": null, "summary": "краткое резюме текущего состояния"}
+-->
+Если пользователь подтвердил план, укажи "transition": "execution".`,
 
       execution: `[ЗАДАЧА: "${task.title}" | ФАЗА: ВЫПОЛНЕНИЕ]
 
 Пиши код. Реализуй план. Давай ГОТОВУЮ реализацию. Переходи к validation ТОЛЬКО когда ВЕСЬ код написан.
 
-В конце КАЖДОГО ответа ОБЯЗАТЕЛЬНО добавь строку:
-[SUMMARY: краткое резюме что сделано]
-Если ВСЯ реализация готова, ТАКЖЕ добавь:
-[TRANSITION: validation]`,
+Допустимые переходы из текущей фазы: ${allowedStr}
+
+Граф переходов:
+${TaskStateMachine.describeTransitions()}
+
+В конце КАЖДОГО ответа ОБЯЗАТЕЛЬНО добавь блок:
+<!--task-update
+{"transition": null, "summary": "краткое резюме что сделано"}
+-->
+Если ВСЯ реализация готова, укажи "transition": "validation".
+Если нужно вернуться к планированию, укажи "transition": "planning".`,
 
       validation: `[ЗАДАЧА: "${task.title}" | ФАЗА: ПРОВЕРКА]
 
 Проверь код. Приведи примеры вызовов. Переходи к done ТОЛЬКО если пользователь подтвердил результат.
 
-В конце КАЖДОГО ответа ОБЯЗАТЕЛЬНО добавь строку:
-[SUMMARY: результат проверки]
-Если пользователь подтвердил, ТАКЖЕ добавь:
-[TRANSITION: done]
-Если найдены баги:
-[TRANSITION: execution]`,
+Допустимые переходы из текущей фазы: ${allowedStr}
+
+Граф переходов:
+${TaskStateMachine.describeTransitions()}
+
+В конце КАЖДОГО ответа ОБЯЗАТЕЛЬНО добавь блок:
+<!--task-update
+{"transition": null, "summary": "результат проверки"}
+-->
+Если пользователь подтвердил, укажи "transition": "done".
+Если найдены баги, укажи "transition": "execution".`,
     };
 
     return phasePrompts[task.phase] ?? null;
@@ -51,8 +73,20 @@ export class TaskPhasePrompts {
 
   static buildAutoDetectPrompt(): string {
     return `У пользователя нет активной задачи. Если пользователь описывает задачу или просит что-то реализовать/исправить/сделать, добавь в конец ответа:
-[TASK-DETECT: краткое название задачи]
+<!--task-detect
+{"title": "краткое название задачи"}
+-->
 Если это просто вопрос или беседа — не добавляй.`;
+  }
+
+  static buildInvalidTransitionMessage(task: Task, attemptedPhase: TaskPhase): string {
+    const allowed = TaskStateMachine.getAllowedTransitions(task.phase);
+    return `[Система] Переход ${task.phase} → ${attemptedPhase} запрещён. Допустимые переходы из ${task.phase}: ${allowed.join(", ")}.
+
+Граф переходов:
+${TaskStateMachine.describeTransitions()}
+
+Продолжай работу в фазе ${task.phase}. Если нужен переход — используй только допустимые.`;
   }
 
   static parseTaskUpdate(text: string): TaskUpdateMarker | null {
@@ -104,54 +138,13 @@ export class TaskPhasePrompts {
   }
 
   static buildTaskReminder(task: Task): string {
+    const allowed = TaskStateMachine.getAllowedTransitions(task.phase);
     const phaseHint: Record<string, string> = {
-      planning: "НЕ пиши код. В конце ответа ОБЯЗАТЕЛЬНО напиши [SUMMARY: ...]. Если я подтвердил план — также [TRANSITION: execution].",
-      execution: "Пиши код. В конце ответа ОБЯЗАТЕЛЬНО напиши [SUMMARY: ...]. Если всё готово — также [TRANSITION: validation].",
-      validation: "Проверяй. В конце ответа ОБЯЗАТЕЛЬНО напиши [SUMMARY: ...]. Если я подтвердил — также [TRANSITION: done].",
+      planning: `НЕ пиши код. Допустимые переходы: ${allowed.join(", ")}. Добавь <!--task-update\\n{"transition": null|"execution", "summary": "..."}\\n-->`,
+      execution: `Пиши код. Допустимые переходы: ${allowed.join(", ")}. Добавь <!--task-update\\n{"transition": null|"validation"|"planning", "summary": "..."}\\n-->`,
+      validation: `Проверяй. Допустимые переходы: ${allowed.join(", ")}. Добавь <!--task-update\\n{"transition": null|"done"|"execution", "summary": "..."}\\n-->`,
     };
     return `[Система: задача "${task.title}", фаза: ${task.phase}. ${phaseHint[task.phase] ?? ""}]`;
-  }
-
-  /**
-   * Промпт для отдельного LLM-вызова — "судья" определяет состояние задачи
-   * по последнему обмену сообщениями.
-   */
-  static buildJudgePrompt(task: Task, userMessage: string, assistantResponse: string): string {
-    const transitionRules: Record<string, string> = {
-      planning: `Если пользователь подтвердил план (сказал "да", "ок", "давай", "согласен", "утверждаю", "приступай", "реализуй", "пиши код") → PHASE: execution
-Если пользователь НЕ подтвердил или задаёт вопросы → PHASE: planning`,
-      execution: `Если ассистент написал ГОТОВЫЙ код (есть блок кода в ответе) → PHASE: validation
-Если код не написан или написан частично → PHASE: execution`,
-      validation: `Если пользователь подтвердил результат (сказал "да", "ок", "готово", "всё верно", "принято", "завершай", "done") → PHASE: done
-Если пользователь просит изменения или нашёл баги → PHASE: execution
-Если пользователь не высказался явно → PHASE: validation`,
-    };
-
-    const rules = transitionRules[task.phase] ?? `Оставь текущую фазу: ${task.phase}`;
-
-    return `Определи фазу задачи. Текущая фаза: ${task.phase}. Задача: "${task.title}".
-
-Правила:
-${rules}
-
-Сообщение пользователя: "${userMessage}"
-Ответ ассистента (начало): "${assistantResponse.slice(0, 300)}"
-
-Ответь ОДНОЙ строкой:
-PHASE: фаза | SUMMARY: краткое резюме`;
-  }
-
-  /**
-   * Парсит ответ судьи.
-   */
-  static parseJudgeResponse(text: string): TaskUpdateMarker | null {
-    const match = text.match(/PHASE:\s*(planning|execution|validation|done)\s*\|\s*SUMMARY:\s*(.+)/i);
-    if (!match) return null;
-
-    return {
-      transition: match[1].toLowerCase() as TaskPhase,
-      summary: match[2].trim(),
-    };
   }
 
   static stripTaskMarkers(text: string): string {
