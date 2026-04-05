@@ -132,6 +132,15 @@ export function initDb(dbPath: string): void {
       updated_at TEXT DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS task_transitions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      from_phase TEXT CHECK (from_phase IN ('planning', 'execution', 'validation', 'done', 'paused', 'cancelled') OR from_phase IS NULL),
+      to_phase TEXT NOT NULL CHECK (to_phase IN ('planning', 'execution', 'validation', 'done', 'paused', 'cancelled')),
+      triggered_by TEXT NOT NULL CHECK (triggered_by IN ('llm', 'system', 'user')),
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS long_term_memories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       content TEXT NOT NULL,

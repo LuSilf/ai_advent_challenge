@@ -110,4 +110,65 @@ describe("TaskStateMachine", () => {
       expect(TaskStateMachine.canTransition("paused", "paused")).toBe(false);
     });
   });
+
+  describe("getAllowedTransitions", () => {
+    test("planning допускает execution и cancelled", () => {
+      const allowed = TaskStateMachine.getAllowedTransitions("planning");
+      expect(allowed).toContain("execution");
+      expect(allowed).toContain("cancelled");
+      expect(allowed).not.toContain("paused");
+      expect(allowed).not.toContain("done");
+      expect(allowed).not.toContain("validation");
+    });
+
+    test("execution допускает validation, planning и cancelled", () => {
+      const allowed = TaskStateMachine.getAllowedTransitions("execution");
+      expect(allowed).toContain("validation");
+      expect(allowed).toContain("planning");
+      expect(allowed).toContain("cancelled");
+      expect(allowed).not.toContain("done");
+      expect(allowed).not.toContain("paused");
+    });
+
+    test("validation допускает done, execution и cancelled", () => {
+      const allowed = TaskStateMachine.getAllowedTransitions("validation");
+      expect(allowed).toContain("done");
+      expect(allowed).toContain("execution");
+      expect(allowed).toContain("cancelled");
+      expect(allowed).not.toContain("planning");
+      expect(allowed).not.toContain("paused");
+    });
+
+    test("done возвращает пустой массив", () => {
+      expect(TaskStateMachine.getAllowedTransitions("done")).toHaveLength(0);
+    });
+
+    test("cancelled возвращает пустой массив", () => {
+      expect(TaskStateMachine.getAllowedTransitions("cancelled")).toHaveLength(0);
+    });
+
+    test("paused допускает planning, execution, validation", () => {
+      const allowed = TaskStateMachine.getAllowedTransitions("paused");
+      expect(allowed).toContain("planning");
+      expect(allowed).toContain("execution");
+      expect(allowed).toContain("validation");
+    });
+  });
+
+  describe("describeTransitions", () => {
+    test("возвращает строку с описанием всех фаз", () => {
+      const desc = TaskStateMachine.describeTransitions();
+      expect(desc).toContain("planning");
+      expect(desc).toContain("execution");
+      expect(desc).toContain("validation");
+      expect(desc).toContain("done");
+      expect(desc).toContain("cancelled");
+    });
+
+    test("терминальные фазы помечены", () => {
+      const desc = TaskStateMachine.describeTransitions();
+      expect(desc).toMatch(/done.*терминальное|done.*terminal/i);
+      expect(desc).toMatch(/cancelled.*терминальное|cancelled.*terminal/i);
+    });
+  });
 });

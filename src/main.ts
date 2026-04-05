@@ -13,6 +13,7 @@ import { SqliteCheckpointRepository } from "./storage/sqlite/checkpoint-reposito
 import { SqliteProfileRepository } from "./storage/sqlite/profile-repository";
 import { SqliteMemoryRepository } from "./storage/sqlite/memory-repository";
 import { SqliteTaskRepository } from "./storage/sqlite/task-repository";
+import { SqliteTaskTransitionRepository } from "./storage/sqlite/task-transition-repository";
 
 // API
 import { OpenAILLMClient } from "./api/openai/llm-client";
@@ -58,6 +59,7 @@ const checkpointRepo = new SqliteCheckpointRepository();
 const profileRepo = new SqliteProfileRepository();
 const memoryRepo = new SqliteMemoryRepository();
 const taskRepo = new SqliteTaskRepository();
+const taskTransitionRepo = new SqliteTaskTransitionRepository();
 
 // --- API layer ---
 const llmClient = new OpenAILLMClient(openaiClient);
@@ -78,7 +80,7 @@ const chatService = new ChatService(
   profileService,
 );
 const memoryService = new MemoryService(memoryRepo, llmClient, modelRepo);
-const taskService = new TaskService(taskRepo);
+const taskService = new TaskService(taskRepo, taskTransitionRepo);
 
 // --- Run ---
 if (!config.prompt) {

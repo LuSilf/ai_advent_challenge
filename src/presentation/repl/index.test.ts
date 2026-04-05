@@ -21,6 +21,7 @@ import { MemoryService } from "../../domain/services/memory-service";
 import { ProfileService } from "../../domain/services/profile-service";
 import { TaskService } from "../../domain/services/task-service";
 import { SqliteTaskRepository } from "../../storage/sqlite/task-repository";
+import { SqliteTaskTransitionRepository } from "../../storage/sqlite/task-transition-repository";
 import type { LLMClient, StreamEvent } from "../../domain/ports/llm-client";
 import type { LLMRequest, LLMResponse } from "../../domain/models";
 import type { AppConfig } from "../../config";
@@ -82,7 +83,8 @@ describe("presentation/repl handleCommand", () => {
     const profileService = new ProfileService(profileRepo, optionsRepo);
     const chatService = new ChatService(llmClient, sessionService, contextService, costService, messageRepo, factRepo, modelRepo, profileService);
     const memoryService = new MemoryService(memoryRepo, llmClient, modelRepo);
-    const taskService = new TaskService(taskRepo);
+    const taskTransitionRepo = new SqliteTaskTransitionRepository();
+    const taskService = new TaskService(taskRepo, taskTransitionRepo);
 
     deps = {
       config: createTestConfig(),
@@ -374,9 +376,7 @@ describe("presentation/repl handleCommand", () => {
   test("/switch показывает задачи новой сессии", async () => {
     const newSessionId = deps.sessionService.createSession("new");
     deps.taskService.createTask(newSessionId, "Задача в новой сессии");
-    deps.taskService.pauseTask(
-      deps.taskService.getActiveTask(newSessionId)!.id
-    );
+    deps.taskService.pauseAllActive(newSessionId);
     await handleCommand("/switch", String(newSessionId), state, deps);
     // Единственная paused задача авто-resume-ится
     const active = deps.taskService.getActiveTask(newSessionId);

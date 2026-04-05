@@ -1,7 +1,8 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 import { TaskService } from "./task-service";
 import type { TaskRepository } from "../ports/task-repository";
-import type { Task, TaskPhase } from "../models";
+import type { TaskTransitionRepository } from "../ports/task-transition-repository";
+import type { Task, TaskPhase, TaskTransition } from "../models";
 
 function createMockRepo(): TaskRepository & { tasks: Map<number, Task> } {
   let nextId = 1;
@@ -49,13 +50,37 @@ function createMockRepo(): TaskRepository & { tasks: Map<number, Task> } {
   };
 }
 
+function createMockTransitionRepo(): TaskTransitionRepository & { transitions: TaskTransition[] } {
+  let nextId = 1;
+  const transitions: TaskTransition[] = [];
+
+  return {
+    transitions,
+    log(taskId, fromPhase, toPhase, triggeredBy) {
+      transitions.push({
+        id: nextId++,
+        taskId,
+        fromPhase,
+        toPhase,
+        triggeredBy,
+        createdAt: new Date().toISOString(),
+      });
+    },
+    findByTaskId(taskId) {
+      return transitions.filter((t) => t.taskId === taskId);
+    },
+  };
+}
+
 describe("TaskService", () => {
   let repo: ReturnType<typeof createMockRepo>;
+  let transitionRepo: ReturnType<typeof createMockTransitionRepo>;
   let service: TaskService;
 
   beforeEach(() => {
     repo = createMockRepo();
-    service = new TaskService(repo);
+    transitionRepo = createMockTransitionRepo();
+    service = new TaskService(repo, transitionRepo);
   });
 
   describe("createTask", () => {
@@ -83,6 +108,26 @@ describe("TaskService", () => {
 
       const updated1 = repo.findById(task1.id)!;
       expect(updated1.phase).toBe("planning");
+    });
+
+    test("логирует переход null → planning при создании", () => {
+      const task = service.createTask(1, "Задача");
+      const transitions = transitionRepo.findByTaskId(task.id);
+      expect(transitions).toHaveLength(1);
+      expect(transitions[0].fromPhase).toBeNull();
+      expect(transitions[0].toPhase).toBe("planning");
+      expect(transitions[0].triggeredBy).toBe("user");
+    });
+
+    test("логирует паузу предыдущей задачи при создании новой", () => {
+      const task1 = service.createTask(1, "Задача 1");
+      service.createTask(1, "Задача 2");
+
+      const transitions = transitionRepo.findByTaskId(task1.id);
+      const pauseTransition = transitions.find((t) => t.toPhase === "paused");
+      expect(pauseTransition).toBeDefined();
+      expect(pauseTransition!.fromPhase).toBe("planning");
+      expect(pauseTransition!.triggeredBy).toBe("system");
     });
   });
 
@@ -176,60 +221,34 @@ describe("TaskService", () => {
     test("несуществующая задача возвращает false", () => {
       expect(service.transition(999, "execution")).toBe(false);
     });
-  });
 
-  describe("pauseTask", () => {
-    test("ставит задачу на паузу, сохраняя previousPhase", () => {
+    test("логирует успешный переход", () => {
+      const task = service.createTask(1, "Задача");
+      service.transition(task.id, "execution", "llm");
+
+      const transitions = transitionRepo.findByTaskId(task.id);
+      const execTransition = transitions.find((t) => t.toPhase === "execution");
+      expect(execTransition).toBeDefined();
+      expect(execTransition!.fromPhase).toBe("planning");
+      expect(execTransition!.triggeredBy).toBe("llm");
+    });
+
+    test("не логирует неудачный переход", () => {
+      const task = service.createTask(1, "Задача");
+      service.transition(task.id, "done", "llm");
+
+      const transitions = transitionRepo.findByTaskId(task.id);
+      // Только начальный null → planning
+      expect(transitions).toHaveLength(1);
+    });
+
+    test("triggered_by по умолчанию llm", () => {
       const task = service.createTask(1, "Задача");
       service.transition(task.id, "execution");
-      const ok = service.pauseTask(task.id);
-      expect(ok).toBe(true);
-      const updated = repo.findById(task.id)!;
-      expect(updated.phase).toBe("paused");
-      expect(updated.previousPhase).toBe("execution");
-    });
 
-    test("нельзя запаузить done задачу", () => {
-      const task = service.createTask(1, "Задача");
-      service.transition(task.id, "execution");
-      service.transition(task.id, "validation");
-      service.transition(task.id, "done");
-      const ok = service.pauseTask(task.id);
-      expect(ok).toBe(false);
-    });
-
-    test("несуществующая задача возвращает false", () => {
-      expect(service.pauseTask(999)).toBe(false);
-    });
-  });
-
-  describe("resumeTask", () => {
-    test("возвращает задачу в previousPhase", () => {
-      const task = service.createTask(1, "Задача");
-      service.transition(task.id, "execution");
-      service.pauseTask(task.id);
-      const ok = service.resumeTask(task.id);
-      expect(ok).toBe(true);
-      expect(repo.findById(task.id)!.phase).toBe("execution");
-    });
-
-    test("паузит текущую активную при resume", () => {
-      const task1 = service.createTask(1, "Задача 1");
-      service.pauseTask(task1.id);
-      const task2 = service.createTask(1, "Задача 2");
-
-      service.resumeTask(task1.id);
-      expect(repo.findById(task1.id)!.phase).toBe("planning");
-      expect(repo.findById(task2.id)!.phase).toBe("paused");
-    });
-
-    test("нельзя resume не-paused задачу", () => {
-      const task = service.createTask(1, "Задача");
-      expect(service.resumeTask(task.id)).toBe(false);
-    });
-
-    test("несуществующая задача возвращает false", () => {
-      expect(service.resumeTask(999)).toBe(false);
+      const transitions = transitionRepo.findByTaskId(task.id);
+      const execTransition = transitions.find((t) => t.toPhase === "execution");
+      expect(execTransition!.triggeredBy).toBe("llm");
     });
   });
 
@@ -248,14 +267,22 @@ describe("TaskService", () => {
       service.transition(task.id, "done");
       expect(service.cancelTask(task.id)).toBe(false);
     });
+
+    test("логирует отмену с triggered_by user", () => {
+      const task = service.createTask(1, "Задача");
+      service.cancelTask(task.id);
+
+      const transitions = transitionRepo.findByTaskId(task.id);
+      const cancelTransition = transitions.find((t) => t.toPhase === "cancelled");
+      expect(cancelTransition).toBeDefined();
+      expect(cancelTransition!.triggeredBy).toBe("user");
+    });
   });
 
   describe("pauseAllActive", () => {
     test("паузит все активные задачи сессии", () => {
       const task1 = service.createTask(1, "Задача 1");
-      // task1 is paused by createTask of task2
       const task2 = service.createTask(1, "Задача 2");
-      // only task2 is active
       service.pauseAllActive(1);
       expect(repo.findById(task2.id)!.phase).toBe("paused");
     });
@@ -265,6 +292,30 @@ describe("TaskService", () => {
       const task2 = service.createTask(2, "Задача сессии 2");
       service.pauseAllActive(1);
       expect(repo.findById(task2.id)!.phase).toBe("planning");
+    });
+
+    test("логирует паузу с triggered_by system", () => {
+      const task = service.createTask(1, "Задача");
+      service.pauseAllActive(1);
+
+      const transitions = transitionRepo.findByTaskId(task.id);
+      const pauseTransition = transitions.find((t) => t.toPhase === "paused");
+      expect(pauseTransition).toBeDefined();
+      expect(pauseTransition!.triggeredBy).toBe("system");
+    });
+  });
+
+  describe("getTaskTransitions", () => {
+    test("возвращает историю переходов задачи", () => {
+      const task = service.createTask(1, "Задача");
+      service.transition(task.id, "execution");
+      service.transition(task.id, "validation");
+
+      const transitions = service.getTaskTransitions(task.id);
+      expect(transitions).toHaveLength(3);
+      expect(transitions[0].toPhase).toBe("planning");
+      expect(transitions[1].toPhase).toBe("execution");
+      expect(transitions[2].toPhase).toBe("validation");
     });
   });
 });

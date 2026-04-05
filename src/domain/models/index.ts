@@ -90,6 +90,15 @@ export type Task = {
   updatedAt: string;
 };
 
+export type TaskTransition = {
+  id: number;
+  taskId: number;
+  fromPhase: TaskPhase | null;
+  toPhase: TaskPhase;
+  triggeredBy: "llm" | "system" | "user";
+  createdAt: string;
+};
+
 export type GenerationParams = {
   temperature?: number;
   topP?: number;

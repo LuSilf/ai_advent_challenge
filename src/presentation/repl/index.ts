@@ -891,6 +891,14 @@ export async function handleCommand(
           console.log(pc.bold(`Задача #${active.id}: "${active.title}"`));
           console.log(`  Фаза: ${pc.cyan(active.phase)}`);
           if (active.summary) console.log(`  Резюме: ${pc.dim(active.summary)}`);
+          const transitions = taskService.getTaskTransitions(active.id);
+          if (transitions.length > 0) {
+            console.log(pc.dim("  Переходы:"));
+            for (const t of transitions) {
+              const from = t.fromPhase ?? "—";
+              console.log(pc.dim(`    ${from} → ${t.toPhase} (${t.triggeredBy}, ${t.createdAt})`));
+            }
+          }
           return null;
         }
       }
