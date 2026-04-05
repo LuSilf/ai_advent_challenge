@@ -1011,6 +1011,9 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
         ? TaskPhasePrompts.buildTaskReminder(activeTask)
         : undefined;
 
+      const stopMainSpinner = startSpinner("Генерация ответа...");
+      let mainSpinnerStopped = false;
+
       const result = await chatService.sendMessage(state.sessionId, text, {
         historyLimit: config.historyLimit,
         systemPrompt,
@@ -1023,6 +1026,10 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
         reasoningEffort: config.reasoningEffort,
         reasoningSummary: config.reasoningSummary,
         onDelta: (delta) => {
+          if (!mainSpinnerStopped) {
+            stopMainSpinner();
+            mainSpinnerStopped = true;
+          }
           streamBuffer += delta;
           // Если буфер содержит начало маркера — задерживаем вывод
           const markerIdx = streamBuffer.lastIndexOf("<!--");
@@ -1043,6 +1050,11 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
           }
         },
       });
+
+      if (!mainSpinnerStopped) {
+        stopMainSpinner();
+        mainSpinnerStopped = true;
+      }
 
       // Дописываем остаток буфера (если маркер не завершился)
       if (streamBuffer) {
