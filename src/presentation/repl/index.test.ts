@@ -317,19 +317,6 @@ describe("presentation/repl handleCommand", () => {
     expect(result).toBeNull();
   });
 
-  test("/task pause приостанавливает активную задачу", async () => {
-    deps.taskService.createTask(state.sessionId, "Задача");
-    await handleCommand("/task", "pause", state, deps);
-    const tasks = deps.taskService.getSessionTasks(state.sessionId);
-    expect(tasks[0].phase).toBe("paused");
-    expect(tasks[0].previousPhase).toBe("planning");
-  });
-
-  test("/task pause без активной задачи показывает ошибку", async () => {
-    const result = await handleCommand("/task", "pause", state, deps);
-    expect(result).toBeNull();
-  });
-
   test("/task cancel отменяет активную задачу", async () => {
     deps.taskService.createTask(state.sessionId, "Задача");
     await handleCommand("/task", "cancel", state, deps);
@@ -337,27 +324,28 @@ describe("presentation/repl handleCommand", () => {
     expect(tasks[0].phase).toBe("cancelled");
   });
 
-  test("/task done завершает задачу из любой фазы", async () => {
-    deps.taskService.createTask(state.sessionId, "Задача");
-    await handleCommand("/task", "done", state, deps);
-    const tasks = deps.taskService.getSessionTasks(state.sessionId);
-    expect(tasks[0].phase).toBe("done");
-  });
-
-  test("/task done из execution проходит через validation", async () => {
-    const task = deps.taskService.createTask(state.sessionId, "Задача");
-    deps.taskService.transition(task.id, "execution");
-    await handleCommand("/task", "done", state, deps);
-    const tasks = deps.taskService.getSessionTasks(state.sessionId);
-    expect(tasks[0].phase).toBe("done");
-  });
-
   test("/task cancel без активной задачи показывает ошибку", async () => {
     const result = await handleCommand("/task", "cancel", state, deps);
     expect(result).toBeNull();
   });
 
-  test("/task switch без paused задач показывает сообщение", async () => {
+  test("/task done не распознаётся как команда", async () => {
+    deps.taskService.createTask(state.sessionId, "Задача");
+    await handleCommand("/task", "done", state, deps);
+    // Задача остаётся в planning — команда done не существует
+    const tasks = deps.taskService.getSessionTasks(state.sessionId);
+    expect(tasks[0].phase).toBe("planning");
+  });
+
+  test("/task pause не распознаётся как команда", async () => {
+    deps.taskService.createTask(state.sessionId, "Задача");
+    await handleCommand("/task", "pause", state, deps);
+    const tasks = deps.taskService.getSessionTasks(state.sessionId);
+    // Задача остаётся активной — команда pause не существует
+    expect(tasks[0].phase).toBe("planning");
+  });
+
+  test("/task switch не распознаётся как команда", async () => {
     const result = await handleCommand("/task", "switch", state, deps);
     expect(result).toBeNull();
   });

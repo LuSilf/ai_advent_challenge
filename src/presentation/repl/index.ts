@@ -122,13 +122,10 @@ function printHelp(): void {
   console.log("  /profile edit         Редактировать профиль в $EDITOR (YAML)");
   console.log("  /profile delete <id>  Удалить профиль");
   console.log(pc.bold("Задачи:"));
-  console.log("  /task              Показать текущую задачу");
+  console.log("  /task              Показать текущую задачу и историю переходов");
   console.log('  /task create <имя> Создать задачу');
   console.log("  /task list         Список задач в сессии");
-  console.log("  /task pause        Приостановить текущую задачу");
   console.log("  /task cancel       Отменить текущую задачу");
-  console.log("  /task done         Завершить текущую задачу");
-  console.log("  /task switch       Переключиться на другую задачу");
   console.log(pc.bold("Настройки:"));
   console.log("  /options          Показать все настройки");
   console.log("  /set <ключ> <зн>  Установить значение настройки");
@@ -808,20 +805,6 @@ export async function handleCommand(
           }
           return null;
         }
-        case "pause": {
-          const active = taskService.getActiveTask(state.sessionId);
-          if (!active) {
-            console.log(pc.red("Нет активной задачи для паузы"));
-            return null;
-          }
-          const ok = taskService.pauseTask(active.id);
-          if (ok) {
-            console.log(pc.yellow(`Задача #${active.id} "${active.title}" приостановлена`));
-          } else {
-            console.log(pc.red("Не удалось приостановить задачу"));
-          }
-          return null;
-        }
         case "cancel": {
           const active = taskService.getActiveTask(state.sessionId);
           if (!active) {
@@ -833,51 +816,6 @@ export async function handleCommand(
             console.log(pc.red(`Задача #${active.id} "${active.title}" отменена`));
           } else {
             console.log(pc.red("Не удалось отменить задачу"));
-          }
-          return null;
-        }
-        case "done": {
-          const active = taskService.getActiveTask(state.sessionId);
-          if (!active) {
-            console.log(pc.red("Нет активной задачи"));
-            return null;
-          }
-          // Принудительный переход к done — проходим через промежуточные фазы если нужно
-          let current = active.phase;
-          const path: Record<string, string> = { planning: "execution", execution: "validation", validation: "done" };
-          while (current !== "done" && path[current]) {
-            const next = path[current];
-            taskService.transition(active.id, next as any);
-            current = next;
-          }
-          console.log(pc.green(`Задача #${active.id} "${active.title}" завершена`));
-          return null;
-        }
-        case "switch": {
-          const tasks = taskService.getSessionTasks(state.sessionId);
-          const pausedTasks = tasks.filter((t) => t.phase === "paused");
-          if (pausedTasks.length === 0) {
-            console.log(pc.dim("Нет приостановленных задач для переключения"));
-            return null;
-          }
-          for (const t of pausedTasks) {
-            const prev = t.previousPhase ? ` (была: ${t.previousPhase})` : "";
-            console.log(`  #${t.id} "${t.title}"${pc.dim(prev)}`);
-          }
-          if (rl) {
-            const answer = await askUserInput(rl, pc.yellow("Номер задачи: "));
-            const targetId = Number(answer);
-            const target = pausedTasks.find((t) => t.id === targetId);
-            if (!target) {
-              console.log(pc.red("Задача не найдена"));
-              return null;
-            }
-            const ok = taskService.resumeTask(target.id);
-            if (ok) {
-              console.log(pc.green(`Переключено на задачу #${target.id} "${target.title}"`));
-            }
-          } else {
-            console.log(pc.dim("Используйте /task switch в интерактивном режиме"));
           }
           return null;
         }
