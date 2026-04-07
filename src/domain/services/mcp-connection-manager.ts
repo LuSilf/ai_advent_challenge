@@ -23,14 +23,19 @@ export class McpConnectionManager {
     const results: ConnectionStatus[] = [];
 
     for (const config of configs) {
-      const status = await this.connectOne(config);
+      const status = await this._connectOne(config);
       results.push(status);
     }
 
     return results;
   }
 
-  private async connectOne(config: McpServerConfig): Promise<ConnectionStatus> {
+  async connectOne(config: McpServerConfig): Promise<[ConnectionStatus]> {
+    const status = await this._connectOne(config);
+    return [status];
+  }
+
+  private async _connectOne(config: McpServerConfig): Promise<ConnectionStatus> {
     try {
       const connection = await this.mcpClientService.connect(config);
       const tools = await this.mcpClientService.listToolsFromConnection(connection);
@@ -152,6 +157,20 @@ export class McpConnectionManager {
       entry.tools = [];
       return false;
     }
+  }
+
+  async disconnectOne(serverName: string): Promise<void> {
+    const entry = this.servers.get(serverName);
+    if (!entry) return;
+
+    if (entry.connection) {
+      try {
+        await this.mcpClientService.disconnect(entry.connection);
+      } catch {
+        // ignore
+      }
+    }
+    this.servers.delete(serverName);
   }
 
   async disconnectAll(): Promise<void> {

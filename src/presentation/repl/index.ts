@@ -901,6 +901,19 @@ export async function handleCommand(
           }
           mcpServerRepo.add({ name, command, args: cmdArgs });
           console.log(pc.green(`MCP-сервер "${name}" зарегистрирован: ${command} ${cmdArgs.join(" ")}`.trim()));
+
+          // Автоподключение
+          const config = mcpServerRepo.get(name);
+          if (config) {
+            const stopSpinner = startSpinner(`Подключение к "${name}"...`);
+            const [status] = await deps.mcpConnectionManager.connectOne(config);
+            stopSpinner();
+            if (status.status === "connected") {
+              console.log(pc.green(`  ✔ ${name} — ${status.toolCount} инструментов`));
+            } else {
+              console.log(pc.red(`  ✘ ${name} — ${status.error ?? "ошибка подключения"}`));
+            }
+          }
           return null;
         }
         case "list": {
@@ -922,7 +935,8 @@ export async function handleCommand(
           }
           const removed = mcpServerRepo.remove(subArgs[0]);
           if (removed) {
-            console.log(pc.green(`MCP-сервер "${subArgs[0]}" удалён`));
+            await deps.mcpConnectionManager.disconnectOne(subArgs[0]);
+            console.log(pc.green(`MCP-сервер "${subArgs[0]}" удалён и отключён`));
           } else {
             console.log(pc.red(`MCP-сервер "${subArgs[0]}" не найден`));
           }
