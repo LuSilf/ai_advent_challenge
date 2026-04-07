@@ -14,6 +14,7 @@ import { SqliteProfileRepository } from "./storage/sqlite/profile-repository";
 import { SqliteMemoryRepository } from "./storage/sqlite/memory-repository";
 import { SqliteTaskRepository } from "./storage/sqlite/task-repository";
 import { SqliteTaskTransitionRepository } from "./storage/sqlite/task-transition-repository";
+import { SqliteMcpServerRepository } from "./storage/sqlite/mcp-server-repository";
 
 // API
 import { OpenAILLMClient } from "./api/openai/llm-client";
@@ -60,6 +61,7 @@ const profileRepo = new SqliteProfileRepository();
 const memoryRepo = new SqliteMemoryRepository();
 const taskRepo = new SqliteTaskRepository();
 const taskTransitionRepo = new SqliteTaskTransitionRepository();
+const mcpServerRepo = new SqliteMcpServerRepository();
 
 // --- API layer ---
 const llmClient = new OpenAILLMClient(openaiClient);
@@ -100,6 +102,7 @@ if (!config.prompt) {
     openaiClient,
     profileService,
     taskService,
+    mcpServerRepo,
   });
 } else {
   // Single-shot mode

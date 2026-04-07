@@ -99,6 +99,19 @@ export type TaskTransition = {
   createdAt: string;
 };
 
+export type McpServerConfig = {
+  name: string;
+  command: string;
+  args: string[];
+  cwd?: string;
+};
+
+export type McpTool = {
+  name: string;
+  description: string;
+  inputSchema: unknown;
+};
+
 export type GenerationParams = {
   temperature?: number;
   topP?: number;

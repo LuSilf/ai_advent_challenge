@@ -23,6 +23,8 @@ import type { FactRepository } from "../../domain/ports/fact-repository";
 import type { LLMClient } from "../../domain/ports/llm-client";
 import type { ProfileService } from "../../domain/services/profile-service";
 import type { TaskService } from "../../domain/services/task-service";
+import type { McpServerRepository } from "../../domain/ports/mcp-server-repository";
+import { McpClientService } from "../../domain/services/mcp-client-service";
 import { TaskPhasePrompts } from "../../domain/services/task-phase-prompts";
 import { TaskStateMachine } from "../../domain/services/task-state-machine";
 
@@ -41,6 +43,7 @@ export type ReplDeps = {
   openaiClient: OpenAI;
   profileService: ProfileService;
   taskService: TaskService;
+  mcpServerRepo: McpServerRepository;
 };
 
 function printSessionInfo(sessionId: number, title: string | null, messageCount: number): void {
@@ -127,6 +130,11 @@ function printHelp(): void {
   console.log('  /task create <имя> Создать задачу');
   console.log("  /task list         Список задач в сессии");
   console.log("  /task cancel       Отменить текущую задачу");
+  console.log(pc.bold("MCP:"));
+  console.log("  /mcp add <n> <cmd> Зарегистрировать MCP-сервер");
+  console.log("  /mcp list          Список MCP-серверов");
+  console.log("  /mcp tools <name>  Показать инструменты сервера");
+  console.log("  /mcp remove <name> Удалить MCP-сервер");
   console.log(pc.bold("Настройки:"));
   console.log("  /options          Показать все настройки");
   console.log("  /set <ключ> <зн>  Установить значение настройки");
@@ -838,6 +846,94 @@ export async function handleCommand(
               console.log(pc.dim(`    ${from} → ${t.toPhase} (${t.triggeredBy}, ${t.createdAt})`));
             }
           }
+          return null;
+        }
+      }
+    }
+    case "/mcp": {
+      const { mcpServerRepo } = deps;
+      const [subCmd, ...subArgs] = args.split(/\s+/).filter(Boolean);
+
+      if (!subCmd || subCmd === "help") {
+        console.log(pc.bold("MCP-команды:"));
+        console.log("  /mcp add <name> <command> [args...]  Зарегистрировать MCP-сервер");
+        console.log("  /mcp list                            Список серверов");
+        console.log("  /mcp tools <name>                    Показать инструменты сервера");
+        console.log("  /mcp remove <name>                   Удалить сервер");
+        return null;
+      }
+
+      switch (subCmd) {
+        case "add": {
+          if (subArgs.length < 2) {
+            console.log(pc.red("Использование: /mcp add <name> <command> [args...]"));
+            return null;
+          }
+          const [name, command, ...cmdArgs] = subArgs;
+          const existing = mcpServerRepo.get(name);
+          if (existing) {
+            console.log(pc.red(`MCP-сервер "${name}" уже зарегистрирован`));
+            return null;
+          }
+          mcpServerRepo.add({ name, command, args: cmdArgs });
+          console.log(pc.green(`MCP-сервер "${name}" зарегистрирован: ${command} ${cmdArgs.join(" ")}`.trim()));
+          return null;
+        }
+        case "list": {
+          const servers = mcpServerRepo.getAll();
+          if (servers.length === 0) {
+            console.log(pc.dim("Нет зарегистрированных MCP-серверов"));
+            return null;
+          }
+          for (const s of servers) {
+            const argsStr = s.args.length > 0 ? ` ${s.args.join(" ")}` : "";
+            console.log(`  ${pc.bold(s.name)}  ${s.command}${argsStr}`);
+          }
+          return null;
+        }
+        case "remove": {
+          if (!subArgs[0]) {
+            console.log(pc.red("Использование: /mcp remove <name>"));
+            return null;
+          }
+          const removed = mcpServerRepo.remove(subArgs[0]);
+          if (removed) {
+            console.log(pc.green(`MCP-сервер "${subArgs[0]}" удалён`));
+          } else {
+            console.log(pc.red(`MCP-сервер "${subArgs[0]}" не найден`));
+          }
+          return null;
+        }
+        case "tools": {
+          if (!subArgs[0]) {
+            console.log(pc.red("Использование: /mcp tools <name>"));
+            return null;
+          }
+          const serverConfig = mcpServerRepo.get(subArgs[0]);
+          if (!serverConfig) {
+            console.log(pc.red(`MCP-сервер "${subArgs[0]}" не найден`));
+            return null;
+          }
+          const mcpClient = new McpClientService();
+          try {
+            const stopSpinner = startSpinner(`Подключение к "${subArgs[0]}"...`);
+            const tools = await mcpClient.listTools(serverConfig);
+            stopSpinner();
+            if (tools.length === 0) {
+              console.log(pc.dim("Сервер не предоставляет инструментов"));
+            } else {
+              console.log(pc.bold(`Инструменты (${tools.length}):`));
+              for (const tool of tools) {
+                console.log(`  ${pc.green(tool.name)} — ${tool.description}`);
+              }
+            }
+          } catch (error) {
+            console.log(pc.red(`Ошибка подключения к "${subArgs[0]}": ${error instanceof Error ? error.message : String(error)}`));
+          }
+          return null;
+        }
+        default: {
+          console.log(pc.red(`Неизвестная подкоманда: /mcp ${subCmd}. Введите /mcp help`));
           return null;
         }
       }

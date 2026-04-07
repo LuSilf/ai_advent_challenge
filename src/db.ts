@@ -141,6 +141,12 @@ export function initDb(dbPath: string): void {
       created_at TEXT DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS mcp_servers (
+      name TEXT PRIMARY KEY,
+      command TEXT NOT NULL,
+      args TEXT NOT NULL DEFAULT '[]'
+    );
+
     CREATE TABLE IF NOT EXISTS long_term_memories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       content TEXT NOT NULL,
