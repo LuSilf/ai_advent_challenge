@@ -1132,8 +1132,6 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
         if (phasePrompt) {
           systemPrompt = `${phasePrompt}\n\n${systemPrompt}`;
         }
-      } else {
-        systemPrompt = `${TaskPhasePrompts.buildAutoDetectPrompt()}\n\n${systemPrompt}`;
       }
 
       // Буфер для перехвата маркеров задач при стриминге
@@ -1147,6 +1145,18 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
 
       // Tool provider из подключённых MCP-серверов
       const toolProvider = buildToolProvider(deps.mcpConnectionManager);
+
+      // Добавляем в system prompt описание доступных инструментов
+      if (toolProvider) {
+        const toolDefs = toolProvider.getToolDefinitions();
+        const toolList = toolDefs.map((t) => `  - ${t.name}: ${t.description}`).join("\n");
+        systemPrompt = `У тебя есть доступ к внешним инструментам. Если вопрос пользователя можно ответить с помощью инструмента — ОБЯЗАТЕЛЬНО вызови его, не отвечай самостоятельно. Не предлагай создать задачу, если можешь использовать инструмент.
+
+Доступные инструменты:
+${toolList}
+
+${systemPrompt}`;
+      }
 
       const stopMainSpinner = startSpinner("Генерация ответа...");
       let mainSpinnerStopped = false;
@@ -1314,20 +1324,6 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
         }
       }
 
-      // Автодетект новой задачи
-      if (result.response.content && !activeTask) {
-        const taskDetect = TaskPhasePrompts.parseTaskDetect(result.response.content);
-        if (taskDetect && rl) {
-          result.response.content = TaskPhasePrompts.stripTaskMarkers(result.response.content);
-          const answer = await askUserChoice(rl, pc.yellow(`\nСоздать задачу "${taskDetect.title}"? [д/н]: `));
-          if (answer === "д" || answer === "да" || answer === "y" || answer === "yes") {
-            const task = taskService.createTask(state.sessionId, taskDetect.title);
-            console.log(pc.green(`Создана задача #${task.id}: "${task.title}" [${task.phase}]`));
-          }
-        } else if (taskDetect) {
-          result.response.content = TaskPhasePrompts.stripTaskMarkers(result.response.content);
-        }
-      }
 
       if (result.response.content) {
         // Auto-title
