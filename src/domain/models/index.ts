@@ -112,6 +112,30 @@ export type McpTool = {
   inputSchema: unknown;
 };
 
+export type ToolWithServer = McpTool & {
+  serverName: string;
+};
+
+export type ConnectionStatus = {
+  serverName: string;
+  status: "connected" | "error" | "disconnected";
+  error?: string;
+  toolCount?: number;
+};
+
+export type ToolCall = {
+  id: string;
+  serverName: string;
+  toolName: string;
+  arguments: Record<string, unknown>;
+};
+
+export type ToolResult = {
+  callId: string;
+  content: string;
+  isError: boolean;
+};
+
 export type GenerationParams = {
   temperature?: number;
   topP?: number;

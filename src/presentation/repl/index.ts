@@ -25,6 +25,7 @@ import type { ProfileService } from "../../domain/services/profile-service";
 import type { TaskService } from "../../domain/services/task-service";
 import type { McpServerRepository } from "../../domain/ports/mcp-server-repository";
 import { McpClientService } from "../../domain/services/mcp-client-service";
+import type { McpConnectionManager } from "../../domain/services/mcp-connection-manager";
 import { TaskPhasePrompts } from "../../domain/services/task-phase-prompts";
 import { TaskStateMachine } from "../../domain/services/task-state-machine";
 
@@ -44,6 +45,7 @@ export type ReplDeps = {
   profileService: ProfileService;
   taskService: TaskService;
   mcpServerRepo: McpServerRepository;
+  mcpConnectionManager: McpConnectionManager;
 };
 
 function printSessionInfo(sessionId: number, title: string | null, messageCount: number): void {
@@ -944,6 +946,7 @@ export async function handleCommand(
     }
     case "/exit": {
       taskService.pauseAllActive(state.sessionId);
+      await deps.mcpConnectionManager.disconnectAll();
       process.exit(0);
     }
     default: {
@@ -1042,6 +1045,19 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
   }
 
   console.log(pc.dim("Стратегия: " + sessionService.getStrategy(state.sessionId) + " | /new | /help"));
+
+  // Автоподключение к MCP-серверам
+  const mcpConfigs = deps.mcpServerRepo.getAll();
+  if (mcpConfigs.length > 0) {
+    const statuses = await deps.mcpConnectionManager.connectAll();
+    for (const s of statuses) {
+      if (s.status === "connected") {
+        console.log(pc.green(`  ✔ ${s.serverName} — ${s.toolCount} инструментов`));
+      } else {
+        console.log(pc.red(`  ✘ ${s.serverName} — ${s.error ?? "ошибка подключения"}`));
+      }
+    }
+  }
 
   const rl = createInterface({
     input: process.stdin,
@@ -1336,8 +1352,9 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
     inputLines.push(line);
   });
 
-  rl.on("close", () => {
+  rl.on("close", async () => {
     console.log("\n" + pc.dim("До свидания!"));
+    await deps.mcpConnectionManager.disconnectAll();
     process.exit(0);
   });
 }

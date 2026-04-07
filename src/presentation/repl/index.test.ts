@@ -22,6 +22,9 @@ import { ProfileService } from "../../domain/services/profile-service";
 import { TaskService } from "../../domain/services/task-service";
 import { SqliteTaskRepository } from "../../storage/sqlite/task-repository";
 import { SqliteTaskTransitionRepository } from "../../storage/sqlite/task-transition-repository";
+import { SqliteMcpServerRepository } from "../../storage/sqlite/mcp-server-repository";
+import { McpClientService } from "../../domain/services/mcp-client-service";
+import { McpConnectionManager } from "../../domain/services/mcp-connection-manager";
 import type { LLMClient, StreamEvent } from "../../domain/ports/llm-client";
 import type { LLMRequest, LLMResponse } from "../../domain/models";
 import type { AppConfig } from "../../config";
@@ -85,6 +88,9 @@ describe("presentation/repl handleCommand", () => {
     const memoryService = new MemoryService(memoryRepo, llmClient, modelRepo);
     const taskTransitionRepo = new SqliteTaskTransitionRepository();
     const taskService = new TaskService(taskRepo, taskTransitionRepo);
+    const mcpServerRepo = new SqliteMcpServerRepository();
+    const mcpClientService = new McpClientService();
+    const mcpConnectionManager = new McpConnectionManager(mcpServerRepo, mcpClientService);
 
     deps = {
       config: createTestConfig(),
@@ -101,6 +107,8 @@ describe("presentation/repl handleCommand", () => {
       openaiClient: {} as any,
       profileService,
       taskService,
+      mcpServerRepo,
+      mcpConnectionManager,
     };
 
     const id = sessionService.createSession(undefined, "full");

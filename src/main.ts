@@ -27,6 +27,8 @@ import { ChatService } from "./domain/services/chat-service";
 import { MemoryService } from "./domain/services/memory-service";
 import { ProfileService } from "./domain/services/profile-service";
 import { TaskService } from "./domain/services/task-service";
+import { McpClientService } from "./domain/services/mcp-client-service";
+import { McpConnectionManager } from "./domain/services/mcp-connection-manager";
 
 // Presentation
 import { startRepl } from "./presentation/repl";
@@ -83,6 +85,8 @@ const chatService = new ChatService(
 );
 const memoryService = new MemoryService(memoryRepo, llmClient, modelRepo);
 const taskService = new TaskService(taskRepo, taskTransitionRepo);
+const mcpClientService = new McpClientService();
+const mcpConnectionManager = new McpConnectionManager(mcpServerRepo, mcpClientService);
 
 // --- Run ---
 if (!config.prompt) {
@@ -103,6 +107,7 @@ if (!config.prompt) {
     profileService,
     taskService,
     mcpServerRepo,
+    mcpConnectionManager,
   });
 } else {
   // Single-shot mode
