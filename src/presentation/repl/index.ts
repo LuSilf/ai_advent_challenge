@@ -1235,8 +1235,11 @@ ${systemPrompt}`;
         if (clean) process.stdout.write(clean);
       }
 
-      if (!config.useStreaming) {
-        process.stdout.write(TaskPhasePrompts.stripTaskMarkers(result.response.content));
+      // Tool-use всегда non-streaming, поэтому нужно вывести ответ
+      const usedStreaming = config.useStreaming && !toolProvider;
+      if (!usedStreaming) {
+        const text = TaskPhasePrompts.stripTaskMarkers(result.response.content);
+        if (text) process.stdout.write(text);
       }
 
       process.stdout.write("\n");
