@@ -47,17 +47,31 @@ export type CostInfo = {
   outputTokens: number;
 };
 
+export type LLMToolDefinition = {
+  name: string;
+  description: string;
+  parameters: unknown;
+};
+
 export type LLMRequest = {
   messages: Message[];
   instructions: string;
   model: string;
   params: GenerationParams;
+  tools?: LLMToolDefinition[];
+};
+
+export type LLMToolCall = {
+  id: string;
+  name: string;
+  arguments: string;
 };
 
 export type LLMResponse = {
   content: string;
   inputTokens: number;
   outputTokens: number;
+  toolCalls?: LLMToolCall[];
 };
 
 export type Profile = {

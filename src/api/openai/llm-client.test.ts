@@ -76,4 +76,45 @@ describe("buildOpenAIRequest", () => {
     const result = buildOpenAIRequest(request, "test");
     expect(result.stream).toBe(true);
   });
+
+  test("includes tools as function definitions", () => {
+    const request = makeRequest({
+      tools: [
+        {
+          name: "git-analyzer__git_log",
+          description: "Show recent commits",
+          parameters: {
+            type: "object",
+            properties: { count: { type: "number" } },
+          },
+        },
+        {
+          name: "test-server__echo",
+          description: "Echo text",
+          parameters: { type: "object", properties: { text: { type: "string" } } },
+        },
+      ],
+    });
+
+    const result = buildOpenAIRequest(request, "test");
+    expect(result.tools).toBeDefined();
+    expect(result.tools!.length).toBe(2);
+
+    const tool = result.tools![0] as { type: string; name: string; description: string };
+    expect(tool.type).toBe("function");
+    expect(tool.name).toBe("git-analyzer__git_log");
+    expect(tool.description).toBe("Show recent commits");
+  });
+
+  test("does not set tools when array is empty", () => {
+    const request = makeRequest({ tools: [] });
+    const result = buildOpenAIRequest(request, "test");
+    expect(result.tools).toBeUndefined();
+  });
+
+  test("does not set tools when not provided", () => {
+    const request = makeRequest();
+    const result = buildOpenAIRequest(request, "test");
+    expect(result.tools).toBeUndefined();
+  });
 });

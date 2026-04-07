@@ -1,7 +1,7 @@
 import type OpenAI from "openai";
 import type { ResponseCreateParams } from "openai/resources/responses/responses";
 import type { Response } from "openai/resources/responses/responses";
-import type { LLMRequest, LLMResponse } from "../../domain/models";
+import type { LLMRequest, LLMResponse, LLMToolCall } from "../../domain/models";
 import type { LLMClient, StreamEvent } from "../../domain/ports/llm-client";
 
 export function buildOpenAIRequest(request: LLMRequest, userPrompt: string): ResponseCreateParams {
@@ -49,7 +49,33 @@ export function buildOpenAIRequest(request: LLMRequest, userPrompt: string): Res
     params.max_output_tokens = request.params.maxCompletionTokens;
   }
 
+  // Добавляем tools если есть
+  if (request.tools && request.tools.length > 0) {
+    params.tools = request.tools.map((t) => ({
+      type: "function" as const,
+      name: t.name,
+      description: t.description,
+      parameters: t.parameters as Record<string, unknown>,
+    }));
+  }
+
   return params;
+}
+
+function parseToolCalls(response: Response): LLMToolCall[] {
+  const calls: LLMToolCall[] = [];
+
+  for (const item of response.output) {
+    if (item.type === "function_call") {
+      calls.push({
+        id: item.call_id,
+        name: item.name,
+        arguments: item.arguments,
+      });
+    }
+  }
+
+  return calls;
 }
 
 export class OpenAILLMClient implements LLMClient {
@@ -60,15 +86,15 @@ export class OpenAILLMClient implements LLMClient {
       ? request.messages[request.messages.length - 1].content
       : "");
 
-    // For send, we expect the user prompt to already be in the messages
-    // We need to rebuild: use messages without the last user msg as history, last user msg as prompt
-    // Actually, the ChatService will handle this — we just send the full request as-is
     const response = await this.client.responses.create({ ...params, stream: false });
+
+    const toolCalls = parseToolCalls(response);
 
     return {
       content: response.output_text ?? "",
       inputTokens: response.usage?.input_tokens ?? 0,
       outputTokens: response.usage?.output_tokens ?? 0,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       rawResponse: response,
     };
   }
@@ -108,12 +134,15 @@ export class OpenAILLMClient implements LLMClient {
       yield { type: "delta", text: responseText };
     }
 
+    const toolCalls = completedResponse ? parseToolCalls(completedResponse) : [];
+
     yield {
       type: "done",
       response: {
         content: responseText,
         inputTokens: completedResponse?.usage?.input_tokens ?? 0,
         outputTokens: completedResponse?.usage?.output_tokens ?? 0,
+        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       },
       rawResponse: completedResponse,
     };
