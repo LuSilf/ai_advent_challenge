@@ -27,6 +27,8 @@ import type { McpServerRepository } from "../../domain/ports/mcp-server-reposito
 import { McpClientService } from "../../domain/services/mcp-client-service";
 import type { McpConnectionManager } from "../../domain/services/mcp-connection-manager";
 import { TaskPhasePrompts } from "../../domain/services/task-phase-prompts";
+import { formatToolCallStart, formatToolCallResult } from "./tool-use-formatter";
+import type { ToolProvider } from "../../domain/services/chat-service";
 import { TaskStateMachine } from "../../domain/services/task-state-machine";
 
 export type ReplDeps = {
@@ -47,6 +49,26 @@ export type ReplDeps = {
   mcpServerRepo: McpServerRepository;
   mcpConnectionManager: McpConnectionManager;
 };
+
+function buildToolProvider(manager: McpConnectionManager): ToolProvider | undefined {
+  const tools = manager.getAvailableTools();
+  if (tools.length === 0) return undefined;
+
+  return {
+    getToolDefinitions: () =>
+      tools.map((t) => ({
+        name: `${t.serverName}__${t.name}`,
+        description: t.description,
+        parameters: t.inputSchema,
+      })),
+    callTool: async (name, args) => {
+      const sep = name.indexOf("__");
+      const serverName = sep >= 0 ? name.slice(0, sep) : "";
+      const toolName = sep >= 0 ? name.slice(sep + 2) : name;
+      return manager.callTool(serverName, toolName, args);
+    },
+  };
+}
 
 function printSessionInfo(sessionId: number, title: string | null, messageCount: number): void {
   const name = title ? `"${title}"` : "(без названия)";
@@ -1123,6 +1145,9 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
         ? TaskPhasePrompts.buildTaskReminder(activeTask)
         : undefined;
 
+      // Tool provider из подключённых MCP-серверов
+      const toolProvider = buildToolProvider(deps.mcpConnectionManager);
+
       const stopMainSpinner = startSpinner("Генерация ответа...");
       let mainSpinnerStopped = false;
 
@@ -1137,6 +1162,18 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
         maxCompletionTokens: config.maxCompletionTokens,
         reasoningEffort: config.reasoningEffort,
         reasoningSummary: config.reasoningSummary,
+        toolProvider,
+        onToolCall: (event) => {
+          if (!mainSpinnerStopped) {
+            stopMainSpinner();
+            mainSpinnerStopped = true;
+          }
+          if (event.result !== undefined) {
+            console.log(formatToolCallResult(event));
+          } else {
+            console.log(formatToolCallStart(event));
+          }
+        },
         onDelta: (delta) => {
           if (!mainSpinnerStopped) {
             stopMainSpinner();
