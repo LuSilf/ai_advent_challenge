@@ -11,7 +11,8 @@ import type { FactRepository } from "../ports/fact-repository";
 import type { ProfileRepository } from "../ports/profile-repository";
 import type { OptionsRepository } from "../ports/options-repository";
 import { ProfileService } from "./profile-service";
-import type { LLMRequest, LLMResponse, Message, Model, Fact, Session, Profile, ProfilePreference } from "../models";
+import type { LLMRequest, LLMResponse, LLMToolCall, Message, Model, Fact, Session, Profile, ProfilePreference } from "../models";
+import type { ToolProvider, ToolCallEvent } from "./chat-service";
 
 const testModel: Model = {
   id: "test/model",
@@ -337,5 +338,276 @@ describe("ChatService", () => {
     });
 
     expect(result.response.content).toBe("ответ бота");
+  });
+});
+
+// --- Tool-use loop tests ---
+
+function createToolUseLLMClient(responses: Array<{ content: string; toolCalls?: LLMToolCall[] }>): LLMClient {
+  let callIndex = 0;
+  return {
+    async send(): Promise<LLMResponse & { rawResponse?: unknown }> {
+      const resp = responses[callIndex++] ?? { content: "fallback", toolCalls: undefined };
+      return {
+        content: resp.content,
+        inputTokens: 10,
+        outputTokens: 5,
+        toolCalls: resp.toolCalls,
+      };
+    },
+    async *stream(): AsyncIterable<StreamEvent> {
+      const resp = responses[callIndex++] ?? { content: "fallback" };
+      yield { type: "done", response: { content: resp.content, inputTokens: 10, outputTokens: 5 } };
+    },
+  };
+}
+
+function createMockToolProvider(results: Record<string, { content: string; isError: boolean }>): ToolProvider {
+  return {
+    getToolDefinitions: () => [
+      { name: "server__tool_a", description: "Tool A", parameters: {} },
+      { name: "server__tool_b", description: "Tool B", parameters: {} },
+    ],
+    callTool: async (name, args) => {
+      return results[name] ?? { content: "unknown tool", isError: true };
+    },
+  };
+}
+
+describe("ChatService tool-use loop", () => {
+  function buildServiceWithClient(client: LLMClient) {
+    const modelRepo = createMockModelRepo();
+    const sessionRepo = createMockSessionRepo();
+    const msgRepo = createMockMessageRepo();
+    const factRepo = createMockFactRepo();
+    const sessionService = new SessionService(sessionRepo, msgRepo);
+    const contextService = new ContextService();
+    const costService = new CostService(modelRepo);
+
+    const chatService = new ChatService(
+      client,
+      sessionService,
+      contextService,
+      costService,
+      msgRepo,
+      factRepo,
+      modelRepo,
+    );
+
+    const sessionId = sessionRepo.create();
+    return { chatService, sessionId, msgRepo };
+  }
+
+  test("single tool call → result → final answer", async () => {
+    const client = createToolUseLLMClient([
+      // Round 1: LLM requests tool call
+      {
+        content: "",
+        toolCalls: [{ id: "call_1", name: "server__tool_a", arguments: '{"x": 1}' }],
+      },
+      // Round 2: LLM gives final answer
+      { content: "Результат: 42" },
+    ]);
+
+    const toolProvider = createMockToolProvider({
+      "server__tool_a": { content: "42", isError: false },
+    });
+
+    const { chatService, sessionId } = buildServiceWithClient(client);
+    const result = await chatService.sendMessage(sessionId, "тест", {
+      historyLimit: 50,
+      systemPrompt: "",
+      useStreaming: false,
+      toolProvider,
+    });
+
+    expect(result.response.content).toBe("Результат: 42");
+  });
+
+  test("chain: tool A → tool B → final answer", async () => {
+    const client = createToolUseLLMClient([
+      // Round 1: call tool A
+      {
+        content: "",
+        toolCalls: [{ id: "call_1", name: "server__tool_a", arguments: "{}" }],
+      },
+      // Round 2: call tool B
+      {
+        content: "",
+        toolCalls: [{ id: "call_2", name: "server__tool_b", arguments: "{}" }],
+      },
+      // Round 3: final answer
+      { content: "Готово" },
+    ]);
+
+    const toolProvider = createMockToolProvider({
+      "server__tool_a": { content: "data_a", isError: false },
+      "server__tool_b": { content: "data_b", isError: false },
+    });
+
+    const { chatService, sessionId } = buildServiceWithClient(client);
+    const result = await chatService.sendMessage(sessionId, "цепочка", {
+      historyLimit: 50,
+      systemPrompt: "",
+      useStreaming: false,
+      toolProvider,
+    });
+
+    expect(result.response.content).toBe("Готово");
+  });
+
+  test("no tool calls — normal text response", async () => {
+    const client = createToolUseLLMClient([
+      { content: "обычный ответ" },
+    ]);
+
+    const toolProvider = createMockToolProvider({});
+
+    const { chatService, sessionId } = buildServiceWithClient(client);
+    const result = await chatService.sendMessage(sessionId, "вопрос", {
+      historyLimit: 50,
+      systemPrompt: "",
+      useStreaming: false,
+      toolProvider,
+    });
+
+    expect(result.response.content).toBe("обычный ответ");
+  });
+
+  test("tool error is passed back to LLM", async () => {
+    const client = createToolUseLLMClient([
+      {
+        content: "",
+        toolCalls: [{ id: "call_1", name: "server__tool_a", arguments: "{}" }],
+      },
+      { content: "Произошла ошибка при вызове инструмента" },
+    ]);
+
+    const toolProvider = createMockToolProvider({
+      "server__tool_a": { content: "server error", isError: true },
+    });
+
+    const { chatService, sessionId } = buildServiceWithClient(client);
+    const result = await chatService.sendMessage(sessionId, "ошибка", {
+      historyLimit: 50,
+      systemPrompt: "",
+      useStreaming: false,
+      toolProvider,
+    });
+
+    expect(result.response.content).toBe("Произошла ошибка при вызове инструмента");
+  });
+
+  test("max rounds limit prevents infinite loops", async () => {
+    // maxToolRounds=3: 3 rounds of tool calls, then a forced final request without tools
+    // So we need 3 tool-call responses + 1 final text response = 4 LLM calls
+    const responses = [
+      { content: "", toolCalls: [{ id: "c1", name: "server__tool_a", arguments: "{}" }] as LLMToolCall[] },
+      { content: "", toolCalls: [{ id: "c2", name: "server__tool_a", arguments: "{}" }] as LLMToolCall[] },
+      { content: "", toolCalls: [{ id: "c3", name: "server__tool_a", arguments: "{}" }] as LLMToolCall[] },
+      { content: "Лимит достигнут" },
+    ];
+
+    const client = createToolUseLLMClient(responses);
+    const toolProvider = createMockToolProvider({
+      "server__tool_a": { content: "ok", isError: false },
+    });
+
+    const { chatService, sessionId } = buildServiceWithClient(client);
+    const result = await chatService.sendMessage(sessionId, "бесконечность", {
+      historyLimit: 50,
+      systemPrompt: "",
+      useStreaming: false,
+      toolProvider,
+      maxToolRounds: 3,
+    });
+
+    expect(result.response.content).toBe("Лимит достигнут");
+  });
+
+  test("onToolCall callback is invoked for each tool call", async () => {
+    const client = createToolUseLLMClient([
+      {
+        content: "",
+        toolCalls: [{ id: "call_1", name: "server__tool_a", arguments: '{"x": 1}' }],
+      },
+      { content: "done" },
+    ]);
+
+    const toolProvider = createMockToolProvider({
+      "server__tool_a": { content: "result", isError: false },
+    });
+
+    const events: ToolCallEvent[] = [];
+    const { chatService, sessionId } = buildServiceWithClient(client);
+
+    await chatService.sendMessage(sessionId, "test", {
+      historyLimit: 50,
+      systemPrompt: "",
+      useStreaming: false,
+      toolProvider,
+      onToolCall: (event) => events.push(event),
+    });
+
+    // Two events: one before call (no result), one after call (with result)
+    expect(events.length).toBe(2);
+    expect(events[0].toolName).toBe("server__tool_a");
+    expect(events[0].result).toBeUndefined();
+    expect(events[1].result).toBe("result");
+  });
+
+  test("tool-use aggregates token counts across rounds", async () => {
+    const client = createToolUseLLMClient([
+      {
+        content: "",
+        toolCalls: [{ id: "call_1", name: "server__tool_a", arguments: "{}" }],
+      },
+      { content: "done" },
+    ]);
+
+    const toolProvider = createMockToolProvider({
+      "server__tool_a": { content: "ok", isError: false },
+    });
+
+    const { chatService, sessionId } = buildServiceWithClient(client);
+    const result = await chatService.sendMessage(sessionId, "test", {
+      historyLimit: 50,
+      systemPrompt: "",
+      useStreaming: false,
+      toolProvider,
+    });
+
+    // 2 rounds × 10 input + 2 rounds × 5 output
+    expect(result.response.inputTokens).toBe(20);
+    expect(result.response.outputTokens).toBe(10);
+  });
+
+  test("saves only final response to message repo, not intermediate tool calls", async () => {
+    const client = createToolUseLLMClient([
+      {
+        content: "",
+        toolCalls: [{ id: "call_1", name: "server__tool_a", arguments: "{}" }],
+      },
+      { content: "финальный ответ" },
+    ]);
+
+    const toolProvider = createMockToolProvider({
+      "server__tool_a": { content: "ok", isError: false },
+    });
+
+    const { chatService, sessionId, msgRepo } = buildServiceWithClient(client);
+    await chatService.sendMessage(sessionId, "test", {
+      historyLimit: 50,
+      systemPrompt: "",
+      useStreaming: false,
+      toolProvider,
+    });
+
+    const messages = msgRepo.getBySession(sessionId);
+    // user message + assistant final response
+    expect(messages).toHaveLength(2);
+    expect(messages[0].role).toBe("user");
+    expect(messages[1].role).toBe("assistant");
+    expect(messages[1].content).toBe("финальный ответ");
   });
 });

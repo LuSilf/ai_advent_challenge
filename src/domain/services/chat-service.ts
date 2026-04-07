@@ -1,4 +1,4 @@
-import type { CostInfo, LLMRequest, LLMResponse, Model, Message } from "../models";
+import type { CostInfo, LLMRequest, LLMResponse, LLMToolDefinition, LLMToolCall, Model, Message } from "../models";
 import type { LLMClient, StreamEvent } from "../ports/llm-client";
 import type { MessageRepository } from "../ports/message-repository";
 import type { FactRepository } from "../ports/fact-repository";
@@ -7,6 +7,20 @@ import type { SessionService } from "./session-service";
 import type { ContextService, ContextResult } from "./context-service";
 import type { CostService } from "./cost-service";
 import type { ProfileService } from "./profile-service";
+
+export type ToolProvider = {
+  getToolDefinitions(): LLMToolDefinition[];
+  callTool(name: string, args: Record<string, unknown>): Promise<{ content: string; isError: boolean }>;
+};
+
+export type ToolCallEvent = {
+  toolName: string;
+  serverName: string;
+  description: string;
+  arguments: Record<string, unknown>;
+  result?: string;
+  isError?: boolean;
+};
 
 export type SendMessageOptions = {
   historyLimit: number;
@@ -21,6 +35,9 @@ export type SendMessageOptions = {
   onDelta?: (text: string) => void;
   onReasoningSummary?: (text: string) => void;
   userPromptSuffix?: string;
+  toolProvider?: ToolProvider;
+  onToolCall?: (event: ToolCallEvent) => void;
+  maxToolRounds?: number;
 };
 
 export type SendMessageResult = {
@@ -29,6 +46,8 @@ export type SendMessageResult = {
   model: Model;
   rawResponse?: unknown;
 };
+
+const DEFAULT_MAX_TOOL_ROUNDS = 10;
 
 export class ChatService {
   constructor(
@@ -79,14 +98,17 @@ export class ChatService {
     }
 
     // Добавляем текущее сообщение пользователя в контекст
-    // userPromptSuffix добавляется к сообщению для LLM, но НЕ сохраняется в БД
     const llmUserContent = options.userPromptSuffix
       ? `${userPrompt}\n\n${options.userPromptSuffix}`
       : userPrompt;
-    const allMessages = [
+    const allMessages: Message[] = [
       ...context.messages,
       { id: 0, sessionId, role: "user" as const, content: llmUserContent, createdAt: "" },
     ];
+
+    // Получаем tools
+    const tools = options.toolProvider?.getToolDefinitions();
+    const hasTools = tools && tools.length > 0;
 
     // Build LLM request
     const llmRequest: LLMRequest = {
@@ -99,10 +121,26 @@ export class ChatService {
         maxCompletionTokens: options.maxCompletionTokens,
         reasoningEffort: options.reasoningEffort,
         reasoningSummary: options.reasoningSummary,
-        stream: options.useStreaming,
+        stream: hasTools ? false : (options.useStreaming ?? false),
       },
+      tools: hasTools ? tools : undefined,
     };
 
+    // Если есть tools — запускаем tool-use loop (без стриминга)
+    if (hasTools && options.toolProvider) {
+      return this.sendWithToolLoop(sessionId, llmRequest, model, options);
+    }
+
+    // Обычный путь (без tools)
+    return this.sendSimple(sessionId, llmRequest, model, options);
+  }
+
+  private async sendSimple(
+    sessionId: number,
+    llmRequest: LLMRequest,
+    model: Model,
+    options: SendMessageOptions,
+  ): Promise<SendMessageResult> {
     let response: LLMResponse;
     let rawResponse: unknown;
 
@@ -138,5 +176,122 @@ export class ChatService {
     const costInfo = this.costService.calculate(model, response.inputTokens, response.outputTokens);
 
     return { response, costInfo, model, rawResponse };
+  }
+
+  private async sendWithToolLoop(
+    sessionId: number,
+    llmRequest: LLMRequest,
+    model: Model,
+    options: SendMessageOptions,
+  ): Promise<SendMessageResult> {
+    const maxRounds = options.maxToolRounds ?? DEFAULT_MAX_TOOL_ROUNDS;
+    const toolProvider = options.toolProvider!;
+
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+    let currentMessages = [...llmRequest.messages];
+    let rawResponse: unknown;
+
+    for (let round = 0; round < maxRounds; round++) {
+      const request: LLMRequest = {
+        ...llmRequest,
+        messages: currentMessages,
+        params: { ...llmRequest.params, stream: false },
+      };
+
+      const result = await this.llmClient.send(request);
+      totalInputTokens += result.inputTokens;
+      totalOutputTokens += result.outputTokens;
+      rawResponse = result.rawResponse;
+
+      // Нет tool calls — финальный текстовый ответ
+      if (!result.toolCalls || result.toolCalls.length === 0) {
+        if (result.content) {
+          this.messageRepo.add(sessionId, "assistant", result.content);
+        }
+
+        const costInfo = this.costService.calculate(model, totalInputTokens, totalOutputTokens);
+        return {
+          response: { content: result.content, inputTokens: totalInputTokens, outputTokens: totalOutputTokens },
+          costInfo,
+          model,
+          rawResponse,
+        };
+      }
+
+      // Обрабатываем tool calls
+      for (const toolCall of result.toolCalls) {
+        let parsedArgs: Record<string, unknown>;
+        try {
+          parsedArgs = JSON.parse(toolCall.arguments);
+        } catch {
+          parsedArgs = {};
+        }
+
+        // Уведомляем UI
+        options.onToolCall?.({
+          toolName: toolCall.name,
+          serverName: this.extractServerName(toolCall.name),
+          description: this.findToolDescription(toolCall.name, llmRequest.tools ?? []),
+          arguments: parsedArgs,
+        });
+
+        // Вызываем tool
+        const toolResult = await toolProvider.callTool(toolCall.name, parsedArgs);
+
+        // Уведомляем UI с результатом
+        options.onToolCall?.({
+          toolName: toolCall.name,
+          serverName: this.extractServerName(toolCall.name),
+          description: this.findToolDescription(toolCall.name, llmRequest.tools ?? []),
+          arguments: parsedArgs,
+          result: toolResult.content,
+          isError: toolResult.isError,
+        });
+
+        // Добавляем tool call + result в контекст для следующего запроса
+        currentMessages = [
+          ...currentMessages,
+          { id: 0, sessionId: 0, role: "assistant" as const, content: `[Tool call: ${toolCall.name}(${toolCall.arguments})]`, createdAt: "" },
+          { id: 0, sessionId: 0, role: "user" as const, content: `[Tool result for ${toolCall.name}]: ${toolResult.content}`, createdAt: "" },
+        ];
+      }
+    }
+
+    // Лимит итераций достигнут — финальный запрос без tools
+    const finalRequest: LLMRequest = {
+      ...llmRequest,
+      messages: [
+        ...currentMessages,
+        { id: 0, sessionId: 0, role: "user" as const, content: "Лимит вызовов инструментов достигнут. Дай финальный ответ на основе имеющихся данных.", createdAt: "" },
+      ],
+      tools: undefined,
+      params: { ...llmRequest.params, stream: false },
+    };
+
+    const finalResult = await this.llmClient.send(finalRequest);
+    totalInputTokens += finalResult.inputTokens;
+    totalOutputTokens += finalResult.outputTokens;
+
+    if (finalResult.content) {
+      this.messageRepo.add(sessionId, "assistant", finalResult.content);
+    }
+
+    const costInfo = this.costService.calculate(model, totalInputTokens, totalOutputTokens);
+    return {
+      response: { content: finalResult.content, inputTokens: totalInputTokens, outputTokens: totalOutputTokens },
+      costInfo,
+      model,
+      rawResponse: finalResult.rawResponse,
+    };
+  }
+
+  private extractServerName(toolName: string): string {
+    const sep = toolName.indexOf("__");
+    return sep >= 0 ? toolName.slice(0, sep) : "";
+  }
+
+  private findToolDescription(toolName: string, tools: LLMToolDefinition[]): string {
+    return tools.find((t) => t.name === toolName)?.description ?? "";
   }
 }
