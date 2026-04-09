@@ -115,11 +115,38 @@ describe("SchedulerService", () => {
     expect(service.parseInterval("every 5 min")).toBe("*/5 * * * *");
   });
 
+  test("parseInterval converts 'every 10s' to @every ms", () => {
+    expect(service.parseInterval("every 10s")).toBe("@every 10000");
+    expect(service.parseInterval("every 30s")).toBe("@every 30000");
+    expect(service.parseInterval("every 5 sec")).toBe("@every 5000");
+  });
+
   test("parseInterval returns null for invalid input", () => {
     expect(service.parseInterval("not an interval")).toBeNull();
     expect(service.parseInterval("every 0m")).toBeNull();
     expect(service.parseInterval("every 60m")).toBeNull();
     expect(service.parseInterval("every 25h")).toBeNull();
+  });
+
+  // --- @every interval ---
+
+  test("computeNextRun handles @every ms format", () => {
+    const from = new Date("2026-01-01T00:00:00.000Z");
+    const next = service.computeNextRun("@every 10000", from);
+    expect(next).toBe("2026-01-01T00:00:10.000Z");
+  });
+
+  test("validateCron accepts @every format", () => {
+    expect(service.validateCron("@every 5000")).toBe(true);
+    expect(service.validateCron("@every 0")).toBe(false);
+    expect(service.validateCron("@every abc")).toBe(false);
+  });
+
+  test("formatExpression displays human-readable", () => {
+    expect(service.formatExpression("@every 10000")).toBe("every 10s");
+    expect(service.formatExpression("@every 120000")).toBe("every 2m");
+    expect(service.formatExpression("@every 7200000")).toBe("every 2h");
+    expect(service.formatExpression("*/5 * * * *")).toBe("*/5 * * * *");
   });
 
   // --- Execution ---

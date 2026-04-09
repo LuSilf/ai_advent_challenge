@@ -16,9 +16,13 @@ export type SchedulerDeps = {
   onExecution?: SchedulerExecutionCallback;
 };
 
+const EVERY_PREFIX = "@every ";
+const TICK_INTERVAL_MS = 1_000;
+
 export class SchedulerService {
   private tickInterval: ReturnType<typeof setInterval> | null = null;
   private running = false;
+  private executing = false;
 
   constructor(private readonly deps: SchedulerDeps) {}
 
@@ -74,11 +78,11 @@ export class SchedulerService {
   // --- Interval shortcuts ---
 
   /**
-   * Parses interval shortcut like "every 30m", "every 2h", "every 1d"
-   * Returns cron expression or null if not a valid interval.
+   * Parses interval shortcut like "every 10s", "every 30m", "every 2h", "every 1d"
+   * Returns cron expression or @every interval string.
    */
   parseInterval(input: string): string | null {
-    const match = input.match(/^every\s+(\d+)\s*(m|min|h|hour|d|day)s?$/i);
+    const match = input.match(/^every\s+(\d+)\s*(s|sec|m|min|h|hour|d|day)s?$/i);
     if (!match) return null;
 
     const value = Number(match[1]);
@@ -87,6 +91,10 @@ export class SchedulerService {
     if (value <= 0) return null;
 
     switch (unit) {
+      case "s":
+      case "sec":
+        if (value > 86400) return null;
+        return `${EVERY_PREFIX}${value * 1000}`;
       case "m":
       case "min":
         if (value > 59) return null;
@@ -104,11 +112,34 @@ export class SchedulerService {
     }
   }
 
-  // --- Cron ---
+  /**
+   * Format cron/interval expression for display.
+   */
+  formatExpression(expr: string): string {
+    if (expr.startsWith(EVERY_PREFIX)) {
+      const ms = Number(expr.slice(EVERY_PREFIX.length));
+      if (ms < 60_000) return `every ${ms / 1000}s`;
+      if (ms < 3_600_000) return `every ${ms / 60_000}m`;
+      return `every ${ms / 3_600_000}h`;
+    }
+    return expr;
+  }
+
+  // --- Cron / interval ---
 
   computeNextRun(cronExpression: string, from?: Date): string | null {
+    const now = from ?? new Date();
+
+    // @every <ms> — fixed interval
+    if (cronExpression.startsWith(EVERY_PREFIX)) {
+      const ms = Number(cronExpression.slice(EVERY_PREFIX.length));
+      if (!Number.isFinite(ms) || ms <= 0) return null;
+      return new Date(now.getTime() + ms).toISOString();
+    }
+
+    // Standard cron
     try {
-      const expr = CronExpressionParser.parse(cronExpression, { currentDate: from ?? new Date() });
+      const expr = CronExpressionParser.parse(cronExpression, { currentDate: now });
       const next = expr.next();
       return next.toISOString();
     } catch {
@@ -117,6 +148,12 @@ export class SchedulerService {
   }
 
   validateCron(expression: string): boolean {
+    // @every <ms>
+    if (expression.startsWith(EVERY_PREFIX)) {
+      const ms = Number(expression.slice(EVERY_PREFIX.length));
+      return Number.isFinite(ms) && ms > 0;
+    }
+
     try {
       CronExpressionParser.parse(expression);
       return true;
@@ -130,8 +167,7 @@ export class SchedulerService {
   start(): void {
     if (this.running) return;
     this.running = true;
-    this.tickInterval = setInterval(() => this.tick(), 60_000);
-    // Run first tick immediately
+    this.tickInterval = setInterval(() => this.tick(), TICK_INTERVAL_MS);
     this.tick();
   }
 
@@ -148,11 +184,17 @@ export class SchedulerService {
   }
 
   private async tick(): Promise<void> {
-    const now = new Date().toISOString();
-    const dueTasks = this.deps.schedulerRepo.findDueTasks(now);
+    if (this.executing) return; // не запускать параллельно
+    this.executing = true;
+    try {
+      const now = new Date().toISOString();
+      const dueTasks = this.deps.schedulerRepo.findDueTasks(now);
 
-    for (const task of dueTasks) {
-      await this.executeTask(task);
+      for (const task of dueTasks) {
+        await this.executeTask(task);
+      }
+    } finally {
+      this.executing = false;
     }
   }
 
@@ -190,7 +232,6 @@ export class SchedulerService {
 
       const id = this.deps.schedulerRepo.addExecution(execution);
 
-      // Update task timing
       const nextRunAt = this.computeNextRun(task.cronExpression);
       this.deps.schedulerRepo.updateTask(task.id, { lastRunAt: finishedAt, nextRunAt });
 

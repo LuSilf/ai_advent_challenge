@@ -64,7 +64,7 @@ function buildSchedulerTools(scheduler: SchedulerService, sessionId: number) {
           type: "object",
           properties: {
             name: { type: "string", description: "Короткое название задачи (до 50 символов)" },
-            cron_expression: { type: "string", description: "Cron-выражение (5 полей: минута час день месяц день_недели). Пример: */30 * * * * — каждые 30 минут" },
+            cron_expression: { type: "string", description: "Расписание. Cron (5 полей): */30 * * * * — каждые 30 мин. Для секундных интервалов: @every <мс>, например @every 10000 — каждые 10 сек, @every 30000 — каждые 30 сек." },
             prompt: { type: "string", description: "Промпт, который будет отправлен LLM при каждом выполнении" },
           },
           required: ["name", "cron_expression", "prompt"],
@@ -97,7 +97,7 @@ function buildSchedulerTools(scheduler: SchedulerService, sessionId: number) {
           const id = scheduler.createTask(sessionId, name, cron_expression, prompt);
           const task = scheduler.getTask(id);
           const nextRun = task?.nextRunAt ? new Date(task.nextRunAt).toLocaleString() : "не определено";
-          return { content: `Задача #${id} "${name}" создана. Cron: ${cron_expression}. Следующий запуск: ${nextRun}`, isError: false };
+          return { content: `Задача #${id} "${name}" создана. Расписание: ${scheduler.formatExpression(cron_expression)}. Следующий запуск: ${nextRun}`, isError: false };
         }
         case "delete_schedule": {
           const { id } = args as { id: number };
@@ -112,7 +112,7 @@ function buildSchedulerTools(scheduler: SchedulerService, sessionId: number) {
           const lines = tasks.map((t) => {
             const status = t.enabled ? "вкл" : "выкл";
             const next = t.nextRunAt ? new Date(t.nextRunAt).toLocaleString() : "—";
-            return `#${t.id} [${status}] "${t.name}" cron: ${t.cronExpression}, следующий: ${next}`;
+            return `#${t.id} [${status}] "${t.name}" расписание: ${scheduler.formatExpression(t.cronExpression)}, следующий: ${next}`;
           });
           return { content: lines.join("\n"), isError: false };
         }
@@ -1045,7 +1045,7 @@ export async function handleCommand(
           const id = scheduler.createTask(state.sessionId, taskName, cronExpr, prompt);
           const task = scheduler.getTask(id);
           console.log(pc.green(`Задача #${id} создана: "${taskName}"`));
-          console.log(pc.dim(`  Cron: ${cronExpr}`));
+          console.log(pc.dim(`  Расписание: ${scheduler.formatExpression(cronExpr)}`));
           if (task?.nextRunAt) {
             console.log(pc.dim(`  Следующий запуск: ${new Date(task.nextRunAt).toLocaleString()}`));
           }
@@ -1061,7 +1061,7 @@ export async function handleCommand(
             const status = t.enabled ? pc.green("вкл") : pc.red("выкл");
             const next = t.nextRunAt ? new Date(t.nextRunAt).toLocaleString() : "—";
             console.log(`  ${pc.bold(`#${t.id}`)} [${status}] ${t.name}`);
-            console.log(pc.dim(`    Cron: ${t.cronExpression} | Следующий: ${next}`));
+            console.log(pc.dim(`    Расписание: ${scheduler.formatExpression(t.cronExpression)} | Следующий: ${next}`));
           }
           return null;
         }
