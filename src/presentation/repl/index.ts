@@ -59,7 +59,7 @@ function buildSchedulerTools(scheduler: SchedulerService, sessionId: number) {
     definitions: [
       {
         name: "scheduler__create_schedule",
-        description: "Создать задачу по расписанию. Вызывай когда пользователь просит периодически что-то делать.",
+        description: "Создать задачу по расписанию. Вызывай ТОЛЬКО когда пользователь явно просит периодически что-то делать. Промпт пиши на языке пользователя.",
         parameters: {
           type: "object",
           properties: {
@@ -1470,13 +1470,34 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
       // Добавляем в system prompt описание доступных инструментов
       if (toolProvider) {
         const toolDefs = toolProvider.getToolDefinitions();
-        const toolList = toolDefs.map((t) => `  - ${t.name}: ${t.description}`).join("\n");
-        systemPrompt = `У тебя есть доступ к внешним инструментам. Если вопрос пользователя можно ответить с помощью инструмента — ОБЯЗАТЕЛЬНО вызови его, не отвечай самостоятельно. Не предлагай создать задачу, если можешь использовать инструмент.
+        const mcpTools = toolDefs.filter((t) => !t.name.startsWith("scheduler__"));
+        const schedulerToolDefs = toolDefs.filter((t) => t.name.startsWith("scheduler__"));
 
-Доступные инструменты:
-${toolList}
+        let toolHint = "";
 
-${systemPrompt}`;
+        if (mcpTools.length > 0) {
+          const mcpList = mcpTools.map((t) => `  - ${t.name}: ${t.description}`).join("\n");
+          toolHint += `У тебя есть доступ к внешним инструментам. Если вопрос пользователя можно ответить с помощью инструмента — ОБЯЗАТЕЛЬНО вызови его, не отвечай самостоятельно.
+
+Внешние инструменты:
+${mcpList}
+
+`;
+        }
+
+        if (schedulerToolDefs.length > 0) {
+          const schedList = schedulerToolDefs.map((t) => `  - ${t.name}: ${t.description}`).join("\n");
+          toolHint += `У тебя есть инструменты планировщика. Используй их ТОЛЬКО когда пользователь явно просит создать, удалить или посмотреть задачи по расписанию. НЕ вызывай их для обычного разговора. Промпт задачи пиши на том же языке, на котором общается пользователь.
+
+Инструменты планировщика:
+${schedList}
+
+`;
+        }
+
+        if (toolHint) {
+          systemPrompt = `${toolHint}${systemPrompt}`;
+        }
       }
 
       const stopMainSpinner = startSpinner("Генерация ответа...");
