@@ -1269,19 +1269,20 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
       reasoningSummary: config.reasoningSummary,
     }),
     onExecution: (task, execution) => {
+      let output: string;
       if (execution.status === "success") {
         const preview = execution.result && execution.result.length > 300
           ? execution.result.slice(0, 300) + "..."
           : execution.result;
-        console.log(`\n${pc.bgCyan(pc.black(` Задача: ${task.name} `))}`);
-        console.log(pc.cyan(preview ?? "(пустой результат)"));
-        console.log();
+        output = `\n${pc.bgCyan(pc.black(` Задача: ${task.name} `))}\n${pc.cyan(preview ?? "(пустой результат)")}\n\n`;
       } else {
-        console.log(`\n${pc.bgRed(pc.white(` Задача: ${task.name} — ошибка `))}`);
-        console.log(pc.red(execution.error ?? "Неизвестная ошибка"));
-        console.log();
+        output = `\n${pc.bgRed(pc.white(` Задача: ${task.name} — ошибка `))}\n${pc.red(execution.error ?? "Неизвестная ошибка")}\n\n`;
       }
-      if (!processing) {
+
+      if (processing) {
+        pendingSchedulerOutput.push(output);
+      } else {
+        process.stdout.write(output);
         rl.prompt();
       }
     },
@@ -1304,6 +1305,13 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
 
   const inputLines: string[] = [];
   let processing = false;
+  const pendingSchedulerOutput: string[] = [];
+
+  const flushPendingOutput = () => {
+    while (pendingSchedulerOutput.length > 0) {
+      process.stdout.write(pendingSchedulerOutput.shift()!);
+    }
+  };
 
   const processInput = async (text: string) => {
     processing = true;
@@ -1315,6 +1323,7 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
       const result = await handleCommand(cmd, cmdArgs, state, deps, rl);
       if (result === null) {
         processing = false;
+        flushPendingOutput();
         rl.prompt();
         return;
       }
@@ -1571,6 +1580,7 @@ ${systemPrompt}`;
     }
 
     processing = false;
+    flushPendingOutput();
     rl.prompt();
   };
 
