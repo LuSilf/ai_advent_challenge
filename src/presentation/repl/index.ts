@@ -1389,8 +1389,25 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
       if (processing) {
         pendingSchedulerOutput.push(output);
       } else {
+        // Сохраняем текущий ввод пользователя
+        const currentInput = rl.line || "";
+        const cursorPos = rl.cursor || 0;
+
+        // Очищаем текущую строку
+        process.stdout.write("\r\x1b[K");
+
+        // Выводим результат задачи
         process.stdout.write(output);
-        rl.prompt();
+
+        // Восстанавливаем prompt + ввод пользователя
+        rl.prompt(true);
+        if (currentInput) {
+          process.stdout.write(currentInput);
+          // Восстанавливаем позицию курсора
+          if (cursorPos < currentInput.length) {
+            process.stdout.write(`\x1b[${currentInput.length - cursorPos}D`);
+          }
+        }
       }
     },
   });
