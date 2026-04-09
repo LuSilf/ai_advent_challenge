@@ -54,18 +54,103 @@ export type ReplDeps = {
   schedulerService?: SchedulerService;
 };
 
-function buildToolProvider(manager: McpConnectionManager): ToolProvider | undefined {
-  const tools = manager.getAvailableTools();
-  if (tools.length === 0) return undefined;
+function buildSchedulerTools(scheduler: SchedulerService, sessionId: number) {
+  return {
+    definitions: [
+      {
+        name: "scheduler__create_schedule",
+        description: "Создать задачу по расписанию. Вызывай когда пользователь просит периодически что-то делать.",
+        parameters: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "Короткое название задачи (до 50 символов)" },
+            cron_expression: { type: "string", description: "Cron-выражение (5 полей: минута час день месяц день_недели). Пример: */30 * * * * — каждые 30 минут" },
+            prompt: { type: "string", description: "Промпт, который будет отправлен LLM при каждом выполнении" },
+          },
+          required: ["name", "cron_expression", "prompt"],
+        },
+      },
+      {
+        name: "scheduler__delete_schedule",
+        description: "Удалить задачу по расписанию",
+        parameters: {
+          type: "object",
+          properties: {
+            id: { type: "number", description: "ID задачи" },
+          },
+          required: ["id"],
+        },
+      },
+      {
+        name: "scheduler__list_schedules",
+        description: "Показать список запланированных задач",
+        parameters: { type: "object", properties: {} },
+      },
+    ],
+    callTool: async (toolName: string, args: Record<string, unknown>): Promise<{ content: string; isError: boolean }> => {
+      switch (toolName) {
+        case "create_schedule": {
+          const { name, cron_expression, prompt } = args as { name: string; cron_expression: string; prompt: string };
+          if (!scheduler.validateCron(cron_expression)) {
+            return { content: `Невалидное cron-выражение: "${cron_expression}"`, isError: true };
+          }
+          const id = scheduler.createTask(sessionId, name, cron_expression, prompt);
+          const task = scheduler.getTask(id);
+          const nextRun = task?.nextRunAt ? new Date(task.nextRunAt).toLocaleString() : "не определено";
+          return { content: `Задача #${id} "${name}" создана. Cron: ${cron_expression}. Следующий запуск: ${nextRun}`, isError: false };
+        }
+        case "delete_schedule": {
+          const { id } = args as { id: number };
+          const deleted = scheduler.deleteTask(id);
+          return deleted
+            ? { content: `Задача #${id} удалена`, isError: false }
+            : { content: `Задача #${id} не найдена`, isError: true };
+        }
+        case "list_schedules": {
+          const tasks = scheduler.getSessionTasks(sessionId);
+          if (tasks.length === 0) return { content: "Нет запланированных задач", isError: false };
+          const lines = tasks.map((t) => {
+            const status = t.enabled ? "вкл" : "выкл";
+            const next = t.nextRunAt ? new Date(t.nextRunAt).toLocaleString() : "—";
+            return `#${t.id} [${status}] "${t.name}" cron: ${t.cronExpression}, следующий: ${next}`;
+          });
+          return { content: lines.join("\n"), isError: false };
+        }
+        default:
+          return { content: `Неизвестный scheduler tool: ${toolName}`, isError: true };
+      }
+    },
+  };
+}
+
+function buildToolProvider(manager: McpConnectionManager, scheduler?: SchedulerService, sessionId?: number): ToolProvider | undefined {
+  const mcpTools = manager.getAvailableTools();
+  const schedulerTools = scheduler ? buildSchedulerTools(scheduler, sessionId ?? 0) : null;
+
+  const hasMcpTools = mcpTools.length > 0;
+  const hasSchedulerTools = !!schedulerTools;
+
+  if (!hasMcpTools && !hasSchedulerTools) return undefined;
 
   return {
-    getToolDefinitions: () =>
-      tools.map((t) => ({
+    getToolDefinitions: () => {
+      const defs = mcpTools.map((t) => ({
         name: `${t.serverName}__${t.name}`,
         description: t.description,
         parameters: t.inputSchema,
-      })),
+      }));
+      if (schedulerTools) {
+        defs.push(...schedulerTools.definitions);
+      }
+      return defs;
+    },
     callTool: async (name, args) => {
+      // Scheduler built-in tools
+      if (name.startsWith("scheduler__")) {
+        const toolName = name.slice("scheduler__".length);
+        return schedulerTools!.callTool(toolName, args);
+      }
+      // MCP tools
       const sep = name.indexOf("__");
       const serverName = sep >= 0 ? name.slice(0, sep) : "";
       const toolName = sep >= 0 ? name.slice(sep + 2) : name;
@@ -1273,7 +1358,7 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
     chatService,
     getSessionId: () => state.sessionId,
     getSystemPrompt: () => config.systemPrompt,
-    getToolProvider: () => buildToolProvider(deps.mcpConnectionManager),
+    getToolProvider: () => buildToolProvider(deps.mcpConnectionManager, schedulerService, state.sessionId),
     getMemoryBlocks: () => memoryService.getMemoryBlocks() || undefined,
     getSendOptions: () => ({
       temperature: config.temperature,
@@ -1380,7 +1465,7 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
         : undefined;
 
       // Tool provider из подключённых MCP-серверов
-      const toolProvider = buildToolProvider(deps.mcpConnectionManager);
+      const toolProvider = buildToolProvider(deps.mcpConnectionManager, schedulerService, state.sessionId);
 
       // Добавляем в system prompt описание доступных инструментов
       if (toolProvider) {
