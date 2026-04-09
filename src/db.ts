@@ -160,6 +160,29 @@ export function initDb(dbPath: string): void {
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS scheduled_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      cron_expression TEXT NOT NULL,
+      prompt TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now')),
+      last_run_at TEXT,
+      next_run_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS schedule_executions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id INTEGER NOT NULL REFERENCES scheduled_tasks(id) ON DELETE CASCADE,
+      status TEXT NOT NULL CHECK (status IN ('success', 'error')),
+      result TEXT,
+      error TEXT,
+      started_at TEXT NOT NULL,
+      finished_at TEXT,
+      tokens_used INTEGER NOT NULL DEFAULT 0
+    );
   `);
 
   // Предзаполнение моделей
