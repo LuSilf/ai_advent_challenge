@@ -907,12 +907,25 @@ export async function handleCommand(
       switch (subCmd) {
         case "create": {
           // /schedule create "*/5 * * * *" мой промпт
-          // или /schedule create */5 * * * * мой промпт
+          // /schedule create */5 * * * * мой промпт
+          // /schedule create every 30m мой промпт
           const raw = args.slice("create".length).trim();
           let cronExpr: string;
           let prompt: string;
 
-          if (raw.startsWith('"')) {
+          // Попробуем interval shortcut: "every 30m", "every 2h", "every 1d"
+          const intervalMatch = raw.match(/^(every\s+\d+\s*\w+)\s+(.+)/i);
+          if (intervalMatch) {
+            const parsed = scheduler.parseInterval(intervalMatch[1]);
+            if (parsed) {
+              cronExpr = parsed;
+              prompt = intervalMatch[2];
+            } else {
+              console.log(pc.red(`Невалидный интервал: "${intervalMatch[1]}"`));
+              console.log(pc.dim("  Допустимые: every 30m, every 2h, every 1d"));
+              return null;
+            }
+          } else if (raw.startsWith('"')) {
             const endQuote = raw.indexOf('"', 1);
             if (endQuote === -1) {
               console.log(pc.red("Незакрытая кавычка в cron-выражении"));
@@ -926,6 +939,7 @@ export async function handleCommand(
             if (tokens.length < 6) {
               console.log(pc.red('Использование: /schedule create "<cron>" <prompt>'));
               console.log(pc.dim('  Пример: /schedule create "*/30 * * * *" Собери новости'));
+              console.log(pc.dim("  Пример: /schedule create every 30m Собери новости"));
               return null;
             }
             cronExpr = tokens.slice(0, 5).join(" ");

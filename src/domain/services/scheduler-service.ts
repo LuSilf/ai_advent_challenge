@@ -71,6 +71,39 @@ export class SchedulerService {
     return this.deps.schedulerRepo.findRecentExecutions(limit);
   }
 
+  // --- Interval shortcuts ---
+
+  /**
+   * Parses interval shortcut like "every 30m", "every 2h", "every 1d"
+   * Returns cron expression or null if not a valid interval.
+   */
+  parseInterval(input: string): string | null {
+    const match = input.match(/^every\s+(\d+)\s*(m|min|h|hour|d|day)s?$/i);
+    if (!match) return null;
+
+    const value = Number(match[1]);
+    const unit = match[2].toLowerCase();
+
+    if (value <= 0) return null;
+
+    switch (unit) {
+      case "m":
+      case "min":
+        if (value > 59) return null;
+        return `*/${value} * * * *`;
+      case "h":
+      case "hour":
+        if (value > 23) return null;
+        return `0 */${value} * * *`;
+      case "d":
+      case "day":
+        if (value > 31) return null;
+        return `0 0 */${value} * *`;
+      default:
+        return null;
+    }
+  }
+
   // --- Cron ---
 
   computeNextRun(cronExpression: string, from?: Date): string | null {

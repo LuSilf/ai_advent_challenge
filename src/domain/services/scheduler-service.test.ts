@@ -97,6 +97,31 @@ describe("SchedulerService", () => {
     expect(service.computeNextRun("invalid")).toBeNull();
   });
 
+  // --- Interval parsing ---
+
+  test("parseInterval converts 'every 30m' to cron", () => {
+    expect(service.parseInterval("every 30m")).toBe("*/30 * * * *");
+  });
+
+  test("parseInterval converts 'every 2h' to cron", () => {
+    expect(service.parseInterval("every 2h")).toBe("0 */2 * * *");
+  });
+
+  test("parseInterval converts 'every 1d' to cron", () => {
+    expect(service.parseInterval("every 1d")).toBe("0 0 */1 * *");
+  });
+
+  test("parseInterval handles 'every 5 min'", () => {
+    expect(service.parseInterval("every 5 min")).toBe("*/5 * * * *");
+  });
+
+  test("parseInterval returns null for invalid input", () => {
+    expect(service.parseInterval("not an interval")).toBeNull();
+    expect(service.parseInterval("every 0m")).toBeNull();
+    expect(service.parseInterval("every 60m")).toBeNull();
+    expect(service.parseInterval("every 25h")).toBeNull();
+  });
+
   // --- Execution ---
 
   test("executeTask calls chatService and saves execution", async () => {
