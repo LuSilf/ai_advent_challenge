@@ -48,7 +48,7 @@ export async function callLLM(text: string, context?: string): Promise<string> {
         { role: "user", content: userMessage },
       ],
       temperature: 0.3,
-      max_tokens: 500,
+      max_completion_tokens: 2048,
     }),
   });
 
