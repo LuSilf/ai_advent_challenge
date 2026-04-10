@@ -142,9 +142,10 @@ async function fetchCommentsGh(repo: string, issueNumber: number): Promise<Comme
 // --- REST API fetchers ---
 
 async function fetchPullsRest(repo: string, count: number, state: string): Promise<PullRequest[]> {
-  const query = state === "merged" ? "state=closed" : "state=closed";
+  // Request more items when filtering for merged, since REST API returns all closed
+  const fetchCount = state === "merged" ? count * 5 : count;
   const data = (await fetchJson(
-    `https://api.github.com/repos/${repo}/pulls?${query}&per_page=${count}&sort=updated&direction=desc`,
+    `https://api.github.com/repos/${repo}/pulls?state=closed&per_page=${fetchCount}&sort=updated&direction=desc`,
   )) as Array<{
     number: number; title: string; body: string; html_url: string;
     user: { login: string }; labels: Array<{ name: string }>;
