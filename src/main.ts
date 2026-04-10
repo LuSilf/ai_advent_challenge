@@ -15,6 +15,7 @@ import { SqliteMemoryRepository } from "./storage/sqlite/memory-repository";
 import { SqliteTaskRepository } from "./storage/sqlite/task-repository";
 import { SqliteTaskTransitionRepository } from "./storage/sqlite/task-transition-repository";
 import { SqliteMcpServerRepository } from "./storage/sqlite/mcp-server-repository";
+import { SqliteSchedulerRepository } from "./storage/sqlite/scheduler-repository";
 
 // API
 import { OpenAILLMClient } from "./api/openai/llm-client";
@@ -29,6 +30,7 @@ import { ProfileService } from "./domain/services/profile-service";
 import { TaskService } from "./domain/services/task-service";
 import { McpClientService } from "./domain/services/mcp-client-service";
 import { McpConnectionManager } from "./domain/services/mcp-connection-manager";
+import { SchedulerService } from "./domain/services/scheduler-service";
 
 // Presentation
 import { startRepl } from "./presentation/repl";
@@ -64,6 +66,7 @@ const memoryRepo = new SqliteMemoryRepository();
 const taskRepo = new SqliteTaskRepository();
 const taskTransitionRepo = new SqliteTaskTransitionRepository();
 const mcpServerRepo = new SqliteMcpServerRepository();
+const schedulerRepo = new SqliteSchedulerRepository();
 
 // --- API layer ---
 const llmClient = new OpenAILLMClient(openaiClient);
@@ -108,6 +111,7 @@ if (!config.prompt) {
     taskService,
     mcpServerRepo,
     mcpConnectionManager,
+    schedulerRepo,
   });
 } else {
   // Single-shot mode

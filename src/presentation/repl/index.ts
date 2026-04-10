@@ -24,8 +24,10 @@ import type { LLMClient } from "../../domain/ports/llm-client";
 import type { ProfileService } from "../../domain/services/profile-service";
 import type { TaskService } from "../../domain/services/task-service";
 import type { McpServerRepository } from "../../domain/ports/mcp-server-repository";
+import type { SchedulerRepository } from "../../domain/ports/scheduler-repository";
 import { McpClientService } from "../../domain/services/mcp-client-service";
 import type { McpConnectionManager } from "../../domain/services/mcp-connection-manager";
+import { SchedulerService } from "../../domain/services/scheduler-service";
 import { TaskPhasePrompts } from "../../domain/services/task-phase-prompts";
 import { formatToolCallStart, formatToolCallResult } from "./tool-use-formatter";
 import type { ToolProvider } from "../../domain/services/chat-service";
@@ -48,20 +50,124 @@ export type ReplDeps = {
   taskService: TaskService;
   mcpServerRepo: McpServerRepository;
   mcpConnectionManager: McpConnectionManager;
+  schedulerRepo: SchedulerRepository;
+  schedulerService?: SchedulerService;
 };
 
-function buildToolProvider(manager: McpConnectionManager): ToolProvider | undefined {
-  const tools = manager.getAvailableTools();
-  if (tools.length === 0) return undefined;
+function buildSchedulerTools(scheduler: SchedulerService, sessionId: number) {
+  return {
+    definitions: [
+      {
+        name: "scheduler__create_schedule",
+        description: "Создать периодическую задачу. НИКОГДА не переспрашивай параметры — сразу вызывай этот tool с готовыми параметрами.",
+        parameters: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "Короткое название (до 50 символов), на языке пользователя" },
+            cron_expression: {
+              type: "string",
+              description: [
+                "Два формата:",
+                "1) Cron 5 полей: */5 * * * * = каждые 5 мин.",
+                "2) @every <мс> для секунд: @every 10000 = 10с, @every 20000 = 20с, @every 30000 = 30с.",
+                "НЕ используй 6-полный cron. Для < 1 мин ТОЛЬКО @every.",
+              ].join(" "),
+            },
+            prompt: {
+              type: "string",
+              description: [
+                "Промпт отправляется ДРУГОМУ экземпляру LLM в ПУСТОМ контексте (без истории диалога).",
+                "Поэтому промпт должен быть прямым запросом на ГЕНЕРАЦИЮ контента, а НЕ инструкцией по настройке.",
+                "Пример ПЛОХОГО промпта: 'Настрой задачу для генерации стихов'.",
+                "Пример ХОРОШЕГО промпта: 'Напиши одно четверостишие о космосе. Только стих, без пояснений.'",
+                "Язык промпта = язык пользователя.",
+              ].join(" "),
+            },
+          },
+          required: ["name", "cron_expression", "prompt"],
+        },
+      },
+      {
+        name: "scheduler__delete_schedule",
+        description: "Удалить задачу по расписанию",
+        parameters: {
+          type: "object",
+          properties: {
+            id: { type: "number", description: "ID задачи" },
+          },
+          required: ["id"],
+        },
+      },
+      {
+        name: "scheduler__list_schedules",
+        description: "Показать список запланированных задач",
+        parameters: { type: "object", properties: {} },
+      },
+    ],
+    callTool: async (toolName: string, args: Record<string, unknown>): Promise<{ content: string; isError: boolean }> => {
+      switch (toolName) {
+        case "create_schedule": {
+          const { name, cron_expression, prompt } = args as { name: string; cron_expression: string; prompt: string };
+          if (!scheduler.validateCron(cron_expression)) {
+            return { content: `Невалидное cron-выражение: "${cron_expression}"`, isError: true };
+          }
+          const id = scheduler.createTask(sessionId, name, cron_expression, prompt);
+          const task = scheduler.getTask(id);
+          const nextRun = task?.nextRunAt ? new Date(task.nextRunAt).toLocaleString() : "не определено";
+          return { content: `Задача #${id} "${name}" создана. Расписание: ${scheduler.formatExpression(cron_expression)}. Следующий запуск: ${nextRun}`, isError: false };
+        }
+        case "delete_schedule": {
+          const { id } = args as { id: number };
+          const deleted = scheduler.deleteTask(id);
+          return deleted
+            ? { content: `Задача #${id} удалена`, isError: false }
+            : { content: `Задача #${id} не найдена`, isError: true };
+        }
+        case "list_schedules": {
+          const tasks = scheduler.getSessionTasks(sessionId);
+          if (tasks.length === 0) return { content: "Нет запланированных задач", isError: false };
+          const lines = tasks.map((t) => {
+            const status = t.enabled ? "вкл" : "выкл";
+            const next = t.nextRunAt ? new Date(t.nextRunAt).toLocaleString() : "—";
+            return `#${t.id} [${status}] "${t.name}" расписание: ${scheduler.formatExpression(t.cronExpression)}, следующий: ${next}`;
+          });
+          return { content: lines.join("\n"), isError: false };
+        }
+        default:
+          return { content: `Неизвестный scheduler tool: ${toolName}`, isError: true };
+      }
+    },
+  };
+}
+
+function buildToolProvider(manager: McpConnectionManager, scheduler?: SchedulerService, sessionId?: number): ToolProvider | undefined {
+  const mcpTools = manager.getAvailableTools();
+  const schedulerTools = scheduler ? buildSchedulerTools(scheduler, sessionId ?? 0) : null;
+
+  const hasMcpTools = mcpTools.length > 0;
+  const hasSchedulerTools = !!schedulerTools;
+
+  if (!hasMcpTools && !hasSchedulerTools) return undefined;
 
   return {
-    getToolDefinitions: () =>
-      tools.map((t) => ({
+    getToolDefinitions: () => {
+      const defs = mcpTools.map((t) => ({
         name: `${t.serverName}__${t.name}`,
         description: t.description,
         parameters: t.inputSchema,
-      })),
+      }));
+      if (schedulerTools) {
+        defs.push(...schedulerTools.definitions);
+      }
+      return defs;
+    },
     callTool: async (name, args) => {
+      // Scheduler built-in tools
+      if (name.startsWith("scheduler__")) {
+        const toolName = name.slice("scheduler__".length);
+        return schedulerTools!.callTool(toolName, args);
+      }
+      // MCP tools
       const sep = name.indexOf("__");
       const serverName = sep >= 0 ? name.slice(0, sep) : "";
       const toolName = sep >= 0 ? name.slice(sep + 2) : name;
@@ -159,6 +265,13 @@ function printHelp(): void {
   console.log("  /mcp list          Список MCP-серверов");
   console.log("  /mcp tools <name>  Показать инструменты сервера");
   console.log("  /mcp remove <name> Удалить MCP-сервер");
+  console.log(pc.bold("Планировщик:"));
+  console.log('  /schedule create <cron> <prompt>  Создать задачу');
+  console.log("  /schedule list                    Список задач");
+  console.log("  /schedule delete <id>             Удалить задачу");
+  console.log("  /schedule results [id]            История выполнений");
+  console.log("  /schedule enable <id>             Включить задачу");
+  console.log("  /schedule disable <id>            Выключить задачу");
   console.log(pc.bold("Настройки:"));
   console.log("  /options          Показать все настройки");
   console.log("  /set <ключ> <зн>  Установить значение настройки");
@@ -874,6 +987,166 @@ export async function handleCommand(
         }
       }
     }
+    case "/schedule": {
+      if (!deps.schedulerService) {
+        console.log(pc.red("Планировщик не инициализирован"));
+        return null;
+      }
+      const scheduler = deps.schedulerService;
+      const [subCmd, ...subArgs] = args.split(/\s+/).filter(Boolean);
+
+      if (!subCmd || subCmd === "help") {
+        console.log(pc.bold("Планировщик:"));
+        console.log('  /schedule create <cron> <prompt>  Создать задачу по расписанию');
+        console.log("  /schedule list                    Список задач");
+        console.log("  /schedule delete <id>             Удалить задачу");
+        console.log("  /schedule results [id]            История выполнений");
+        console.log("  /schedule enable <id>             Включить задачу");
+        console.log("  /schedule disable <id>            Выключить задачу");
+        return null;
+      }
+
+      switch (subCmd) {
+        case "create": {
+          // /schedule create "*/5 * * * *" мой промпт
+          // /schedule create */5 * * * * мой промпт
+          // /schedule create every 30m мой промпт
+          const raw = args.slice("create".length).trim();
+          let cronExpr: string;
+          let prompt: string;
+
+          // Попробуем interval shortcut: "every 30m", "every 2h", "every 1d"
+          const intervalMatch = raw.match(/^(every\s+\d+\s*\w+)\s+(.+)/i);
+          if (intervalMatch) {
+            const parsed = scheduler.parseInterval(intervalMatch[1]);
+            if (parsed) {
+              cronExpr = parsed;
+              prompt = intervalMatch[2];
+            } else {
+              console.log(pc.red(`Невалидный интервал: "${intervalMatch[1]}"`));
+              console.log(pc.dim("  Допустимые: every 30m, every 2h, every 1d"));
+              return null;
+            }
+          } else if (raw.startsWith('"')) {
+            const endQuote = raw.indexOf('"', 1);
+            if (endQuote === -1) {
+              console.log(pc.red("Незакрытая кавычка в cron-выражении"));
+              return null;
+            }
+            cronExpr = raw.slice(1, endQuote);
+            prompt = raw.slice(endQuote + 1).trim();
+          } else {
+            // Попробуем взять первые 5 токенов как cron
+            const tokens = raw.split(/\s+/);
+            if (tokens.length < 6) {
+              console.log(pc.red('Использование: /schedule create "<cron>" <prompt>'));
+              console.log(pc.dim('  Пример: /schedule create "*/30 * * * *" Собери новости'));
+              console.log(pc.dim("  Пример: /schedule create every 30m Собери новости"));
+              return null;
+            }
+            cronExpr = tokens.slice(0, 5).join(" ");
+            prompt = tokens.slice(5).join(" ");
+          }
+
+          if (!prompt) {
+            console.log(pc.red("Не указан промпт для задачи"));
+            return null;
+          }
+
+          if (!scheduler.validateCron(cronExpr)) {
+            console.log(pc.red(`Невалидное cron-выражение: "${cronExpr}"`));
+            return null;
+          }
+
+          const taskName = prompt.slice(0, 50);
+          const id = scheduler.createTask(state.sessionId, taskName, cronExpr, prompt);
+          const task = scheduler.getTask(id);
+          console.log(pc.green(`Задача #${id} создана: "${taskName}"`));
+          console.log(pc.dim(`  Расписание: ${scheduler.formatExpression(cronExpr)}`));
+          if (task?.nextRunAt) {
+            console.log(pc.dim(`  Следующий запуск: ${new Date(task.nextRunAt).toLocaleString()}`));
+          }
+          return null;
+        }
+        case "list": {
+          const tasks = scheduler.getSessionTasks(state.sessionId);
+          if (tasks.length === 0) {
+            console.log(pc.dim("Нет запланированных задач"));
+            return null;
+          }
+          for (const t of tasks) {
+            const status = t.enabled ? pc.green("вкл") : pc.red("выкл");
+            const next = t.nextRunAt ? new Date(t.nextRunAt).toLocaleString() : "—";
+            console.log(`  ${pc.bold(`#${t.id}`)} [${status}] ${t.name}`);
+            console.log(pc.dim(`    Расписание: ${scheduler.formatExpression(t.cronExpression)} | Следующий: ${next}`));
+          }
+          return null;
+        }
+        case "delete": {
+          const id = Number(subArgs[0]);
+          if (!id) {
+            console.log(pc.red("Использование: /schedule delete <id>"));
+            return null;
+          }
+          const deleted = scheduler.deleteTask(id);
+          if (deleted) {
+            console.log(pc.green(`Задача #${id} удалена`));
+          } else {
+            console.log(pc.red(`Задача #${id} не найдена`));
+          }
+          return null;
+        }
+        case "enable": {
+          const id = Number(subArgs[0]);
+          if (!id) {
+            console.log(pc.red("Использование: /schedule enable <id>"));
+            return null;
+          }
+          scheduler.enableTask(id);
+          console.log(pc.green(`Задача #${id} включена`));
+          return null;
+        }
+        case "disable": {
+          const id = Number(subArgs[0]);
+          if (!id) {
+            console.log(pc.red("Использование: /schedule disable <id>"));
+            return null;
+          }
+          scheduler.disableTask(id);
+          console.log(pc.green(`Задача #${id} выключена`));
+          return null;
+        }
+        case "results": {
+          const taskId = subArgs[0] ? Number(subArgs[0]) : undefined;
+          const executions = taskId
+            ? scheduler.getExecutions(taskId)
+            : scheduler.getRecentExecutions();
+
+          if (executions.length === 0) {
+            console.log(pc.dim("Нет выполнений"));
+            return null;
+          }
+
+          for (const e of executions) {
+            const statusColor = e.status === "success" ? pc.green : pc.red;
+            const time = new Date(e.startedAt).toLocaleString();
+            console.log(`  ${pc.dim(time)} ${statusColor(e.status)} задача #${e.taskId} (${e.tokensUsed} tokens)`);
+            if (e.result) {
+              const preview = e.result.length > 200 ? e.result.slice(0, 200) + "..." : e.result;
+              console.log(pc.dim(`    ${preview}`));
+            }
+            if (e.error) {
+              console.log(pc.red(`    Ошибка: ${e.error}`));
+            }
+          }
+          return null;
+        }
+        default: {
+          console.log(pc.red(`Неизвестная подкоманда: /schedule ${subCmd}. Введите /schedule help`));
+          return null;
+        }
+      }
+    }
     case "/mcp": {
       const { mcpServerRepo } = deps;
       const [subCmd, ...subArgs] = args.split(/\s+/).filter(Boolean);
@@ -982,6 +1255,7 @@ export async function handleCommand(
     }
     case "/exit": {
       taskService.pauseAllActive(state.sessionId);
+      deps.schedulerService?.stop();
       await deps.mcpConnectionManager.disconnectAll();
       process.exit(0);
     }
@@ -1095,6 +1369,65 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
     }
   }
 
+  // Инициализация планировщика
+  const schedulerService = new SchedulerService({
+    schedulerRepo: deps.schedulerRepo,
+    chatService,
+    getSessionId: () => state.sessionId,
+    getSystemPrompt: () => config.systemPrompt,
+    getToolProvider: () => buildToolProvider(deps.mcpConnectionManager, schedulerService, state.sessionId),
+    getMemoryBlocks: () => memoryService.getMemoryBlocks() || undefined,
+    getSendOptions: () => ({
+      temperature: config.temperature,
+      topP: config.topP,
+      maxCompletionTokens: config.maxCompletionTokens,
+      reasoningEffort: config.reasoningEffort,
+      reasoningSummary: config.reasoningSummary,
+    }),
+    onExecution: (task, execution) => {
+      let output: string;
+      if (execution.status === "success") {
+        const preview = execution.result && execution.result.length > 300
+          ? execution.result.slice(0, 300) + "..."
+          : execution.result;
+        output = `\n${pc.bgCyan(pc.black(` Задача: ${task.name} `))}\n${pc.cyan(preview ?? "(пустой результат)")}\n\n`;
+      } else {
+        output = `\n${pc.bgRed(pc.white(` Задача: ${task.name} — ошибка `))}\n${pc.red(execution.error ?? "Неизвестная ошибка")}\n\n`;
+      }
+
+      if (processing) {
+        pendingSchedulerOutput.push(output);
+      } else {
+        // Сохраняем текущий ввод пользователя
+        const currentInput = rl.line || "";
+        const cursorPos = rl.cursor || 0;
+
+        // Очищаем текущую строку
+        process.stdout.write("\r\x1b[K");
+
+        // Выводим результат задачи
+        process.stdout.write(output);
+
+        // Восстанавливаем prompt + ввод пользователя
+        rl.prompt(true);
+        if (currentInput) {
+          process.stdout.write(currentInput);
+          // Восстанавливаем позицию курсора
+          if (cursorPos < currentInput.length) {
+            process.stdout.write(`\x1b[${currentInput.length - cursorPos}D`);
+          }
+        }
+      }
+    },
+  });
+  deps.schedulerService = schedulerService;
+  schedulerService.start();
+
+  const scheduledCount = schedulerService.getSessionTasks(state.sessionId).filter((t) => t.enabled).length;
+  if (scheduledCount > 0) {
+    console.log(pc.dim(`Планировщик запущен (${scheduledCount} задач)`));
+  }
+
   const rl = createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -1105,6 +1438,13 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
 
   const inputLines: string[] = [];
   let processing = false;
+  const pendingSchedulerOutput: string[] = [];
+
+  const flushPendingOutput = () => {
+    while (pendingSchedulerOutput.length > 0) {
+      process.stdout.write(pendingSchedulerOutput.shift()!);
+    }
+  };
 
   const processInput = async (text: string) => {
     processing = true;
@@ -1116,6 +1456,7 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
       const result = await handleCommand(cmd, cmdArgs, state, deps, rl);
       if (result === null) {
         processing = false;
+        flushPendingOutput();
         rl.prompt();
         return;
       }
@@ -1158,18 +1499,43 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
         : undefined;
 
       // Tool provider из подключённых MCP-серверов
-      const toolProvider = buildToolProvider(deps.mcpConnectionManager);
+      const toolProvider = buildToolProvider(deps.mcpConnectionManager, schedulerService, state.sessionId);
 
       // Добавляем в system prompt описание доступных инструментов
       if (toolProvider) {
         const toolDefs = toolProvider.getToolDefinitions();
-        const toolList = toolDefs.map((t) => `  - ${t.name}: ${t.description}`).join("\n");
-        systemPrompt = `У тебя есть доступ к внешним инструментам. Если вопрос пользователя можно ответить с помощью инструмента — ОБЯЗАТЕЛЬНО вызови его, не отвечай самостоятельно. Не предлагай создать задачу, если можешь использовать инструмент.
+        const mcpTools = toolDefs.filter((t) => !t.name.startsWith("scheduler__"));
+        const schedulerToolDefs = toolDefs.filter((t) => t.name.startsWith("scheduler__"));
 
-Доступные инструменты:
-${toolList}
+        let toolHint = "";
 
-${systemPrompt}`;
+        if (mcpTools.length > 0) {
+          const mcpList = mcpTools.map((t) => `  - ${t.name}: ${t.description}`).join("\n");
+          toolHint += `У тебя есть доступ к внешним инструментам. Если вопрос пользователя можно ответить с помощью инструмента — ОБЯЗАТЕЛЬНО вызови его, не отвечай самостоятельно.
+
+Внешние инструменты:
+${mcpList}
+
+`;
+        }
+
+        if (schedulerToolDefs.length > 0) {
+          const schedList = schedulerToolDefs.map((t) => `  - ${t.name}: ${t.description}`).join("\n");
+          toolHint += `У тебя есть инструменты планировщика. Правила:
+- Используй их когда пользователь просит делать что-то периодически/регулярно/по расписанию.
+- НЕ вызывай их для обычного разговора, вопросов, просьб не связанных с расписанием.
+- Не переспрашивай параметры — сразу создавай задачу на основе запроса пользователя.
+- Ты — универсальный ассистент, планировщик — лишь одна из твоих функций. На вопросы вроде "что ты умеешь?" отвечай про все свои возможности, не только про расписание.
+
+Инструменты планировщика:
+${schedList}
+
+`;
+        }
+
+        if (toolHint) {
+          systemPrompt = `${toolHint}${systemPrompt}`;
+        }
       }
 
       const stopMainSpinner = startSpinner("Генерация ответа...");
@@ -1372,6 +1738,7 @@ ${systemPrompt}`;
     }
 
     processing = false;
+    flushPendingOutput();
     rl.prompt();
   };
 
@@ -1404,6 +1771,7 @@ ${systemPrompt}`;
 
   rl.on("close", async () => {
     console.log("\n" + pc.dim("До свидания!"));
+    schedulerService.stop();
     await deps.mcpConnectionManager.disconnectAll();
     process.exit(0);
   });
