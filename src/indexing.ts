@@ -8,16 +8,24 @@
  * Пример: bun run src/indexing.ts index scripts/day21/data/system-design-primer.md --strategy fixed
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import pc from "picocolors";
 
-import { initDb } from "./db";
+import { initDb, getDb } from "./db";
 import { SqliteOptionsRepository } from "./storage/sqlite/options-repository";
 import { SqliteVectorIndex } from "./storage/sqlite/sqlite-vector-index";
 import { OllamaEmbedder } from "./api/ollama/ollama-embedder";
 import { FixedSizeChunker } from "./domain/services/chunkers/fixed-size-chunker";
 import { StructuralMarkdownChunker } from "./domain/services/chunkers/structural-markdown-chunker";
 import { IndexingService } from "./domain/services/indexing-service";
+import {
+  evaluateQuery,
+  computeRecallAt3,
+  computeMRR,
+  type EvalQuery,
+  type QueryResult,
+  type StrategyReport,
+} from "./domain/services/evaluation-service";
 import type { Chunker } from "./domain/ports/chunker";
 import type { ChunkStrategy } from "./domain/models/chunking";
 
@@ -190,10 +198,172 @@ async function main() {
   }
 
   if (subcommand === "eval") {
-    fail("Команда eval пока не реализована (Phase 3).");
+    const queriesPath = positional[0] ?? "scripts/day21/test-queries.json";
+    const reportPath = flags.report ?? "scripts/day21/report.md";
+    await runEval(queriesPath, reportPath);
+    return;
   }
 
   usage();
+}
+
+type StrategyStats = {
+  chunkCount: number;
+  avgSize: number;
+  minSize: number;
+  maxSize: number;
+};
+
+function strategyStats(_vectorIndex: SqliteVectorIndex, strategy: ChunkStrategy): StrategyStats {
+  const row = getDb()
+    .query<
+      { c: number; avg: number | null; min: number | null; max: number | null },
+      [string]
+    >(
+      `SELECT COUNT(*) c, AVG(LENGTH(text)) avg, MIN(LENGTH(text)) min, MAX(LENGTH(text)) max
+       FROM chunks WHERE strategy = ?`
+    )
+    .get(strategy);
+  return {
+    chunkCount: row?.c ?? 0,
+    avgSize: Math.round(row?.avg ?? 0),
+    minSize: row?.min ?? 0,
+    maxSize: row?.max ?? 0,
+  };
+}
+
+async function runEval(queriesPath: string, reportPath: string): Promise<void> {
+  const historyDb = process.env.HISTORY_DB ?? "./data/history.db";
+  initDb(historyDb);
+
+  const optionsRepo = new SqliteOptionsRepository();
+  const config = readIndexingConfig(optionsRepo);
+
+  const vectorIndex = new SqliteVectorIndex();
+  const fixedCount = vectorIndex.countByStrategy("fixed");
+  const structuralCount = vectorIndex.countByStrategy("structural");
+  if (fixedCount === 0 || structuralCount === 0) {
+    fail(
+      `Индекс неполон: fixed=${fixedCount}, structural=${structuralCount}. ` +
+        `Запустите сначала:\n  bun run indexing index <file> --strategy fixed\n  bun run indexing index <file> --strategy structural`
+    );
+  }
+
+  const raw = readFileSync(queriesPath, "utf8");
+  const queries = JSON.parse(raw) as EvalQuery[];
+  if (!Array.isArray(queries) || queries.length === 0) {
+    fail(`${queriesPath} должен содержать непустой массив запросов`);
+  }
+
+  const embedder = new OllamaEmbedder({
+    baseUrl: config.embeddingBaseUrl,
+    model: config.embeddingModel,
+    dimension: config.embeddingDim,
+  });
+
+  console.log(pc.bold(`Оценка индекса на ${queries.length} запросах`));
+  console.log(pc.dim(`  embedder: ${config.embeddingProvider}/${config.embeddingModel} (dim=${config.embeddingDim})`));
+  console.log(pc.dim(`  fixed chunks: ${fixedCount}, structural chunks: ${structuralCount}`));
+
+  const queryVectors = await embedder.embed(queries.map((q) => q.query));
+
+  const strategies: ChunkStrategy[] = ["fixed", "structural"];
+  const reports: StrategyReport[] = [];
+
+  for (const strategy of strategies) {
+    const results: QueryResult[] = [];
+    for (let i = 0; i < queries.length; i++) {
+      const hits = vectorIndex.search(queryVectors[i]!, 3, { strategy });
+      results.push(evaluateQuery(hits, queries[i]!));
+    }
+    reports.push({
+      strategy,
+      recallAt3: computeRecallAt3(results),
+      mrr: computeMRR(results),
+      queryResults: results,
+    });
+  }
+
+  const stats: Record<ChunkStrategy, StrategyStats> = {
+    fixed: strategyStats(vectorIndex, "fixed"),
+    structural: strategyStats(vectorIndex, "structural"),
+  };
+
+  for (const report of reports) {
+    console.log();
+    console.log(pc.bold(`strategy=${report.strategy}`));
+    console.log(`  Recall@3: ${(report.recallAt3 * 100).toFixed(1)}%`);
+    console.log(`  MRR:      ${report.mrr.toFixed(3)}`);
+  }
+
+  const md = renderReport(queries, reports, stats, config);
+  writeFileSync(reportPath, md, "utf8");
+  console.log();
+  console.log(pc.green(`✔ Отчёт сохранён: ${reportPath}`));
+}
+
+function renderReport(
+  queries: EvalQuery[],
+  reports: StrategyReport[],
+  stats: Record<ChunkStrategy, StrategyStats>,
+  config: IndexingConfig
+): string {
+  const lines: string[] = [];
+  lines.push("# Day 21 — Indexing comparison report");
+  lines.push("");
+  lines.push(`Embedder: **${config.embeddingProvider}/${config.embeddingModel}** (dim=${config.embeddingDim})`);
+  lines.push("");
+  lines.push("## Summary");
+  lines.push("");
+  lines.push("| Strategy | Chunks | Avg size | Min size | Max size | Recall@3 | MRR |");
+  lines.push("|----------|-------:|---------:|---------:|---------:|---------:|----:|");
+  for (const r of reports) {
+    const s = stats[r.strategy as ChunkStrategy];
+    lines.push(
+      `| ${r.strategy} | ${s.chunkCount} | ${s.avgSize} | ${s.minSize} | ${s.maxSize} | ${(r.recallAt3 * 100).toFixed(1)}% | ${r.mrr.toFixed(3)} |`
+    );
+  }
+  lines.push("");
+  lines.push("## Per-query results");
+  lines.push("");
+  lines.push("| # | Query | fixed rank | structural rank |");
+  lines.push("|---|-------|-----------:|----------------:|");
+  for (let i = 0; i < queries.length; i++) {
+    const q = queries[i]!;
+    const fixed = reports.find((r) => r.strategy === "fixed")!.queryResults[i]!;
+    const structural = reports.find((r) => r.strategy === "structural")!.queryResults[i]!;
+    const fRank = fixed.firstHitRank === 0 ? "—" : fixed.firstHitRank;
+    const sRank = structural.firstHitRank === 0 ? "—" : structural.firstHitRank;
+    lines.push(`| ${q.id} | ${escapeMdCell(q.query)} | ${fRank} | ${sRank} |`);
+  }
+
+  lines.push("");
+  lines.push("## Qualitative examples");
+  lines.push("");
+  const examples = queries.slice(0, 3);
+  for (let i = 0; i < examples.length; i++) {
+    const q = examples[i]!;
+    lines.push(`### ${q.id}: ${q.query}`);
+    lines.push("");
+    for (const r of reports) {
+      lines.push(`**${r.strategy}:**`);
+      lines.push("");
+      const qr = r.queryResults[i]!;
+      for (let k = 0; k < qr.hits.length; k++) {
+        const h = qr.hits[k]!;
+        const section = h.section ?? "(no section)";
+        const snippet = h.text.replace(/\s+/g, " ").trim().slice(0, 160);
+        lines.push(`${k + 1}. \`${section}\` — ${snippet}${h.text.length > 160 ? "…" : ""}`);
+      }
+      lines.push("");
+    }
+  }
+
+  return lines.join("\n") + "\n";
+}
+
+function escapeMdCell(text: string): string {
+  return text.replace(/\|/g, "\\|").replace(/\n/g, " ");
 }
 
 main().catch((err) => {
