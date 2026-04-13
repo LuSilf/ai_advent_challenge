@@ -1,0 +1,62 @@
+[
+  {
+    "id": "q01",
+    "query": "What is the difference between cache-aside and write-through caching strategies?",
+    "expected_section_contains": ["Cache", "Write-through", "Cache-aside", "When to update"],
+    "expected_keywords": ["cache-aside", "write-through", "lazy load"]
+  },
+  {
+    "id": "q02",
+    "query": "When should I use a NoSQL database instead of a SQL database?",
+    "expected_section_contains": ["NoSQL", "SQL or NoSQL"],
+    "expected_keywords": ["nosql", "sql or nosql", "wide column", "key-value"]
+  },
+  {
+    "id": "q03",
+    "query": "How does master-slave database replication handle reads and writes?",
+    "expected_section_contains": ["Replication", "Master-slave", "Database"],
+    "expected_keywords": ["master-slave", "master slave", "replication", "replica"]
+  },
+  {
+    "id": "q04",
+    "query": "What is the CAP theorem and what are its three properties?",
+    "expected_section_contains": ["CAP"],
+    "expected_keywords": ["cap theorem", "consistency", "availability", "partition tolerance"]
+  },
+  {
+    "id": "q05",
+    "query": "How can I prevent cross-site scripting and cross-site request forgery attacks?",
+    "expected_section_contains": ["Security"],
+    "expected_keywords": ["xss", "csrf", "cross-site", "sanitize", "escape"]
+  },
+  {
+    "id": "q06",
+    "query": "What is the difference between REST and RPC APIs?",
+    "expected_section_contains": ["REST", "RPC", "Communication", "Representational"],
+    "expected_keywords": ["rest", "rpc", "remote procedure", "representational"]
+  },
+  {
+    "id": "q07",
+    "query": "What does eventual consistency mean in distributed systems?",
+    "expected_section_contains": ["Consistency", "Eventual"],
+    "expected_keywords": ["eventual consistency", "weak consistency", "strong consistency"]
+  },
+  {
+    "id": "q08",
+    "query": "How can I horizontally scale a relational database using sharding and federation?",
+    "expected_section_contains": ["Sharding", "Federation", "Database"],
+    "expected_keywords": ["sharding", "federation", "partition"]
+  },
+  {
+    "id": "q09",
+    "query": "How does a Content Delivery Network reduce latency for static assets?",
+    "expected_section_contains": ["Content delivery network", "CDN"],
+    "expected_keywords": ["cdn", "content delivery", "edge", "origin"]
+  },
+  {
+    "id": "q10",
+    "query": "What is the latency of reading 1 MB sequentially from SSD versus memory?",
+    "expected_section_contains": ["Latency numbers", "Powers of two", "Appendix"],
+    "expected_keywords": ["latency numbers", "1 mb", "ssd", "sequentially"]
+  }
+]

@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import * as sqliteVec from "sqlite-vec";
 
 export type Session = {
   id: number;
@@ -45,6 +46,7 @@ export function initDb(dbPath: string): void {
   mkdirSync(dirname(dbPath), { recursive: true });
 
   db = new Database(dbPath);
+  sqliteVec.load(db);
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA foreign_keys = ON");
 
@@ -182,6 +184,27 @@ export function initDb(dbPath: string): void {
       started_at TEXT NOT NULL,
       finished_at TEXT,
       tokens_used INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS chunks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      strategy TEXT NOT NULL CHECK (strategy IN ('fixed', 'structural')),
+      source TEXT NOT NULL,
+      title TEXT,
+      section TEXT,
+      chunk_index INTEGER NOT NULL,
+      char_start INTEGER NOT NULL,
+      char_end INTEGER NOT NULL,
+      text TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_chunks_strategy_source ON chunks(strategy, source);
+  `);
+
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS chunk_vectors USING vec0(
+      chunk_id INTEGER PRIMARY KEY,
+      embedding float[768]
     );
   `);
 
