@@ -16,6 +16,7 @@ import { SqliteOptionsRepository } from "./storage/sqlite/options-repository";
 import { SqliteVectorIndex } from "./storage/sqlite/sqlite-vector-index";
 import { OllamaEmbedder } from "./api/ollama/ollama-embedder";
 import { FixedSizeChunker } from "./domain/services/chunkers/fixed-size-chunker";
+import { StructuralMarkdownChunker } from "./domain/services/chunkers/structural-markdown-chunker";
 import { IndexingService } from "./domain/services/indexing-service";
 import type { Chunker } from "./domain/ports/chunker";
 import type { ChunkStrategy } from "./domain/models/chunking";
@@ -28,6 +29,9 @@ function fail(message: string): never {
 const DEFAULTS = {
   fixedSize: 1500,
   fixedOverlap: 200,
+  structuralPrimaryLevel: 2,
+  structuralSplitLevel: 3,
+  structuralMaxSize: 2000,
   embeddingProvider: "ollama",
   embeddingModel: "nomic-embed-text",
   embeddingBaseUrl: "http://localhost:11434",
@@ -37,6 +41,9 @@ const DEFAULTS = {
 type IndexingConfig = {
   fixedSize: number;
   fixedOverlap: number;
+  structuralPrimaryLevel: number;
+  structuralSplitLevel: number;
+  structuralMaxSize: number;
   embeddingProvider: string;
   embeddingModel: string;
   embeddingBaseUrl: string;
@@ -57,6 +64,9 @@ function readIndexingConfig(options: SqliteOptionsRepository): IndexingConfig {
   return {
     fixedSize: getInt("indexing.chunk.fixed.size", DEFAULTS.fixedSize),
     fixedOverlap: getInt("indexing.chunk.fixed.overlap", DEFAULTS.fixedOverlap),
+    structuralPrimaryLevel: getInt("indexing.chunk.structural.primaryLevel", DEFAULTS.structuralPrimaryLevel),
+    structuralSplitLevel: getInt("indexing.chunk.structural.splitLevel", DEFAULTS.structuralSplitLevel),
+    structuralMaxSize: getInt("indexing.chunk.structural.maxSize", DEFAULTS.structuralMaxSize),
     embeddingProvider: getStr("indexing.embeddings.provider", DEFAULTS.embeddingProvider),
     embeddingModel: getStr("indexing.embeddings.model", DEFAULTS.embeddingModel),
     embeddingBaseUrl: getStr("indexing.embeddings.baseUrl", DEFAULTS.embeddingBaseUrl),
@@ -107,7 +117,11 @@ function buildChunker(strategy: ChunkStrategy, config: IndexingConfig): Chunker 
     case "fixed":
       return new FixedSizeChunker({ size: config.fixedSize, overlap: config.fixedOverlap });
     case "structural":
-      fail("Structural chunker пока не реализован (Phase 2). Используйте --strategy fixed.");
+      return new StructuralMarkdownChunker({
+        primaryLevel: config.structuralPrimaryLevel,
+        splitLevel: config.structuralSplitLevel,
+        maxSize: config.structuralMaxSize,
+      });
     default:
       fail(`Неизвестная стратегия: ${strategy}`);
   }
@@ -134,11 +148,15 @@ async function runIndex(file: string, strategy: ChunkStrategy): Promise<void> {
 
   console.log(pc.bold(`Индексация ${file}`));
   console.log(pc.dim(`  strategy=${strategy}`));
-  console.log(
-    pc.dim(
-      `  chunker: size=${config.fixedSize}, overlap=${config.fixedOverlap}`
-    )
-  );
+  if (strategy === "fixed") {
+    console.log(pc.dim(`  chunker: size=${config.fixedSize}, overlap=${config.fixedOverlap}`));
+  } else {
+    console.log(
+      pc.dim(
+        `  chunker: primary=H${config.structuralPrimaryLevel}, split=H${config.structuralSplitLevel}, maxSize=${config.structuralMaxSize}`
+      )
+    );
+  }
   console.log(pc.dim(`  embedder: ${config.embeddingProvider}/${config.embeddingModel} @ ${config.embeddingBaseUrl} (dim=${config.embeddingDim})`));
 
   const stats = await service.indexFile({ source: file, text, strategy, rebuild: true });
