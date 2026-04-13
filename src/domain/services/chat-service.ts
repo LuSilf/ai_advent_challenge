@@ -47,7 +47,7 @@ export type SendMessageResult = {
   rawResponse?: unknown;
 };
 
-const DEFAULT_MAX_TOOL_ROUNDS = 10;
+const DEFAULT_MAX_TOOL_ROUNDS = 20;
 
 export class ChatService {
   constructor(
