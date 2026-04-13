@@ -5,13 +5,15 @@
   "type": "module",
   "scripts": {
     "start": "bun run src/main.ts",
-    "scheduler": "bun run src/scheduler.ts"
+    "scheduler": "bun run src/scheduler.ts",
+    "indexing": "bun run src/indexing.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "cron-parser": "^5.5.0",
     "openai": "^6.29.0",
-    "picocolors": "^1.1.1"
+    "picocolors": "^1.1.1",
+    "sqlite-vec": "^0.1.9"
   },
   "devDependencies": {
     "bun-types": "^1.3.10"
