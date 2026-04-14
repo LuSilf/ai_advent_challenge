@@ -31,6 +31,7 @@ import { SchedulerService } from "../../domain/services/scheduler-service";
 import { TaskPhasePrompts } from "../../domain/services/task-phase-prompts";
 import type { RagRetriever } from "../../domain/services/rag-service";
 import { formatToolCallStart, formatToolCallResult } from "./tool-use-formatter";
+import { formatRagErrorBlock, formatRagTechBlock } from "./rag-formatter";
 import {
   DEFAULT_RAG_STRATEGY,
   DEFAULT_RAG_TOP_K,
@@ -1599,11 +1600,14 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
           const preparedRag = await prepareRagPrompt(text, state.rag, deps.ragService, taskReminder);
           userPromptSuffix = preparedRag.userPromptSuffix;
           state.rag.lastResult = preparedRag.retrieval;
-          if (preparedRag.notice) {
+          if (preparedRag.retrieval) {
+            console.log(formatRagTechBlock(preparedRag.retrieval));
+          }
+          if (preparedRag.notice && !preparedRag.retrieval) {
             console.log(pc.dim(preparedRag.notice));
           }
         } catch (error) {
-          console.log(pc.dim(`[RAG] Ошибка retrieval, отвечаю без RAG: ${error instanceof Error ? error.message : String(error)}`));
+          console.log(formatRagErrorBlock(error instanceof Error ? error.message : String(error)));
         }
       }
 
