@@ -20,6 +20,7 @@ class FakeJudgeService {
 
 describe("attachJudgeScores", () => {
   test("adds judge scores to baseline and rag runs", async () => {
+    const events: string[] = [];
     const results: RuleScoredEvaluatedQuestion[] = [
       {
         question: {
@@ -64,11 +65,22 @@ describe("attachJudgeScores", () => {
     ];
 
     const judgeService = new FakeJudgeService();
-    const scored = await attachJudgeScores(results, judgeService as any);
+    const scored = await attachJudgeScores(results, judgeService as any, {
+      onQuestionStart: (result, index, total) => events.push(`start:${result.question.id}:${index + 1}/${total}`),
+      onBaselineJudgeStart: (result) => events.push(`baseline:${result.question.id}`),
+      onRagJudgeStart: (result) => events.push(`rag:${result.question.id}`),
+      onQuestionDone: (result) => events.push(`done:${result.question.id}`),
+    });
 
     expect(judgeService.calls).toEqual([
       { answer: "baseline", hasRetrieval: false },
       { answer: "rag", hasRetrieval: true },
+    ]);
+    expect(events).toEqual([
+      "start:q1:1/1",
+      "baseline:q1",
+      "rag:q1",
+      "done:q1",
     ]);
     expect(scored[0]!.baseline.judge.score).toBe(1);
     expect(scored[0]!.rag.judge.score).toBe(3);

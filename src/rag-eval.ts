@@ -63,6 +63,30 @@ function parseTopK(raw: string | null): number {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 5;
 }
 
+function startSpinner(message: string): () => void {
+  const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+  let index = 0;
+  process.stdout.write(pc.dim(`${frames[0]} ${message}`));
+  const interval = setInterval(() => {
+    index = (index + 1) % frames.length;
+    process.stdout.write(`\r${pc.dim(`${frames[index]} ${message}`)}`);
+  }, 80);
+
+  return () => {
+    clearInterval(interval);
+    process.stdout.write(`\r${" ".repeat(message.length + 4)}\r`);
+  };
+}
+
+async function withSpinner<T>(message: string, task: () => Promise<T>): Promise<T> {
+  const stop = startSpinner(message);
+  try {
+    return await task();
+  } finally {
+    stop();
+  }
+}
+
 async function main(): Promise<void> {
   const { positional, flags } = parseArgs(Bun.argv.slice(2));
   const questionsPath = positional[0] ?? "scripts/day22/control-questions.json";
@@ -159,17 +183,21 @@ async function main(): Promise<void> {
   const results = [];
   for (const question of questions) {
     console.log(pc.cyan(`\n[${question.id}] ${question.question}`));
-    const [evaluated] = await evaluationService.evaluate([question], {
-      strategy: ragStrategy,
-      topK: ragTopK,
+    const [evaluated] = await withSpinner(`Baseline → retrieval → RAG (${question.id})`, async () => {
+      return evaluationService.evaluate([question], {
+        strategy: ragStrategy,
+        topK: ragTopK,
+      }).then((items) => [items[0]!]);
     });
-    results.push(evaluated!);
-    console.log(pc.dim(`  baseline cost: ${formatCost(evaluated!.baseline.costInfo)}`));
-    console.log(pc.dim(`  rag cost: ${formatCost(evaluated!.rag.costInfo)} | retrieval=${evaluated!.rag.retrieval.status}`));
+    results.push(evaluated);
+    console.log(pc.dim(`  baseline cost: ${formatCost(evaluated.baseline.costInfo)}`));
+    console.log(pc.dim(`  rag cost: ${formatCost(evaluated.rag.costInfo)} | retrieval=${evaluated.rag.retrieval.status}`));
   }
 
   const ruleScoredResults = attachRuleScores(results);
-  const judgeScoredResults = await attachJudgeScores(ruleScoredResults, judgeService);
+  const judgeScoredResults = await withSpinner(`Judge scoring ${ruleScoredResults.length} question(s)`, async () => {
+    return attachJudgeScores(ruleScoredResults, judgeService);
+  });
 
   const report = renderRagEvaluationReport(judgeScoredResults, {
     strategy: ragStrategy,

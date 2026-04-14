@@ -21,6 +21,7 @@ class FakeRetriever implements RagRetriever {
 describe("RagEvaluationService", () => {
   test("runs each question in baseline and rag mode", async () => {
     const calls: Array<{ question: string; suffix?: string }> = [];
+    const events: string[] = [];
     const answerQuestion = async (question: string, options?: { userPromptSuffix?: string }): Promise<AnswerRunResult> => {
       calls.push({ question, suffix: options?.userPromptSuffix });
       return {
@@ -35,7 +36,13 @@ describe("RagEvaluationService", () => {
       { id: "q2", question: "What is CAP theorem?", expectation: "Explain CAP." },
     ];
 
-    const result = await service.evaluate(questions, { strategy: "structural", topK: 5 });
+    const result = await service.evaluate(questions, { strategy: "structural", topK: 5 }, {
+      onQuestionStart: (question, index, total) => events.push(`start:${question.id}:${index + 1}/${total}`),
+      onBaselineStart: (question) => events.push(`baseline:${question.id}`),
+      onRetrievalStart: (question) => events.push(`retrieval:${question.id}`),
+      onRagAnswerStart: (question) => events.push(`rag:${question.id}`),
+      onQuestionDone: (evaluated) => events.push(`done:${evaluated.question.id}`),
+    });
 
     expect(retriever.calls).toEqual([
       { question: "What is cache-aside?", strategy: "structural", topK: 5 },
@@ -46,6 +53,18 @@ describe("RagEvaluationService", () => {
       { question: "What is cache-aside?", suffix: "ctx for What is cache-aside?" },
       { question: "What is CAP theorem?", suffix: undefined },
       { question: "What is CAP theorem?", suffix: "ctx for What is CAP theorem?" },
+    ]);
+    expect(events).toEqual([
+      "start:q1:1/2",
+      "baseline:q1",
+      "retrieval:q1",
+      "rag:q1",
+      "done:q1",
+      "start:q2:2/2",
+      "baseline:q2",
+      "retrieval:q2",
+      "rag:q2",
+      "done:q2",
     ]);
     expect(result).toHaveLength(2);
     expect(result[0]!.baseline.answer).toBe("base:What is cache-aside?");
