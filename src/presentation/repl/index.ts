@@ -29,7 +29,9 @@ import { McpClientService } from "../../domain/services/mcp-client-service";
 import type { McpConnectionManager } from "../../domain/services/mcp-connection-manager";
 import { SchedulerService } from "../../domain/services/scheduler-service";
 import { TaskPhasePrompts } from "../../domain/services/task-phase-prompts";
+import type { RagRetriever } from "../../domain/services/rag-service";
 import { formatToolCallStart, formatToolCallResult } from "./tool-use-formatter";
+import { DEFAULT_RAG_STRATEGY, DEFAULT_RAG_TOP_K, prepareRagPrompt, type RagRuntimeState } from "./rag";
 import type { ToolProvider } from "../../domain/services/chat-service";
 import { TaskStateMachine } from "../../domain/services/task-state-machine";
 
@@ -52,6 +54,13 @@ export type ReplDeps = {
   mcpConnectionManager: McpConnectionManager;
   schedulerRepo: SchedulerRepository;
   schedulerService?: SchedulerService;
+  ragService?: RagRetriever;
+};
+
+export type ReplState = {
+  sessionId: number;
+  messagesSinceReconciliation: number;
+  rag: RagRuntimeState;
 };
 
 function buildSchedulerTools(scheduler: SchedulerService, sessionId: number) {
@@ -242,6 +251,10 @@ function printHelp(): void {
   console.log("  /models           Список доступных моделей с ценами");
   console.log("  /roles            Текущий маппинг ролей на модели");
   console.log("  /set_model <роль> <model_id>  Назначить модель на роль");
+  console.log(pc.bold("RAG:"));
+  console.log("  /rag              Показать статус RAG");
+  console.log("  /rag on           Включить RAG");
+  console.log("  /rag off          Выключить RAG");
   console.log(pc.bold("Ветвление:"));
   console.log("  /checkpoint       Создать точку ветвления");
   console.log("  /branch [name]    Создать ветку от checkpoint");
@@ -385,7 +398,7 @@ async function askUserEdit(rl: ReturnType<typeof createInterface>, text: string)
 export async function handleCommand(
   cmd: string,
   args: string,
-  state: { sessionId: number; messagesSinceReconciliation: number },
+  state: ReplState,
   deps: ReplDeps,
   rl?: ReturnType<typeof createInterface>,
 ): Promise<string | null> {
@@ -680,6 +693,26 @@ export async function handleCommand(
       } catch (e) {
         console.log(pc.red(e instanceof Error ? e.message : String(e)));
       }
+      return null;
+    }
+    case "/rag": {
+      const normalized = args.trim().toLowerCase();
+      if (!normalized) {
+        const status = state.rag.enabled ? pc.green("on") : pc.red("off");
+        console.log(`RAG: ${status} | strategy: ${state.rag.strategy} | topK: ${state.rag.topK}`);
+        return null;
+      }
+      if (normalized === "on") {
+        state.rag.enabled = true;
+        console.log(pc.green(`RAG включён (strategy: ${state.rag.strategy}, topK: ${state.rag.topK})`));
+        return null;
+      }
+      if (normalized === "off") {
+        state.rag.enabled = false;
+        console.log(pc.yellow("RAG выключен"));
+        return null;
+      }
+      console.log(pc.red("Использование: /rag | /rag on | /rag off"));
       return null;
     }
     case "/remember": {
@@ -1336,7 +1369,15 @@ async function generateTitle(
 
 export async function startRepl(deps: ReplDeps): Promise<void> {
   const { config, sessionService, chatService, memoryService, costService, modelRepo, optionsRepo, openaiClient, taskService } = deps;
-  const state = { sessionId: 0, messagesSinceReconciliation: 0 };
+  const state: ReplState = {
+    sessionId: 0,
+    messagesSinceReconciliation: 0,
+    rag: {
+      enabled: false,
+      strategy: DEFAULT_RAG_STRATEGY,
+      topK: DEFAULT_RAG_TOP_K,
+    },
+  };
 
   const lastSession = sessionService.getLastSession();
   if (lastSession) {
@@ -1354,7 +1395,7 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
     console.log(pc.green(`Создана новая сессия #${state.sessionId} (стратегия: ${config.contextStrategy})`));
   }
 
-  console.log(pc.dim("Стратегия: " + sessionService.getStrategy(state.sessionId) + " | /new | /help"));
+  console.log(pc.dim("Стратегия: " + sessionService.getStrategy(state.sessionId) + " | /new | /help | /rag"));
 
   // Автоподключение к MCP-серверам
   const mcpConfigs = deps.mcpServerRepo.getAll();
@@ -1498,6 +1539,21 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
         ? TaskPhasePrompts.buildTaskReminder(activeTask)
         : undefined;
 
+      let userPromptSuffix = taskReminder;
+      state.rag.lastResult = undefined;
+      if (state.rag.enabled) {
+        try {
+          const preparedRag = await prepareRagPrompt(text, state.rag, deps.ragService, taskReminder);
+          userPromptSuffix = preparedRag.userPromptSuffix;
+          state.rag.lastResult = preparedRag.retrieval;
+          if (preparedRag.notice) {
+            console.log(pc.dim(preparedRag.notice));
+          }
+        } catch (error) {
+          console.log(pc.dim(`[RAG] Ошибка retrieval, отвечаю без RAG: ${error instanceof Error ? error.message : String(error)}`));
+        }
+      }
+
       // Tool provider из подключённых MCP-серверов
       const toolProvider = buildToolProvider(deps.mcpConnectionManager, schedulerService, state.sessionId);
 
@@ -1546,7 +1602,7 @@ ${schedList}
         systemPrompt,
         useStreaming: config.useStreaming,
         memoryBlocks: memoryService.getMemoryBlocks() || undefined,
-        userPromptSuffix: taskReminder,
+        userPromptSuffix,
         temperature: config.temperature,
         topP: config.topP,
         maxCompletionTokens: config.maxCompletionTokens,

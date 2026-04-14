@@ -18,6 +18,7 @@ import { OllamaEmbedder } from "./api/ollama/ollama-embedder";
 import { FixedSizeChunker } from "./domain/services/chunkers/fixed-size-chunker";
 import { StructuralMarkdownChunker } from "./domain/services/chunkers/structural-markdown-chunker";
 import { IndexingService } from "./domain/services/indexing-service";
+import { readIndexingConfig, type IndexingConfig } from "./indexing-config";
 import {
   evaluateQuery,
   isHit,
@@ -35,53 +36,6 @@ function fail(message: string): never {
   process.exit(1);
 }
 
-const DEFAULTS = {
-  fixedSize: 1500,
-  fixedOverlap: 200,
-  structuralPrimaryLevel: 2,
-  structuralSplitLevel: 3,
-  structuralMaxSize: 2000,
-  embeddingProvider: "ollama",
-  embeddingModel: "nomic-embed-text",
-  embeddingBaseUrl: "http://localhost:11434",
-  embeddingDim: 768,
-} as const;
-
-type IndexingConfig = {
-  fixedSize: number;
-  fixedOverlap: number;
-  structuralPrimaryLevel: number;
-  structuralSplitLevel: number;
-  structuralMaxSize: number;
-  embeddingProvider: string;
-  embeddingModel: string;
-  embeddingBaseUrl: string;
-  embeddingDim: number;
-};
-
-function readIndexingConfig(options: SqliteOptionsRepository): IndexingConfig {
-  const getInt = (key: string, fallback: number): number => {
-    const raw = options.get(key);
-    if (raw === null || raw === "") return fallback;
-    const parsed = Number(raw);
-    return Number.isFinite(parsed) ? parsed : fallback;
-  };
-  const getStr = (key: string, fallback: string): string => {
-    const raw = options.get(key);
-    return raw && raw.length > 0 ? raw : fallback;
-  };
-  return {
-    fixedSize: getInt("indexing.chunk.fixed.size", DEFAULTS.fixedSize),
-    fixedOverlap: getInt("indexing.chunk.fixed.overlap", DEFAULTS.fixedOverlap),
-    structuralPrimaryLevel: getInt("indexing.chunk.structural.primaryLevel", DEFAULTS.structuralPrimaryLevel),
-    structuralSplitLevel: getInt("indexing.chunk.structural.splitLevel", DEFAULTS.structuralSplitLevel),
-    structuralMaxSize: getInt("indexing.chunk.structural.maxSize", DEFAULTS.structuralMaxSize),
-    embeddingProvider: getStr("indexing.embeddings.provider", DEFAULTS.embeddingProvider),
-    embeddingModel: getStr("indexing.embeddings.model", DEFAULTS.embeddingModel),
-    embeddingBaseUrl: getStr("indexing.embeddings.baseUrl", DEFAULTS.embeddingBaseUrl),
-    embeddingDim: getInt("indexing.embeddings.dim", DEFAULTS.embeddingDim),
-  };
-}
 
 function parseArgs(argv: string[]): {
   subcommand: string;

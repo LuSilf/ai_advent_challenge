@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { handleCommand, type ReplDeps } from "./index";
+import { handleCommand, type ReplDeps, type ReplState } from "./index";
 import { initDb } from "../../db";
 
 import { SqliteSessionRepository } from "../../storage/sqlite/session-repository";
@@ -28,6 +28,7 @@ import { McpConnectionManager } from "../../domain/services/mcp-connection-manag
 import type { LLMClient, StreamEvent } from "../../domain/ports/llm-client";
 import type { LLMRequest, LLMResponse } from "../../domain/models";
 import type { AppConfig } from "../../config";
+import { DEFAULT_RAG_STRATEGY, DEFAULT_RAG_TOP_K } from "./rag";
 
 function freshDb(): string {
   const path = join(tmpdir(), `test-repl-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
@@ -63,7 +64,7 @@ function createTestConfig(): AppConfig {
 
 describe("presentation/repl handleCommand", () => {
   let deps: ReplDeps;
-  let state: { sessionId: number; messagesSinceReconciliation: number };
+  let state: ReplState;
 
   beforeEach(() => {
     const dbPath = freshDb();
@@ -112,7 +113,31 @@ describe("presentation/repl handleCommand", () => {
     };
 
     const id = sessionService.createSession(undefined, "full");
-    state = { sessionId: id, messagesSinceReconciliation: 0 };
+    state = {
+      sessionId: id,
+      messagesSinceReconciliation: 0,
+      rag: {
+        enabled: false,
+        strategy: DEFAULT_RAG_STRATEGY,
+        topK: DEFAULT_RAG_TOP_K,
+      },
+    };
+  });
+
+  test("/rag shows current status", async () => {
+    const result = await handleCommand("/rag", "", state, deps);
+    expect(result).toBeNull();
+  });
+
+  test("/rag on enables rag", async () => {
+    await handleCommand("/rag", "on", state, deps);
+    expect(state.rag.enabled).toBe(true);
+  });
+
+  test("/rag off disables rag", async () => {
+    state.rag.enabled = true;
+    await handleCommand("/rag", "off", state, deps);
+    expect(state.rag.enabled).toBe(false);
   });
 
   test("/new creates new session", async () => {

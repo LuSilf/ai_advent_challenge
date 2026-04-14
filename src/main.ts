@@ -19,6 +19,7 @@ import { SqliteSchedulerRepository } from "./storage/sqlite/scheduler-repository
 
 // API
 import { OpenAILLMClient } from "./api/openai/llm-client";
+import { OllamaEmbedder } from "./api/ollama/ollama-embedder";
 
 // Domain services
 import { SessionService } from "./domain/services/session-service";
@@ -31,6 +32,10 @@ import { TaskService } from "./domain/services/task-service";
 import { McpClientService } from "./domain/services/mcp-client-service";
 import { McpConnectionManager } from "./domain/services/mcp-connection-manager";
 import { SchedulerService } from "./domain/services/scheduler-service";
+import { RagService } from "./domain/services/rag-service";
+
+import { SqliteVectorIndex } from "./storage/sqlite/sqlite-vector-index";
+import { readIndexingConfig } from "./indexing-config";
 
 // Presentation
 import { startRepl } from "./presentation/repl";
@@ -67,9 +72,17 @@ const taskRepo = new SqliteTaskRepository();
 const taskTransitionRepo = new SqliteTaskTransitionRepository();
 const mcpServerRepo = new SqliteMcpServerRepository();
 const schedulerRepo = new SqliteSchedulerRepository();
+const vectorIndex = new SqliteVectorIndex();
 
 // --- API layer ---
 const llmClient = new OpenAILLMClient(openaiClient);
+const indexingConfig = readIndexingConfig(optionsRepo);
+const ragEmbedder = new OllamaEmbedder({
+  baseUrl: indexingConfig.embeddingBaseUrl,
+  model: indexingConfig.embeddingModel,
+  dimension: indexingConfig.embeddingDim,
+});
+const ragService = new RagService(ragEmbedder, vectorIndex);
 
 // --- Domain services ---
 const sessionService = new SessionService(sessionRepo, messageRepo);
@@ -112,6 +125,7 @@ if (!config.prompt) {
     mcpServerRepo,
     mcpConnectionManager,
     schedulerRepo,
+    ragService,
   });
 } else {
   // Single-shot mode
