@@ -1,6 +1,6 @@
-import type { RuleScoredEvaluatedQuestion } from "./rag-rules-scorer";
+import type { JudgeScoredEvaluatedQuestion } from "./rag-judge-scorer";
 
-export function renderRagEvaluationReport(results: RuleScoredEvaluatedQuestion[], options: {
+export function renderRagEvaluationReport(results: JudgeScoredEvaluatedQuestion[], options: {
   strategy: string;
   topK: number;
   generatedAt: string;
@@ -12,13 +12,17 @@ export function renderRagEvaluationReport(results: RuleScoredEvaluatedQuestion[]
   lines.push(`RAG strategy: **${options.strategy}**`);
   lines.push(`RAG topK: **${options.topK}**`);
   lines.push("");
-  lines.push("## Summary");
+  lines.push("## Final comparison summary");
   lines.push("");
-  lines.push("| # | Question | Baseline cost | RAG cost | Baseline rules | RAG rules | Retrieval | Expected sections |");
-  lines.push("|---|----------|---------------|----------|----------------|-----------|-----------|-------------------|");
+  lines.push(...renderFinalSummary(results));
+  lines.push("");
+  lines.push("## Per-question summary");
+  lines.push("");
+  lines.push("| # | Question | Baseline cost | RAG cost | Baseline rules | RAG rules | Baseline judge | RAG judge | Retrieval | Expected sections |");
+  lines.push("|---|----------|---------------|----------|----------------|-----------|----------------|-----------|-----------|-------------------|");
   for (const item of results) {
     lines.push(
-      `| ${item.question.id} | ${escapeMd(item.question.question)} | ${formatCost(item.baseline.costInfo)} | ${formatCost(item.rag.costInfo)} | ${formatRulesSummary(item.baseline.rules)} | ${formatRulesSummary(item.rag.rules)} | ${item.rag.retrieval.status} | ${escapeMd((item.question.expectedSections ?? []).join(", "))} |`,
+      `| ${item.question.id} | ${escapeMd(item.question.question)} | ${formatCost(item.baseline.costInfo)} | ${formatCost(item.rag.costInfo)} | ${formatRulesSummary(item.baseline.rules)} | ${formatRulesSummary(item.rag.rules)} | ${item.baseline.judge.score}/3 | ${item.rag.judge.score}/3 | ${item.rag.retrieval.status} | ${escapeMd((item.question.expectedSections ?? []).join(", "))} |`,
     );
   }
   lines.push("");
@@ -37,6 +41,7 @@ export function renderRagEvaluationReport(results: RuleScoredEvaluatedQuestion[]
     lines.push("");
     lines.push(`Cost: ${formatCost(item.baseline.costInfo)}`);
     lines.push(`Rules: ${formatRulesSummary(item.baseline.rules)}`);
+    lines.push(`Judge: ${item.baseline.judge.score}/3 — ${item.baseline.judge.verdict}`);
     lines.push("");
     lines.push(item.baseline.answer || "(empty)");
     lines.push("");
@@ -52,6 +57,7 @@ export function renderRagEvaluationReport(results: RuleScoredEvaluatedQuestion[]
     lines.push("");
     lines.push(`Cost: ${formatCost(item.rag.costInfo)}`);
     lines.push(`Rules: ${formatRulesSummary(item.rag.rules)}`);
+    lines.push(`Judge: ${item.rag.judge.score}/3 — ${item.rag.judge.verdict}`);
     lines.push("");
     lines.push(item.rag.answer || "(empty)");
     lines.push("");
@@ -62,7 +68,7 @@ export function renderRagEvaluationReport(results: RuleScoredEvaluatedQuestion[]
   return lines.join("\n") + "\n";
 }
 
-function renderRetrieval(result: RuleScoredEvaluatedQuestion["rag"]["retrieval"]): string {
+function renderRetrieval(result: JudgeScoredEvaluatedQuestion["rag"]["retrieval"]): string {
   if (result.status === "no_index") {
     return "- Retrieval unavailable: index for the selected strategy was not found.";
   }
@@ -84,11 +90,11 @@ function formatCost(costInfo: { cost: number; inputTokens: number; outputTokens:
   return `$${amount} (${costInfo.inputTokens}/${costInfo.outputTokens})`;
 }
 
-function formatRulesSummary(rules: RuleScoredEvaluatedQuestion["baseline"]["rules"]): string {
+function formatRulesSummary(rules: JudgeScoredEvaluatedQuestion["baseline"]["rules"]): string {
   return `${rules.score}/${rules.maxScore} (${rules.verdict})`;
 }
 
-function renderRulesDetails(rules: RuleScoredEvaluatedQuestion["baseline"]["rules"]): string {
+function renderRulesDetails(rules: JudgeScoredEvaluatedQuestion["baseline"]["rules"]): string {
   const lines = [
     `- Rule score: ${rules.score}/${rules.maxScore}`,
     `- Verdict: ${rules.verdict}`,
@@ -106,6 +112,29 @@ function renderRulesDetails(rules: RuleScoredEvaluatedQuestion["baseline"]["rule
     lines.push(`- Matched sections: ${rules.matchedSections.join(", ")}`);
   }
   return lines.join("\n");
+}
+
+function renderFinalSummary(results: JudgeScoredEvaluatedQuestion[]): string[] {
+  const baselineJudgeAvg = average(results.map((r) => r.baseline.judge.score));
+  const ragJudgeAvg = average(results.map((r) => r.rag.judge.score));
+  const baselineCostAvg = average(results.map((r) => r.baseline.costInfo?.cost ?? 0));
+  const ragCostAvg = average(results.map((r) => r.rag.costInfo?.cost ?? 0));
+  const ragWins = results.filter((r) => r.rag.judge.score > r.baseline.judge.score).length;
+  const baselineWins = results.filter((r) => r.baseline.judge.score > r.rag.judge.score).length;
+  const ties = results.length - ragWins - baselineWins;
+
+  return [
+    `- Average baseline judge score: ${baselineJudgeAvg.toFixed(2)}/3`,
+    `- Average RAG judge score: ${ragJudgeAvg.toFixed(2)}/3`,
+    `- Average baseline cost: $${baselineCostAvg.toFixed(6)}`,
+    `- Average RAG cost: $${ragCostAvg.toFixed(6)}`,
+    `- Judge comparison: RAG wins ${ragWins}, baseline wins ${baselineWins}, ties ${ties}`,
+  ];
+}
+
+function average(values: number[]): number {
+  if (values.length === 0) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 function escapeMd(text: string): string {

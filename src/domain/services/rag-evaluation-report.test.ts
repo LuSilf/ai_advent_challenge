@@ -14,6 +14,12 @@ function sampleResult(): EvaluatedQuestion {
     baseline: {
       answer: "Baseline answer",
       costInfo: { cost: 0.00012, inputTokens: 10, outputTokens: 20 },
+      judge: {
+        score: 1,
+        verdict: "Partial answer",
+        modelId: "openai/gpt-5-nano",
+        raw: "{}",
+      },
       rules: {
         score: 2,
         maxScore: 4,
@@ -27,6 +33,12 @@ function sampleResult(): EvaluatedQuestion {
     rag: {
       answer: "RAG answer",
       costInfo: { cost: 0.00034, inputTokens: 30, outputTokens: 40 },
+      judge: {
+        score: 3,
+        verdict: "Complete grounded answer",
+        modelId: "openai/gpt-5-nano",
+        raw: "{}",
+      },
       rules: {
         score: 4,
         maxScore: 5,
@@ -69,10 +81,14 @@ describe("renderRagEvaluationReport", () => {
     });
 
     expect(report).toContain("# Day 22 — RAG answer comparison report");
+    expect(report).toContain("Average baseline judge score: 1.00/3");
+    expect(report).toContain("Average RAG judge score: 3.00/3");
     expect(report).toContain("| q1 | What is cache-aside? |");
     expect(report).toContain("**Expectation:** Explain that cache-aside lazily loads into cache.");
     expect(report).toContain("### Baseline (without RAG)");
     expect(report).toContain("### RAG answer");
+    expect(report).toContain("Judge: 1/3 — Partial answer");
+    expect(report).toContain("Judge: 3/3 — Complete grounded answer");
     expect(report).toContain("Rules: 2/4 (partial)");
     expect(report).toContain("Rules: 4/5 (strong)");
     expect(report).toContain("source=primer.md; section=Cache > When to update the cache; distance=0.1234");

@@ -19,6 +19,8 @@ import { ChatService } from "./domain/services/chat-service";
 import { ProfileService } from "./domain/services/profile-service";
 import { RagService } from "./domain/services/rag-service";
 import { RagEvaluationService, type AnswerRunResult, type ControlQuestion } from "./domain/services/rag-evaluation-service";
+import { RagJudgeService } from "./domain/services/rag-judge-service";
+import { attachJudgeScores } from "./domain/services/rag-judge-scorer";
 import { attachRuleScores } from "./domain/services/rag-rules-scorer";
 import { renderRagEvaluationReport } from "./domain/services/rag-evaluation-report";
 import { SqliteVectorIndex } from "./storage/sqlite/sqlite-vector-index";
@@ -108,6 +110,7 @@ async function main(): Promise<void> {
     dimension: indexingConfig.embeddingDim,
   });
   const ragService = new RagService(embedder, vectorIndex);
+  const judgeService = new RagJudgeService(llmClient, modelRepo);
 
   const ragStrategy = parseRagStrategy(optionsRepo.get("rag_strategy"));
   const ragTopK = parseTopK(optionsRepo.get("rag_top_k"));
@@ -165,9 +168,10 @@ async function main(): Promise<void> {
     console.log(pc.dim(`  rag cost: ${formatCost(evaluated!.rag.costInfo)} | retrieval=${evaluated!.rag.retrieval.status}`));
   }
 
-  const scoredResults = attachRuleScores(results);
+  const ruleScoredResults = attachRuleScores(results);
+  const judgeScoredResults = await attachJudgeScores(ruleScoredResults, judgeService);
 
-  const report = renderRagEvaluationReport(scoredResults, {
+  const report = renderRagEvaluationReport(judgeScoredResults, {
     strategy: ragStrategy,
     topK: ragTopK,
     generatedAt: new Date().toISOString(),

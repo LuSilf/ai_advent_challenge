@@ -693,7 +693,7 @@ export async function handleCommand(
         return null;
       }
       const [role, modelId] = parts;
-      const validRoles = ["chat", "title", "facts"];
+      const validRoles = ["chat", "title", "facts", "judge"];
       if (!validRoles.includes(role)) {
         console.log(pc.red(`Неизвестная роль: ${role}. Доступные: ${validRoles.join(", ")}`));
         return null;

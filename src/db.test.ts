@@ -321,11 +321,12 @@ describe("db", () => {
 
   test("listModelRoles returns all default roles", () => {
     const roles = listModelRoles();
-    expect(roles.length).toBe(3);
+    expect(roles.length).toBe(4);
     const roleNames = roles.map((r) => r.role);
     expect(roleNames).toContain("chat");
     expect(roleNames).toContain("title");
     expect(roleNames).toContain("facts");
+    expect(roleNames).toContain("judge");
   });
 
   test("setModelForRole changes model for role", () => {

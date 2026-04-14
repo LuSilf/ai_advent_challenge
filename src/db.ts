@@ -231,6 +231,7 @@ export function initDb(dbPath: string): void {
     { role: "chat", model_id: "openai/gpt-5-nano" },
     { role: "title", model_id: "openai/gpt-5-nano" },
     { role: "facts", model_id: "openai/gpt-5-nano" },
+    { role: "judge", model_id: "openai/gpt-5-nano" },
   ];
 
   const insertRole = db.prepare(
