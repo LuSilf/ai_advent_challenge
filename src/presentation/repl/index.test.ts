@@ -23,6 +23,7 @@ import { TaskService } from "../../domain/services/task-service";
 import { SqliteTaskRepository } from "../../storage/sqlite/task-repository";
 import { SqliteTaskTransitionRepository } from "../../storage/sqlite/task-transition-repository";
 import { SqliteMcpServerRepository } from "../../storage/sqlite/mcp-server-repository";
+import { SqliteSchedulerRepository } from "../../storage/sqlite/scheduler-repository";
 import { McpClientService } from "../../domain/services/mcp-client-service";
 import { McpConnectionManager } from "../../domain/services/mcp-connection-manager";
 import type { LLMClient, StreamEvent } from "../../domain/ports/llm-client";
@@ -90,6 +91,7 @@ describe("presentation/repl handleCommand", () => {
     const taskTransitionRepo = new SqliteTaskTransitionRepository();
     const taskService = new TaskService(taskRepo, taskTransitionRepo);
     const mcpServerRepo = new SqliteMcpServerRepository();
+    const schedulerRepo = new SqliteSchedulerRepository();
     const mcpClientService = new McpClientService();
     const mcpConnectionManager = new McpConnectionManager(mcpServerRepo, mcpClientService);
 
@@ -110,6 +112,7 @@ describe("presentation/repl handleCommand", () => {
       taskService,
       mcpServerRepo,
       mcpConnectionManager,
+      schedulerRepo,
     };
 
     const id = sessionService.createSession(undefined, "full");

@@ -1,0 +1,82 @@
+[
+  {
+    "id": "q01",
+    "question": "What is the difference between cache-aside and write-through caching strategies?",
+    "expectation": "Answer should explain that cache-aside loads data lazily on cache miss, while write-through updates cache and backing store synchronously on write. A good answer should mention trade-offs such as stale reads, simplicity, or write latency.",
+    "expectedSections": ["Cache > When to update the cache"],
+    "mustInclude": ["cache-aside", "write-through"],
+    "niceToHave": ["lazy", "stale", "latency"]
+  },
+  {
+    "id": "q02",
+    "question": "When should I use a NoSQL database instead of a SQL database?",
+    "expectation": "Answer should contrast SQL and NoSQL at a high level and mention that NoSQL can be a better fit for non-tabular data, large scale, flexible schema, or specific data models such as key-value/document/wide-column/graph.",
+    "expectedSections": ["Database > NoSQL", "Database > SQL or NoSQL"],
+    "mustInclude": ["NoSQL", "SQL"],
+    "niceToHave": ["key-value", "document", "wide column", "graph"]
+  },
+  {
+    "id": "q03",
+    "question": "How does master-slave database replication handle reads and writes?",
+    "expectation": "Answer should say that the master handles writes and replicas/slaves can serve reads, with replication lag or failover trade-offs mentioned if possible.",
+    "expectedSections": ["Availability patterns > Replication", "Database > Relational database management system (RDBMS)"],
+    "mustInclude": ["writes", "reads", "master", "replica"],
+    "niceToHave": ["replication lag", "failover"]
+  },
+  {
+    "id": "q04",
+    "question": "What is the CAP theorem and what are its three properties?",
+    "expectation": "Answer should define CAP theorem and name consistency, availability, and partition tolerance.",
+    "expectedSections": ["Principles > CAP theorem"],
+    "mustInclude": ["consistency", "availability", "partition tolerance"],
+    "niceToHave": ["distributed systems"]
+  },
+  {
+    "id": "q05",
+    "question": "How can I prevent cross-site scripting and cross-site request forgery attacks?",
+    "expectation": "Answer should distinguish XSS and CSRF and mention core mitigations such as sanitization/escaping for XSS and tokens/same-site protections for CSRF.",
+    "expectedSections": ["Security > Cross-site scripting (XSS)", "Security > Cross-site request forgery (CSRF)"],
+    "mustInclude": ["XSS", "CSRF"],
+    "niceToHave": ["escape", "sanitize", "token", "same-site"]
+  },
+  {
+    "id": "q06",
+    "question": "What is the difference between REST and RPC APIs?",
+    "expectation": "Answer should compare REST as a resource-oriented style and RPC as an operation/procedure-oriented style.",
+    "expectedSections": ["Communication > REST", "Communication > RPC"],
+    "mustInclude": ["REST", "RPC"],
+    "niceToHave": ["resource", "procedure", "operation"]
+  },
+  {
+    "id": "q07",
+    "question": "What does eventual consistency mean in distributed systems?",
+    "expectation": "Answer should define eventual consistency as a weaker consistency model where replicas converge over time if no new updates arrive.",
+    "expectedSections": ["Principles > Consistency"],
+    "mustInclude": ["eventual consistency"],
+    "niceToHave": ["weak consistency", "replicas", "converge"]
+  },
+  {
+    "id": "q08",
+    "question": "How can I horizontally scale a relational database using sharding and federation?",
+    "expectation": "Answer should explain both federation and sharding as ways to split data across multiple databases or partitions to scale horizontally.",
+    "expectedSections": ["Database > Federation", "Database > Sharding"],
+    "mustInclude": ["sharding", "federation"],
+    "niceToHave": ["horizontal", "partition"]
+  },
+  {
+    "id": "q09",
+    "question": "How does a Content Delivery Network reduce latency for static assets?",
+    "expectation": "Answer should explain that a CDN serves static content from edge locations closer to users instead of always hitting the origin.",
+    "expectedSections": ["Concepts > Content delivery network (CDN)"],
+    "mustInclude": ["CDN", "latency"],
+    "niceToHave": ["edge", "origin", "static assets"]
+  },
+  {
+    "id": "q10",
+    "question": "What is the latency of reading 1 MB sequentially from SSD versus memory?",
+    "expectation": "Answer should reference the latency table and compare SSD sequential read of 1 MB with memory access, making clear that SSD is much slower than RAM.",
+    "expectedSections": ["Appendix > Latency numbers every programmer should know"],
+    "mustInclude": ["SSD", "memory", "1 MB"],
+    "niceToHave": ["latency", "microseconds", "nanoseconds"]
+  }
+]

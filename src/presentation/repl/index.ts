@@ -1460,12 +1460,13 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
   }
 
   // Инициализация планировщика
-  const schedulerService = new SchedulerService({
+  let schedulerService: SchedulerService;
+  schedulerService = new SchedulerService({
     schedulerRepo: deps.schedulerRepo,
     chatService,
     getSessionId: () => state.sessionId,
     getSystemPrompt: () => config.systemPrompt,
-    getToolProvider: () => buildToolProvider(deps.mcpConnectionManager, schedulerService, state.sessionId),
+    getToolProvider: (): ToolProvider | undefined => buildToolProvider(deps.mcpConnectionManager, schedulerService, state.sessionId),
     getMemoryBlocks: () => memoryService.getMemoryBlocks() || undefined,
     getSendOptions: () => ({
       temperature: config.temperature,

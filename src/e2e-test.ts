@@ -30,6 +30,8 @@ import { SqliteProfileRepository } from "./storage/sqlite/profile-repository";
 import { SqliteMemoryRepository } from "./storage/sqlite/memory-repository";
 import { SqliteTaskRepository } from "./storage/sqlite/task-repository";
 import { SqliteTaskTransitionRepository } from "./storage/sqlite/task-transition-repository";
+import { SqliteMcpServerRepository } from "./storage/sqlite/mcp-server-repository";
+import { SqliteSchedulerRepository } from "./storage/sqlite/scheduler-repository";
 
 import { OpenAILLMClient } from "./api/openai/llm-client";
 
@@ -42,7 +44,10 @@ import { ProfileService } from "./domain/services/profile-service";
 import { TaskService } from "./domain/services/task-service";
 import { TaskPhasePrompts } from "./domain/services/task-phase-prompts";
 import { TaskStateMachine } from "./domain/services/task-state-machine";
-import { handleCommand, type ReplDeps } from "./presentation/repl";
+import { McpClientService } from "./domain/services/mcp-client-service";
+import { McpConnectionManager } from "./domain/services/mcp-connection-manager";
+import { handleCommand, type ReplDeps, type ReplState } from "./presentation/repl";
+import { DEFAULT_RAG_STRATEGY, DEFAULT_RAG_TOP_K } from "./presentation/repl/rag";
 
 // ─── Helpers ──────────────────────────────────────────────
 const GREEN = "\x1b[32m";
@@ -132,6 +137,11 @@ const config = {
   contextStrategy: "full",
 };
 
+const mcpServerRepo = new SqliteMcpServerRepository();
+const schedulerRepo = new SqliteSchedulerRepository();
+const mcpClientService = new McpClientService();
+const mcpConnectionManager = new McpConnectionManager(mcpServerRepo, mcpClientService);
+
 const deps: ReplDeps = {
   config: config as any,
   sessionService,
@@ -147,11 +157,19 @@ const deps: ReplDeps = {
   openaiClient: fakeOpenaiClient,
   profileService,
   taskService,
+  mcpServerRepo,
+  mcpConnectionManager,
+  schedulerRepo,
 };
 
-const state = {
+const state: ReplState = {
   sessionId: sessionService.createSession("E2E Test Session", "full"),
   messagesSinceReconciliation: 0,
+  rag: {
+    enabled: false,
+    strategy: DEFAULT_RAG_STRATEGY,
+    topK: DEFAULT_RAG_TOP_K,
+  },
 };
 
 // ─── Сценарий 1: Полный жизненный цикл ────────────────────
