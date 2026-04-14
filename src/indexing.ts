@@ -20,6 +20,7 @@ import { StructuralMarkdownChunker } from "./domain/services/chunkers/structural
 import { IndexingService } from "./domain/services/indexing-service";
 import {
   evaluateQuery,
+  isHit,
   computeRecallAt3,
   computeMRR,
   type EvalQuery,
@@ -268,32 +269,72 @@ async function runEval(queriesPath: string, reportPath: string): Promise<void> {
   const queryVectors = await embedder.embed(queries.map((q) => q.query));
 
   const strategies: ChunkStrategy[] = ["fixed", "structural"];
-  const reports: StrategyReport[] = [];
+  const resultsByStrategy: Record<ChunkStrategy, QueryResult[]> = {
+    fixed: [],
+    structural: [],
+  };
 
-  for (const strategy of strategies) {
-    const results: QueryResult[] = [];
-    for (let i = 0; i < queries.length; i++) {
-      const hits = vectorIndex.search(queryVectors[i]!, 3, { strategy });
-      results.push(evaluateQuery(hits, queries[i]!));
+  for (let i = 0; i < queries.length; i++) {
+    const query = queries[i]!;
+    const vec = queryVectors[i]!;
+
+    console.log();
+    console.log(pc.bold(pc.cyan(`[${query.id}]`) + " " + query.query));
+    const expectedParts: string[] = [];
+    if (query.expected_section_contains?.length) {
+      expectedParts.push(`section ∋ ${query.expected_section_contains.map((s) => `"${s}"`).join(" | ")}`);
     }
-    reports.push({
-      strategy,
-      recallAt3: computeRecallAt3(results),
-      mrr: computeMRR(results),
-      queryResults: results,
-    });
+    if (query.expected_keywords?.length) {
+      expectedParts.push(`keywords ∋ ${query.expected_keywords.map((k) => `"${k}"`).join(" | ")}`);
+    }
+    if (expectedParts.length > 0) {
+      console.log(pc.dim(`  expected: ${expectedParts.join("  OR  ")}`));
+    }
+
+    for (const strategy of strategies) {
+      const hits = vectorIndex.search(vec, 3, { strategy });
+      const result = evaluateQuery(hits, query);
+      resultsByStrategy[strategy].push(result);
+
+      const verdict =
+        result.firstHitRank > 0
+          ? pc.green(`HIT @${result.firstHitRank}`)
+          : pc.red("MISS");
+      console.log(`  ${pc.yellow(strategy.padEnd(10))} → ${verdict}`);
+
+      for (let k = 0; k < hits.length; k++) {
+        const h = hits[k]!;
+        const matched = isHit(h, query);
+        const marker = matched ? pc.green("✓") : pc.dim("·");
+        const rank = `${k + 1}.`;
+        const section = h.section ? h.section : pc.dim("(no section)");
+        const dist = pc.dim(`d=${h.distance.toFixed(3)}`);
+        const snippet = h.text.replace(/\s+/g, " ").trim().slice(0, 100);
+        const line = `    ${marker} ${rank} ${section} ${dist}`;
+        console.log(matched ? pc.green(line) : line);
+        console.log(pc.dim(`        ${snippet}${h.text.length > 100 ? "…" : ""}`));
+      }
+    }
   }
+
+  const reports: StrategyReport[] = strategies.map((strategy) => ({
+    strategy,
+    recallAt3: computeRecallAt3(resultsByStrategy[strategy]),
+    mrr: computeMRR(resultsByStrategy[strategy]),
+    queryResults: resultsByStrategy[strategy],
+  }));
 
   const stats: Record<ChunkStrategy, StrategyStats> = {
     fixed: strategyStats(vectorIndex, "fixed"),
     structural: strategyStats(vectorIndex, "structural"),
   };
 
+  console.log();
+  console.log(pc.bold("Итоги:"));
   for (const report of reports) {
-    console.log();
-    console.log(pc.bold(`strategy=${report.strategy}`));
-    console.log(`  Recall@3: ${(report.recallAt3 * 100).toFixed(1)}%`);
-    console.log(`  MRR:      ${report.mrr.toFixed(3)}`);
+    console.log(
+      `  ${pc.yellow(report.strategy.padEnd(10))} Recall@3=${(report.recallAt3 * 100).toFixed(1)}%  MRR=${report.mrr.toFixed(3)}`
+    );
   }
 
   const md = renderReport(queries, reports, stats, config);
