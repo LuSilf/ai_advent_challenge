@@ -14,12 +14,19 @@ export type IndexingServiceDeps = {
   vectorIndex: VectorIndex;
 };
 
+export type IndexingObserver = {
+  onChunksReady?: (chunks: Chunk[]) => void;
+  onBatchStart?: (batchIndex: number, totalBatches: number, batchSize: number) => void;
+  onBatchDone?: (batchIndex: number, totalBatches: number, elapsedMs: number) => void;
+};
+
 export type IndexFileOptions = {
   source: string;
   text: string;
   strategy: ChunkStrategy;
   rebuild?: boolean;
   batchSize?: number;
+  observer?: IndexingObserver;
 };
 
 const DEFAULT_BATCH_SIZE = 32;
@@ -36,16 +43,26 @@ export class IndexingService {
     }
 
     const chunks = chunker.chunk(opts.text, opts.source);
+    opts.observer?.onChunksReady?.(chunks);
 
     const batchSize = opts.batchSize ?? DEFAULT_BATCH_SIZE;
+    const totalBatches = Math.max(1, Math.ceil(chunks.length / batchSize));
     for (let i = 0; i < chunks.length; i += batchSize) {
+      const batchIndex = Math.floor(i / batchSize);
       const batch = chunks.slice(i, i + batchSize);
+      opts.observer?.onBatchStart?.(batchIndex, totalBatches, batch.length);
+      const batchStart = performance.now();
       const vectors = await embedder.embed(batch.map((c) => c.text));
       const withVectors: ChunkWithVector[] = batch.map((c, idx) => ({
         ...c,
         embedding: vectors[idx]!,
       }));
       vectorIndex.upsert(withVectors);
+      opts.observer?.onBatchDone?.(
+        batchIndex,
+        totalBatches,
+        Math.round(performance.now() - batchStart)
+      );
     }
 
     const elapsedMs = Math.round(performance.now() - started);

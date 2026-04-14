@@ -135,6 +135,39 @@ describe("IndexingService", () => {
     expect(vectorIndex.deleteCalls).toEqual([{ strategy: "fixed", source: "doc.md" }]);
   });
 
+  test("observer is notified about chunks and each batch", async () => {
+    const chunks = Array.from({ length: 5 }, (_, i) => fakeChunk("fixed", "", i, `c${i}`));
+    const chunker = new FakeChunker(chunks);
+    const embedder = new FakeEmbedder();
+    const vectorIndex = new FakeVectorIndex();
+
+    const chunksReadyCalls: number[] = [];
+    const batchStartCalls: Array<{ i: number; total: number; size: number }> = [];
+    const batchDoneCalls: Array<{ i: number; total: number }> = [];
+
+    const service = new IndexingService({ chunker, embedder, vectorIndex });
+    await service.indexFile({
+      source: "doc.md",
+      text: "x",
+      strategy: "fixed",
+      batchSize: 2,
+      observer: {
+        onChunksReady: (cs) => chunksReadyCalls.push(cs.length),
+        onBatchStart: (i, total, size) => batchStartCalls.push({ i, total, size }),
+        onBatchDone: (i, total) => batchDoneCalls.push({ i, total }),
+      },
+    });
+
+    expect(chunksReadyCalls).toEqual([5]);
+    expect(batchStartCalls).toEqual([
+      { i: 0, total: 3, size: 2 },
+      { i: 1, total: 3, size: 2 },
+      { i: 2, total: 3, size: 1 },
+    ]);
+    expect(batchDoneCalls.length).toBe(3);
+    expect(batchDoneCalls.map((c) => c.i)).toEqual([0, 1, 2]);
+  });
+
   test("empty chunker output yields zero-count stats and no embedder/index calls", async () => {
     const chunker = new FakeChunker([]);
     const embedder = new FakeEmbedder();

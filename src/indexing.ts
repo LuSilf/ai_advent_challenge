@@ -168,7 +168,38 @@ async function runIndex(file: string, strategy: ChunkStrategy): Promise<void> {
   }
   console.log(pc.dim(`  embedder: ${config.embeddingProvider}/${config.embeddingModel} @ ${config.embeddingBaseUrl} (dim=${config.embeddingDim})`));
 
-  const stats = await service.indexFile({ source: file, text, strategy, rebuild: true });
+  const observer = {
+    onChunksReady: (chunks: import("./domain/models/chunking").Chunk[]) => {
+      console.log();
+      console.log(pc.bold(`Чанков получено: ${chunks.length}`));
+      for (const c of chunks) {
+        const idx = `#${String(c.chunkIndex).padStart(3, " ")}`;
+        const size = `${String(c.text.length).padStart(4, " ")}ch`;
+        const section = c.section ? pc.cyan(c.section) : pc.dim("(no section)");
+        const snippet = c.text.replace(/\s+/g, " ").trim().slice(0, 70);
+        console.log(`  ${pc.dim(idx)} ${pc.yellow(size)} ${section}`);
+        console.log(`      ${pc.dim(snippet)}${c.text.length > 70 ? pc.dim("…") : ""}`);
+      }
+      console.log();
+      console.log(pc.bold("Эмбеддинг:"));
+    },
+    onBatchStart: (batchIndex: number, totalBatches: number, batchSize: number) => {
+      process.stdout.write(
+        pc.dim(`  батч ${batchIndex + 1}/${totalBatches} (${batchSize} чанков)... `)
+      );
+    },
+    onBatchDone: (_batchIndex: number, _totalBatches: number, elapsedMs: number) => {
+      console.log(pc.dim(`готово за ${elapsedMs} ms`));
+    },
+  };
+
+  const stats = await service.indexFile({
+    source: file,
+    text,
+    strategy,
+    rebuild: true,
+    observer,
+  });
 
   const stored = vectorIndex.countByStrategy(strategy, file);
 
