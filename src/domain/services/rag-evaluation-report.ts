@@ -1,6 +1,6 @@
-import type { EvaluatedQuestion } from "./rag-evaluation-service";
+import type { RuleScoredEvaluatedQuestion } from "./rag-rules-scorer";
 
-export function renderRagEvaluationReport(results: EvaluatedQuestion[], options: {
+export function renderRagEvaluationReport(results: RuleScoredEvaluatedQuestion[], options: {
   strategy: string;
   topK: number;
   generatedAt: string;
@@ -14,11 +14,11 @@ export function renderRagEvaluationReport(results: EvaluatedQuestion[], options:
   lines.push("");
   lines.push("## Summary");
   lines.push("");
-  lines.push("| # | Question | Baseline cost | RAG cost | Retrieval | Expected sections |");
-  lines.push("|---|----------|---------------|----------|-----------|-------------------|");
+  lines.push("| # | Question | Baseline cost | RAG cost | Baseline rules | RAG rules | Retrieval | Expected sections |");
+  lines.push("|---|----------|---------------|----------|----------------|-----------|-----------|-------------------|");
   for (const item of results) {
     lines.push(
-      `| ${item.question.id} | ${escapeMd(item.question.question)} | ${formatCost(item.baseline.costInfo)} | ${formatCost(item.rag.costInfo)} | ${item.rag.retrieval.status} | ${escapeMd((item.question.expectedSections ?? []).join(", "))} |`,
+      `| ${item.question.id} | ${escapeMd(item.question.question)} | ${formatCost(item.baseline.costInfo)} | ${formatCost(item.rag.costInfo)} | ${formatRulesSummary(item.baseline.rules)} | ${formatRulesSummary(item.rag.rules)} | ${item.rag.retrieval.status} | ${escapeMd((item.question.expectedSections ?? []).join(", "))} |`,
     );
   }
   lines.push("");
@@ -36,8 +36,11 @@ export function renderRagEvaluationReport(results: EvaluatedQuestion[], options:
     lines.push("### Baseline (without RAG)");
     lines.push("");
     lines.push(`Cost: ${formatCost(item.baseline.costInfo)}`);
+    lines.push(`Rules: ${formatRulesSummary(item.baseline.rules)}`);
     lines.push("");
     lines.push(item.baseline.answer || "(empty)");
+    lines.push("");
+    lines.push(renderRulesDetails(item.baseline.rules));
     lines.push("");
 
     lines.push("### Retrieval");
@@ -48,15 +51,18 @@ export function renderRagEvaluationReport(results: EvaluatedQuestion[], options:
     lines.push("### RAG answer");
     lines.push("");
     lines.push(`Cost: ${formatCost(item.rag.costInfo)}`);
+    lines.push(`Rules: ${formatRulesSummary(item.rag.rules)}`);
     lines.push("");
     lines.push(item.rag.answer || "(empty)");
+    lines.push("");
+    lines.push(renderRulesDetails(item.rag.rules));
     lines.push("");
   }
 
   return lines.join("\n") + "\n";
 }
 
-function renderRetrieval(result: EvaluatedQuestion["rag"]["retrieval"]): string {
+function renderRetrieval(result: RuleScoredEvaluatedQuestion["rag"]["retrieval"]): string {
   if (result.status === "no_index") {
     return "- Retrieval unavailable: index for the selected strategy was not found.";
   }
@@ -76,6 +82,30 @@ function formatCost(costInfo: { cost: number; inputTokens: number; outputTokens:
   if (!costInfo) return "—";
   const amount = costInfo.cost < 0.01 ? costInfo.cost.toFixed(6) : costInfo.cost.toFixed(4);
   return `$${amount} (${costInfo.inputTokens}/${costInfo.outputTokens})`;
+}
+
+function formatRulesSummary(rules: RuleScoredEvaluatedQuestion["baseline"]["rules"]): string {
+  return `${rules.score}/${rules.maxScore} (${rules.verdict})`;
+}
+
+function renderRulesDetails(rules: RuleScoredEvaluatedQuestion["baseline"]["rules"]): string {
+  const lines = [
+    `- Rule score: ${rules.score}/${rules.maxScore}`,
+    `- Verdict: ${rules.verdict}`,
+  ];
+  if (rules.matchedMustInclude.length > 0) {
+    lines.push(`- Matched must-have: ${rules.matchedMustInclude.join(", ")}`);
+  }
+  if (rules.missedMustInclude.length > 0) {
+    lines.push(`- Missed must-have: ${rules.missedMustInclude.join(", ")}`);
+  }
+  if (rules.matchedNiceToHave.length > 0) {
+    lines.push(`- Matched nice-to-have: ${rules.matchedNiceToHave.join(", ")}`);
+  }
+  if (rules.matchedSections.length > 0) {
+    lines.push(`- Matched sections: ${rules.matchedSections.join(", ")}`);
+  }
+  return lines.join("\n");
 }
 
 function escapeMd(text: string): string {

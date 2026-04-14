@@ -19,6 +19,7 @@ import { ChatService } from "./domain/services/chat-service";
 import { ProfileService } from "./domain/services/profile-service";
 import { RagService } from "./domain/services/rag-service";
 import { RagEvaluationService, type AnswerRunResult, type ControlQuestion } from "./domain/services/rag-evaluation-service";
+import { attachRuleScores } from "./domain/services/rag-rules-scorer";
 import { renderRagEvaluationReport } from "./domain/services/rag-evaluation-report";
 import { SqliteVectorIndex } from "./storage/sqlite/sqlite-vector-index";
 import { readIndexingConfig } from "./indexing-config";
@@ -164,7 +165,9 @@ async function main(): Promise<void> {
     console.log(pc.dim(`  rag cost: ${formatCost(evaluated!.rag.costInfo)} | retrieval=${evaluated!.rag.retrieval.status}`));
   }
 
-  const report = renderRagEvaluationReport(results, {
+  const scoredResults = attachRuleScores(results);
+
+  const report = renderRagEvaluationReport(scoredResults, {
     strategy: ragStrategy,
     topK: ragTopK,
     generatedAt: new Date().toISOString(),
