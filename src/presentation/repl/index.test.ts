@@ -138,6 +138,19 @@ describe("presentation/repl handleCommand", () => {
     state.rag.enabled = true;
     await handleCommand("/rag", "off", state, deps);
     expect(state.rag.enabled).toBe(false);
+    expect(deps.optionsRepo.get("rag_enabled")).toBe("false");
+  });
+
+  test("/rag strategy updates strategy and persists it", async () => {
+    await handleCommand("/rag", "strategy fixed", state, deps);
+    expect(state.rag.strategy).toBe("fixed");
+    expect(deps.optionsRepo.get("rag_strategy")).toBe("fixed");
+  });
+
+  test("/rag topk updates topK and persists it", async () => {
+    await handleCommand("/rag", "topk 7", state, deps);
+    expect(state.rag.topK).toBe(7);
+    expect(deps.optionsRepo.get("rag_top_k")).toBe("7");
   });
 
   test("/new creates new session", async () => {

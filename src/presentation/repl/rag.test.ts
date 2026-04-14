@@ -1,7 +1,23 @@
 import { describe, test, expect } from "bun:test";
 
-import { prepareRagPrompt, type RagRuntimeState, DEFAULT_RAG_STRATEGY, DEFAULT_RAG_TOP_K } from "./rag";
+import { prepareRagPrompt, readRagState, persistRagState, formatRagStatusLine, type RagRuntimeState, DEFAULT_RAG_STRATEGY, DEFAULT_RAG_TOP_K } from "./rag";
 import type { RagRetrieveResult, RagRetriever } from "../../domain/services/rag-service";
+
+class FakeOptionsRepo {
+  private readonly values = new Map<string, string>();
+
+  get(key: string): string | null {
+    return this.values.get(key) ?? null;
+  }
+
+  set(key: string, value: string): void {
+    this.values.set(key, value);
+  }
+
+  getAll(): Array<{ key: string; value: string }> {
+    return [...this.values.entries()].map(([key, value]) => ({ key, value }));
+  }
+}
 
 class FakeRetriever implements RagRetriever {
   public calls: Array<{ question: string; strategy: string; topK: number }> = [];
@@ -22,6 +38,38 @@ function ragState(overrides: Partial<RagRuntimeState> = {}): RagRuntimeState {
     ...overrides,
   };
 }
+
+describe("RAG state helpers", () => {
+  test("readRagState returns defaults when options are absent", () => {
+    const repo = new FakeOptionsRepo();
+    expect(readRagState(repo as any)).toEqual({
+      enabled: false,
+      strategy: "structural",
+      topK: 5,
+    });
+  });
+
+  test("persistRagState writes values that can be read back", () => {
+    const repo = new FakeOptionsRepo();
+    persistRagState(repo as any, {
+      enabled: true,
+      strategy: "fixed",
+      topK: 7,
+    });
+
+    expect(readRagState(repo as any)).toEqual({
+      enabled: true,
+      strategy: "fixed",
+      topK: 7,
+    });
+  });
+
+  test("formatRagStatusLine shows enabled flag and tuning", () => {
+    expect(formatRagStatusLine(ragState({ enabled: true, strategy: "fixed", topK: 7 }))).toBe(
+      "RAG: on | strategy: fixed | topK: 7",
+    );
+  });
+});
 
 describe("prepareRagPrompt", () => {
   test("returns existing suffix unchanged when rag is disabled", async () => {

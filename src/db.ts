@@ -248,6 +248,9 @@ export function initDb(dbPath: string): void {
     { key: "top_p", value: "" },
     { key: "debug", value: "false" },
     { key: "context_strategy", value: "full" },
+    { key: "rag_enabled", value: "false" },
+    { key: "rag_strategy", value: "structural" },
+    { key: "rag_top_k", value: "5" },
   ];
   const insertOption = db.prepare(
     "INSERT OR IGNORE INTO options (key, value) VALUES (?, ?)"

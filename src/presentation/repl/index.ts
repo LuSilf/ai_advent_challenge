@@ -31,7 +31,15 @@ import { SchedulerService } from "../../domain/services/scheduler-service";
 import { TaskPhasePrompts } from "../../domain/services/task-phase-prompts";
 import type { RagRetriever } from "../../domain/services/rag-service";
 import { formatToolCallStart, formatToolCallResult } from "./tool-use-formatter";
-import { DEFAULT_RAG_STRATEGY, DEFAULT_RAG_TOP_K, prepareRagPrompt, type RagRuntimeState } from "./rag";
+import {
+  DEFAULT_RAG_STRATEGY,
+  DEFAULT_RAG_TOP_K,
+  formatRagStatusLine,
+  persistRagState,
+  prepareRagPrompt,
+  readRagState,
+  type RagRuntimeState,
+} from "./rag";
 import type { ToolProvider } from "../../domain/services/chat-service";
 import { TaskStateMachine } from "../../domain/services/task-state-machine";
 
@@ -252,9 +260,11 @@ function printHelp(): void {
   console.log("  /roles            Текущий маппинг ролей на модели");
   console.log("  /set_model <роль> <model_id>  Назначить модель на роль");
   console.log(pc.bold("RAG:"));
-  console.log("  /rag              Показать статус RAG");
-  console.log("  /rag on           Включить RAG");
-  console.log("  /rag off          Выключить RAG");
+  console.log("  /rag                      Показать статус RAG");
+  console.log("  /rag on                   Включить RAG");
+  console.log("  /rag off                  Выключить RAG");
+  console.log("  /rag strategy <type>      Установить fixed|structural");
+  console.log("  /rag topk <n>             Установить количество чанков");
   console.log(pc.bold("Ветвление:"));
   console.log("  /checkpoint       Создать точку ветвления");
   console.log("  /branch [name]    Создать ветку от checkpoint");
@@ -696,23 +706,53 @@ export async function handleCommand(
       return null;
     }
     case "/rag": {
-      const normalized = args.trim().toLowerCase();
-      if (!normalized) {
-        const status = state.rag.enabled ? pc.green("on") : pc.red("off");
-        console.log(`RAG: ${status} | strategy: ${state.rag.strategy} | topK: ${state.rag.topK}`);
+      const parts = args.trim().split(/\s+/).filter(Boolean);
+      const subcommand = parts[0]?.toLowerCase();
+
+      if (!subcommand) {
+        console.log(formatRagStatusLine(state.rag));
         return null;
       }
-      if (normalized === "on") {
+
+      if (subcommand === "on") {
         state.rag.enabled = true;
+        persistRagState(optionsRepo, state.rag);
         console.log(pc.green(`RAG включён (strategy: ${state.rag.strategy}, topK: ${state.rag.topK})`));
         return null;
       }
-      if (normalized === "off") {
+
+      if (subcommand === "off") {
         state.rag.enabled = false;
+        persistRagState(optionsRepo, state.rag);
         console.log(pc.yellow("RAG выключен"));
         return null;
       }
-      console.log(pc.red("Использование: /rag | /rag on | /rag off"));
+
+      if (subcommand === "strategy") {
+        const value = parts[1]?.toLowerCase();
+        if (value !== "fixed" && value !== "structural") {
+          console.log(pc.red("Использование: /rag strategy <fixed|structural>"));
+          return null;
+        }
+        state.rag.strategy = value;
+        persistRagState(optionsRepo, state.rag);
+        console.log(pc.green(`RAG strategy = ${value}`));
+        return null;
+      }
+
+      if (subcommand === "topk") {
+        const parsed = Number(parts[1]);
+        if (!Number.isInteger(parsed) || parsed < 1) {
+          console.log(pc.red("Использование: /rag topk <n>, где n >= 1"));
+          return null;
+        }
+        state.rag.topK = parsed;
+        persistRagState(optionsRepo, state.rag);
+        console.log(pc.green(`RAG topK = ${parsed}`));
+        return null;
+      }
+
+      console.log(pc.red("Использование: /rag | /rag on | /rag off | /rag strategy <fixed|structural> | /rag topk <n>"));
       return null;
     }
     case "/remember": {
@@ -948,6 +988,13 @@ export async function handleCommand(
       const value = valueParts.join(" ");
       optionsRepo.set(key, value);
       applyDbOptions(config, (k) => optionsRepo.get(k));
+      if (key === "rag_enabled" || key === "rag_strategy" || key === "rag_top_k") {
+        state.rag = {
+          ...state.rag,
+          ...readRagState(optionsRepo),
+          lastResult: state.rag.lastResult,
+        };
+      }
       console.log(pc.green(`${key} = ${value}`));
       return null;
     }
@@ -1369,13 +1416,14 @@ async function generateTitle(
 
 export async function startRepl(deps: ReplDeps): Promise<void> {
   const { config, sessionService, chatService, memoryService, costService, modelRepo, optionsRepo, openaiClient, taskService } = deps;
+  const persistedRagState = readRagState(deps.optionsRepo);
   const state: ReplState = {
     sessionId: 0,
     messagesSinceReconciliation: 0,
     rag: {
-      enabled: false,
-      strategy: DEFAULT_RAG_STRATEGY,
-      topK: DEFAULT_RAG_TOP_K,
+      enabled: persistedRagState.enabled,
+      strategy: persistedRagState.strategy ?? DEFAULT_RAG_STRATEGY,
+      topK: persistedRagState.topK ?? DEFAULT_RAG_TOP_K,
     },
   };
 
@@ -1475,7 +1523,12 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
     prompt: pc.green("> "),
   });
 
-  rl.prompt();
+  const promptRepl = () => {
+    console.log(pc.dim(formatRagStatusLine(state.rag)));
+    rl.prompt();
+  };
+
+  promptRepl();
 
   const inputLines: string[] = [];
   let processing = false;
@@ -1498,7 +1551,7 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
       if (result === null) {
         processing = false;
         flushPendingOutput();
-        rl.prompt();
+        promptRepl();
         return;
       }
       text = result;
@@ -1795,7 +1848,7 @@ ${schedList}
 
     processing = false;
     flushPendingOutput();
-    rl.prompt();
+    promptRepl();
   };
 
   rl.on("line", (line: string) => {
@@ -1812,13 +1865,13 @@ ${schedList}
       if (text) {
         processInput(text);
       } else {
-        rl.prompt();
+        promptRepl();
       }
       return;
     }
 
     if (line === "" && inputLines.length === 0) {
-      rl.prompt();
+      promptRepl();
       return;
     }
 
