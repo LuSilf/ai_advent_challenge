@@ -1,3 +1,6 @@
 .env
 node_modules/
 node_modules/data/
+
+# Local sqlite history (generated)
+data/history.db*
