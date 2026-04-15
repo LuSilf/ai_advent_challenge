@@ -18,11 +18,11 @@ export function renderRagEvaluationReport(results: JudgeScoredEvaluatedQuestion[
   lines.push("");
   lines.push("## Per-question summary");
   lines.push("");
-  lines.push("| # | Question | Baseline cost | RAG cost | Baseline rules | RAG rules | Baseline judge | RAG judge | Retrieval | Expected sections |");
-  lines.push("|---|----------|---------------|----------|----------------|-----------|----------------|-----------|-----------|-------------------|");
+  lines.push("| # | Question | Baseline cost | RAG cost | Baseline rules | RAG rules | Baseline judge | RAG judge | Retrieval | Expected section hit |");
+  lines.push("|---|----------|---------------|----------|----------------|-----------|----------------|-----------|-----------|----------------------|");
   for (const item of results) {
     lines.push(
-      `| ${item.question.id} | ${escapeMd(item.question.question)} | ${formatCost(item.baseline.costInfo)} | ${formatCost(item.rag.costInfo)} | ${formatRulesSummary(item.baseline.rules)} | ${formatRulesSummary(item.rag.rules)} | ${item.baseline.judge.score}/3 | ${item.rag.judge.score}/3 | ${item.rag.retrieval.status} | ${escapeMd((item.question.expectedSections ?? []).join(", "))} |`,
+      `| ${item.question.id} | ${escapeMd(item.question.question)} | ${formatCost(item.baseline.costInfo)} | ${formatCost(item.rag.costInfo)} | ${formatRulesSummary(item.baseline.rules)} | ${formatRulesSummary(item.rag.rules)} | ${item.baseline.judge.score}/3 | ${item.rag.judge.score}/3 | ${item.rag.retrieval.status} | ${item.rag.rules.matchedSections.length > 0 ? "yes" : "no"} |`,
     );
   }
   lines.push("");

@@ -1,31 +1,31 @@
 # Day 22 — RAG answer comparison report
 
-Generated at: 2026-04-14T18:44:37.083Z
+Generated at: 2026-04-15T04:39:43.916Z
 RAG strategy: **structural**
-RAG topK: **5**
+RAG topK: **3**
 
 ## Final comparison summary
 
 - Average baseline judge score: 2.80/3
-- Average RAG judge score: 2.70/3
-- Average baseline cost: $0.000149
-- Average RAG cost: $0.000277
-- Judge comparison: RAG wins 1, baseline wins 2, ties 7
+- Average RAG judge score: 2.50/3
+- Average baseline cost: $0.000138
+- Average RAG cost: $0.000219
+- Judge comparison: RAG wins 1, baseline wins 4, ties 5
 
 ## Per-question summary
 
-| # | Question | Baseline cost | RAG cost | Baseline rules | RAG rules | Baseline judge | RAG judge | Retrieval | Expected sections |
-|---|----------|---------------|----------|----------------|-----------|----------------|-----------|-----------|-------------------|
-| q01 | What is the difference between cache-aside and write-through caching strategies? | $0.000137 (50/335) | $0.000316 (2992/416) | 5/7 (strong) | 5/8 (strong) | 3/3 | 3/3 | ok | Cache > When to update the cache |
-| q02 | When should I use a NoSQL database instead of a SQL database? | $0.000197 (50/486) | $0.000299 (3020/369) | 4/8 (strong) | 5/9 (strong) | 3/3 | 3/3 | ok | Database > NoSQL, Database > SQL or NoSQL |
-| q03 | How does master-slave database replication handle reads and writes? | $0.000076 (46/183) | $0.000282 (4406/155) | 10/10 (strong) | 3/11 (partial) | 3/3 | 3/3 | ok | Availability patterns > Replication, Database > Relational database management system (RDBMS) |
-| q04 | What is the CAP theorem and what are its three properties? | $0.000084 (46/205) | $0.000235 (2832/234) | 6/7 (strong) | 6/8 (good) | 3/3 | 3/3 | ok | Principles > CAP theorem |
-| q05 | How can I prevent cross-site scripting and cross-site request forgery attacks? | $0.000258 (52/639) | $0.000222 (1838/325) | 4/8 (strong) | 4/9 (good) | 3/3 | 2/3 | ok | Security > Cross-site scripting (XSS), Security > Cross-site request forgery (CSRF) |
-| q06 | What is the difference between REST and RPC APIs? | $0.000137 (42/337) | $0.000279 (2102/435) | 4/7 (strong) | 5/8 (good) | 3/3 | 3/3 | ok | Communication > REST, Communication > RPC |
-| q07 | What does eventual consistency mean in distributed systems? | $0.000033 (40/78) | $0.000198 (3078/109) | 4/5 (strong) | 4/6 (good) | 3/3 | 3/3 | ok | Principles > Consistency |
-| q08 | How can I horizontally scale a relational database using sharding and federation? | $0.000352 (50/874) | $0.000567 (4578/845) | 6/6 (strong) | 4/7 (good) | 3/3 | 3/3 | ok | Database > Federation, Database > Sharding |
-| q09 | How does a Content Delivery Network reduce latency for static assets? | $0.000057 (46/136) | $0.000178 (1616/242) | 6/7 (strong) | 2/8 (partial) | 2/3 | 3/3 | ok | Concepts > Content delivery network (CDN) |
-| q10 | What is the latency of reading 1 MB sequentially from SSD versus memory? | $0.000162 (54/398) | $0.000194 (2088/224) | 8/9 (strong) | 2/10 (partial) | 2/3 | 1/3 | ok | Appendix > Latency numbers every programmer should know |
+| # | Question | Baseline cost | RAG cost | Baseline rules | RAG rules | Baseline judge | RAG judge | Retrieval | Expected section hit |
+|---|----------|---------------|----------|----------------|-----------|----------------|-----------|-----------|----------------------|
+| q01 | What is the difference between cache-aside and write-through caching strategies? | $0.000117 (50/287) | $0.000227 (2322/276) | 6/7 (strong) | 8/8 (strong) | 3/3 | 2/3 | ok | yes |
+| q02 | When should I use a NoSQL database instead of a SQL database? | $0.000093 (50/225) | $0.000216 (1874/305) | 6/8 (strong) | 9/9 (strong) | 2/3 | 3/3 | ok | yes |
+| q03 | How does master-slave database replication handle reads and writes? | $0.000071 (46/172) | $0.000211 (2266/244) | 10/10 (strong) | 9/11 (strong) | 3/3 | 3/3 | ok | yes |
+| q04 | What is the CAP theorem and what are its three properties? | $0.000058 (46/139) | $0.000184 (2358/166) | 6/7 (strong) | 6/8 (good) | 3/3 | 3/3 | ok | no |
+| q05 | How can I prevent cross-site scripting and cross-site request forgery attacks? | $0.000200 (52/494) | $0.000187 (1160/323) | 7/8 (strong) | 7/9 (good) | 3/3 | 2/3 | ok | no |
+| q06 | What is the difference between REST and RPC APIs? | $0.000160 (42/394) | $0.000278 (1642/489) | 6/7 (strong) | 7/8 (good) | 3/3 | 2/3 | ok | no |
+| q07 | What does eventual consistency mean in distributed systems? | $0.000068 (40/166) | $0.000170 (1686/215) | 4/5 (strong) | 3/6 (good) | 3/3 | 3/3 | ok | no |
+| q08 | How can I horizontally scale a relational database using sharding and federation? | $0.000454 (50/1128) | $0.000400 (2488/688) | 6/6 (strong) | 5/7 (good) | 3/3 | 3/3 | ok | no |
+| q09 | How does a Content Delivery Network reduce latency for static assets? | $0.000060 (46/144) | $0.000132 (954/210) | 7/7 (strong) | 6/8 (good) | 3/3 | 3/3 | ok | no |
+| q10 | What is the latency of reading 1 MB sequentially from SSD versus memory? | $0.000100 (54/242) | $0.000189 (1508/284) | 9/9 (strong) | 8/10 (good) | 2/3 | 1/3 | ok | no |
 
 ## q01: What is the difference between cache-aside and write-through caching strategies?
 
@@ -35,65 +35,59 @@ RAG topK: **5**
 
 ### Baseline (without RAG)
 
-Cost: $0.000137 (50/335)
-Rules: 5/7 (strong)
-Judge: 3/3 — Полностью верный и качественный ответ: объясняет, что cache-aside загружает данные lazily при miss и не обновляет кеш на запись автоматически, в то время как write-through пишет сразу в кэш и в источник данных. Приведены trade-offs: консистентность, задержка записи, простота использования и возможность устаревших данных. Соответствует ожиданиям по секции Cache > When to update the cache.
+Cost: $0.000117 (50/287)
+Rules: 6/7 (strong)
+Judge: 3/3 — Полный и корректный ответ. Четко объясняет cache-aside как ленивый загрузчик данных на пропуск (miss) и обновление кэша при следующем чтении или явной записи, а write-through — синхронное обновление кэша и БД на каждую запись. Раскрыты ключевые различия, включая инициаторов заполнения кэша, консистентность и влияние на производительность/сложность. Также присутствует упоминание секции о времени обновления кэша и торговых-offs (устаревшие данные, простота, задержка записи).
 
-Коротко:
+Кратко:
 
-- Write-through caching: каждый write операция в приложении сразу записывает данные в кэш и в основной источник данных (БД). Гарантия консистентности: кэш всегда содержит актуальные данные. Медленнее на запись, требует больше ресурсов кэша, но проще для чтения.
+- Cache-aside (lazy): приложение сам читает данные из кеша и если их нет (мимо кеша) — читает из БД и записывает в кеш. При обновлении данные пишутся в БД, а кеш обновляется либо при следующем чтении, либо явной операцией. Кеш — второстепенный источник, он заполняется по запросу.
 
-- Cache-aside (lazy) caching: приложение читает из кэша; если данные отсутствуют (cache miss), оно загружает их из источника данных, помещает в кэш и возвращает. Запись в основном источнике данных не обязательно пишет в кэш автоматически: кэш может быть обновлён отдельно, например при записи через приложение. Консистентность менее автоматическая и требует явного обновления кэша при изменениях.
+- Write-through: каждое запись в БД сопровождается мгновенной записью в кеш. Кеш всегда содержит актуальные данные, т.к. не требуется отдельная логика обновления кеша. Упрощает консистентность, но writes идут через кешованный путь.
 
 Ключевые различия:
-- Где запись в кэш происходит: в write-through — автоматически вместе с записью в источник; в cache-aside — только при чтении или при явной инфляции/обновлении.
-- Гарантии консистентности: write-through обеспечивает сильную консистентность между кэшем и источником; cache-aside требует доп. механизмов обновления.
-- Производительность записи: write-through медленнее записи в источник; cache-aside может быть быстрее для записи, если кэш не обновляется синхронно.
-- Простота использования: write-through проще для разработчика в плане консистентности; cache-aside более гибок и экономит ресурсы кэша при редких чтениях.
+- Кто инициирует заполнение кеша: cache-aside — приложение само, write-through — кеш как промежуточный слейв, получает записи сразу.
+- Консистентность: write-through обеспечивает строгую консистентность между БД и кешем; cache-aside требует дополнительной логики обновления/инвалидирования.
+- Производительность/сложность: cache-aside может сэкономить ресурсы кеша для редко запрашиваемых данных; write-through может снизить задержку чтения, но увеличивает время записи и сложность кеша.
 
-- Rule score: 5/7
+- Rule score: 6/7
 - Verdict: strong
-- Matched must-have: cache-aside, write-through
-- Matched nice-to-have: lazy
+- Matched must-have: cache-aside||ленив, write-through||сквозн
+- Matched nice-to-have: lazy||ленив, latency||задерж
 
 ### Retrieval
 
-- Retrieved 5 chunk(s) (strategy=structural, topK=5)
+- Retrieved 3 chunk(s) (strategy=structural, topK=3)
   1. source=scripts/day21/data/system-design-primer.md; section=Cache > When to update the cache; distance=0.7314
   2. source=scripts/day21/data/system-design-primer.md; section=Cache > CDN caching; distance=0.7539
   3. source=scripts/day21/data/system-design-primer.md; section=Cache > When to update the cache; distance=0.7564
-  4. source=scripts/day21/data/system-design-primer.md; section=Cache > Application caching; distance=0.7838
-  5. source=scripts/day21/data/system-design-primer.md; section=Cache > When to update the cache; distance=0.8067
 
-### RAG answerm tool results before
+### RAG answer
 
-Cost: $0.000316 (2992/416)
-Rules: 5/8 (strong)
-Judge: 3/3 — Полный и корректный ответ: ясно объясняет, что cache-aside загружает данные лениво при промахе кэша и что запись в кэш не является автоматической для кэш-слоя, в то время как write-through выполняет синхронную запись в кэш и базу данных. Упомянуты trade-offs (устаревание данных, простота реализации, задержка записи) и добавлены упоминания о Write-behind и Refresh-ahead как дополнительных вариантах.
+Cost: $0.000227 (2322/276)
+Rules: 8/8 (strong)
+Judge: 2/3 — Ответ в целом верно объясняет различия и trade-offs между cache-aside и write-through: lazy loading для cache-aside, синхронное обновление кеша и БД для write-through, а также упоминание задержки и устаревших данных. Тем не менее есть неточность по механизму записи в cache-aside (на практике запись идёт в БД, кеш может обновляться/инвалидироваться позже) и ответ не явно структурирован в соответствии с секцией 'Cache > When to update the cache'.
 
-Ключевые различия:
+Коротко:
 
-- Cache-aside (ленивая загрузка)
-  - Приложение читает из кэша; при отсутствии данные загружаются из БД, кэш записывается.
-  - Cache не участвует в записи в хранилище автоматически; данные пишутся сначала в БД, затем в кэш (когда приложение вызывает запись, кэш может обновляться отдельно, но это не автоматическое поведение кэша).
-  - Преимущества: кэш содержит только востребованные данные; простота реализации.
-  - Недостатки: при промахе кэша задержка из-за триплейца (попытка-database-кую); риск устаревших данных без TTL или доп.策略.
+- Cache-aside (lazy loading)
+  - Приложение читает кеш и при промахе загружает данные из БД, затем кладет в кеш.
+  - Запись в кеш и БД выполняются отдельно: запись в кеш может произойти позже или через другой путь.
+  - Преимущества: простота, кеш заполняется только по запросам; недостатки: задержка при каждом промахе и риск устаревших данных без TTL или других механизмов синхронизации.
 
-- Write-through (запись через кэш)
-  - Приложение пишет в кэш, а кэш синхронно пишет в базу данных.
-  - Чтение после записи быстро, т.к. данные уже в кэше.
-  - Преимущества: кэш содержит актуальные данные, меньше риск устаревания; читается быстро сразу после записи.
-  - Недостатки: запись через кэш может быть медленнее; при масштабировании/сбоях новые ноды могут не иметь кэшированных данных до обновления.
+- Write-through
+  - При записи данные сначала пишутся в кеш, затем синхронно в БД.
+  - Кеш на всегда содержит актуальные данные после записи; чтение после записи очень быстро.
+  - Преимущества: данные в кеше не устаревают; недостатки: более медленная запись из-за синхронного дыма в БД и потенциальные проблемы при новых узлах/разгоне, если данные не кешируются сразу.
 
-Дополнительно упомянуты варианты:
-- Write-behind (write-back): запись в кэш асинхронная в БД; повышает скорость записей, есть риск потери данных при сбое кэша.
-- Refresh-ahead: кеш может обновлять данные до истечения TTL, чтобы снизить задержку поздних запросов.
+Пример из материалов:
+- В cache-aside приложение сначала ищет в кеше, при промахе читает из БД и сохраняет в кеш.
+- В write-through приложение пишет в кеш и синхронно в БД.
 
-Итого: cache-aside делает кэш вторичным к БД (кэш управляется приложением); write-through заставляет кэш быть основным местом записи и синхронно обновлять БД.
-
-- Rule score: 5/8
+- Rule score: 8/8
 - Verdict: strong
-- Matched must-have: cache-aside, write-through
+- Matched must-have: cache-aside||ленив, write-through||сквозн
+- Matched nice-to-have: lazy||ленив, stale||устар, latency||задерж
 - Matched sections: Cache > When to update the cache
 
 ## q02: When should I use a NoSQL database instead of a SQL database?
@@ -104,69 +98,68 @@ Judge: 3/3 — Полный и корректный ответ: ясно объ�
 
 ### Baseline (without RAG)
 
-Cost: $0.000197 (50/486)
-Rules: 4/8 (strong)
-Judge: 3/3 — Полный и корректный ответ: на высоком уровне сравниваются SQL и NoSQL; перечислены случаи, когда NoSQL подходит лучше: гибкая/изменяемая схема, горизонтальное масштабирование, работа с неструктурированными данными и конкретные модели (key-value/document/wide-column/graph); также указаны сценарии для SQL (ACID, сложные запросы, транзакции); даны примеры типов NoSQL и практический совет по выбору и подходу polyglot persistence.
+Cost: $0.000093 (50/225)
+Rules: 6/8 (strong)
+Judge: 2/3 — В целом корректно контрастирует SQL/NoSQL и охватывает ключевые мотивы для выбора NoSQL (гибкая схема, масштаб, данные вне табличной структуры). Пропущено явное упоминание графной модели (graph) как одного из типов NoSQL, и нет явной секции Database > NoSQL / SQL or NoSQL.
 
-Когда стоит выбирать NoSQL вместо SQL:
+Use a NoSQL database when:
 
-- Гибкая схема и вам нужны частые изменения структуры данных (много JSON/документов, ключ-значение без фиксированного схемы).
-- Масштабируемость по горизонтали как приоритет (распределённое хранение данных, несколько узлов).
-- Непрерывная схема динамическая или полуструктурированная (много полей, опциональные поля).
-- Требуется высокая скорость записи и чтения для конкретного паттерна доступа (например, кэш-слой, реальное время, журнал событий).
-- Работа с большими объемами данных (Big Data, логи, клики, метрики) и менее строгие требования к транзакциям.
-- Нужна хранение неструктурированных данных (медиа, документы, графовые связи) без сложной SQL-модели.
-- Нужна географически распределённая база с локальными чтениями в разных регионах.
+- Flexible schemas or dynamic data: you need evolving or heterogeneous data models (JSON-like documents, key-value, wide-column).
+- High scalability and throughput: you require easy horizontal scaling and large write/read throughput.
+- Low-latency, high-availability needs: you can tolerate eventual consistency or your app is OK with AP/BASE models.
+- Semi-structured data or complex relationships are not strong constraints: you don’t need strict ACID across multiple documents.
+- Rapid development with evolving requirements: you want faster schema changes and iterative development.
 
-Когда лучше использовать SQL:
+Prefer SQL when:
 
-- Тонко спроектированная, строгая схема и целостность данных (ACID).
-- Сложные запросы, аналитика, множество соединений между таблицами.
-- Гарантии транзакций и согласованности, строгие целостности данных.
-- Многопользовательские транзакции и схемы с фиксированными отношениями.
+- Strong ACID transactions and data integrity are critical (financial, inventory, accounts).
+- Fixed, well-defined schema with relationships and complex queries (joins) are common.
+- Mature tooling, reporting, and complex analytics are important.
+- You require strict consistency and standard SQL querying.
 
-Типовые примеры:
+Common hybrid approach: use SQL for core transactional data and NoSQL (or specialized NewSQL) for scalability, caching, logs, or unstructured data.
 
-- NoSQL: документы (MongoDB), ключ-значение (Redis), графовые (Neo4j), широкие колонки (Cassandra), поисковые (Elasticsearch) — когда нужен гибкий контракт схемы, масштаб и скорость по конкретным паттернам.
-- SQL: реляционные приложения с четкими отношениями (банковские, ERP, бухгалтерия), аналитика с сложными джойнами и транзакциями.
-
-Совет: начинайте с требований к схеме, согласованности и масштабируемости. Если строгая схема и транзакции критичны — SQL. Если нужна гибкость, горизонтальное масштабирование и работа с большими/неструктурированными данными — NoSQL. Иногда применяют полимерный подход: хранение баз в разных слоях (polyglot persistence).
-
-- Rule score: 4/8
+- Rule score: 6/8
 - Verdict: strong
-- Matched must-have: NoSQL, SQL
+- Matched must-have: NoSQL||No SQL, SQL||реляцион
+- Matched nice-to-have: key-value||ключ-знач, document||документ
 
 ### Retrieval
 
-- Retrieved 5 chunk(s) (strategy=structural, topK=5)
+- Retrieved 3 chunk(s) (strategy=structural, topK=3)
   1. source=scripts/day21/data/system-design-primer.md; section=Database > NoSQL; distance=0.7990
   2. source=scripts/day21/data/system-design-primer.md; section=Database > NoSQL; distance=0.8024
   3. source=scripts/day21/data/system-design-primer.md; section=Cache > Database caching; distance=0.8102
-  4. source=scripts/day21/data/system-design-primer.md; section=Cache > Application caching; distance=0.8172
-  5. source=scripts/day21/data/system-design-primer.md; section=Database > SQL or NoSQL; distance=0.8272
 
 ### RAG answer
 
-Cost: $0.000299 (3020/369)
-Rules: 5/9 (strong)
-Judge: 3/3 — Полный и корректный ответ: объясняет на высоком уровне, когда NoSQL выгоднее SQL (слабосхемные данные, масштаб, гибкая/различные модели данных), даёт примеры применений, упоминает BASE и eventual consistency и отмечает ограничения.
+Cost: $0.000216 (1874/305)
+Rules: 9/9 (strong)
+Judge: 3/3 — Полный и корректный ответ: ясно объясняет, когда стоит рассмотреть NoSQL вместо SQL, охватывает горизонтальное масштабирование, гибкие схемы и разные модели данных (ключ-значение, документ, граф, широкие колонки), а также BASE vs ACID и соответствующие trade-offs. Соответствует ожидающим секциям и терминам.
 
-Когда использовать NoSQL вместо SQL (на основе материалов):
+Когда использовать NoSQL вместо SQL:
 
-- Когда данные «слабосхемные» или динамичные: semi-structured, гибкая схема, без необходимости сложных связей. Примеры: журналы, логи, clickstream, временные данные, метаданные. Источник 5.
-- Когда требуется очень большая масштабируемость и очень высокая пропускная способность: хранение терабайт/паблионов данных, очень высокие IOPS. Источник 5.
-- Когда не требуется сложных join’ов и ACID-транзакций: данные могут быть денормализованы, логику объединения держит приложение. Источник 1.
-- При выборе типа NoSQL: ключ-значение, документ-ориентированные, wide-column или графовые подтипах — в зависимости от модели и доступа к данным. Источник 1.
-- Для быстроходного доступа к данным, где у вас есть потребность в очень быстрых операциях чтения/записи и можно пожертвовать строгими транзакциями (BASE против ACID). Источник 1.
+- Требуется шкалирование по горизонтали (распределённое хранение данных) и высокая доступность.
+- Модели данных без жестких связей и нормализации: документа/ключ-значение, графы, широкие колонки. Применимо для быстро меняющихся данных.
+- Нужна денормализация и минимизация сложных join’ов в БД; логику соединения чаще ведёт приложение.
+- Желаемая модель данных: ключ-значение, документ, граф или широкая колонка (в зависимости от кейса).
+- Наличие BASE и готовность к eventual consistency, а не строгой ACID.
 
-Примеры задач, хорошо подходящих под NoSQL: лидерборды, временные корзины покупок, часто читаемые «hot» таблицы, индексы/lookup-таблицы, хранение больших объемов данных без сложных связей. Источник 5.
+Обратите внимание: NoSQL может не поддерживать ACID полностью; лучше подойдет, когда важнее доступность и масштабируемость, чем строгая консистентность в транзакциях.
 
-Контекст/ограничения: NoSQL обычно не обеспечивает ACID в полном объёме; применяется BASE и eventual consistency. Разные подтипы NoSQL подходят под разные сценарии (ключ-значение, документы, wide-column, граф). Источник 1.
+Как выбрать конкретную тип NoSQL:
+- Для простых пар ключ-значение и кэширования — ключ-значение store.
+- Для гибких схем и вложенных документов — документ-ориентированная база.
+- Для сложных связей и графов — графовая база.
+- Для больших наборов столбцов и аналитики по колонкам — wide-column store.
 
-- Rule score: 5/9
+Если нужен более конкретный совет по вашему кейсу, опишите модель данных и требования к транзакциям.
+
+- Rule score: 9/9
 - Verdict: strong
-- Matched must-have: NoSQL, SQL
-- Matched sections: Database > NoSQL, Database > SQL or NoSQL
+- Matched must-have: NoSQL||No SQL, SQL||реляцион
+- Matched nice-to-have: key-value||ключ-знач, document||документ, wide column||широк, graph||граф
+- Matched sections: Database > NoSQL
 
 ## q03: How does master-slave database replication handle reads and writes?
 
@@ -176,45 +169,47 @@ Judge: 3/3 — Полный и корректный ответ: объясняе
 
 ### Baseline (without RAG)
 
-Cost: $0.000076 (46/183)
+Cost: $0.000071 (46/172)
 Rules: 10/10 (strong)
-Judge: 3/3 — Полностью соответствует ожиданиям. Упомянуты: мастер принимает записи, реплики читают, существует лаг репликации, возможен отказоустойчивый failover, а также стратегии чтения/записи через прокси и варианты консистентности (асинхронная репликация, полубинарная/мульти-мастер и т. д.).
+Judge: 3/3 — Полностью соответствует ожиданиям: объясняет, что writes идут на мастер, reads — на реплики/слейвы; упоминается репликация с лагом (асинхронно или полусинхронно) и возможные trade-offs, включая failover и паттерн чтение/запись.
 
-- Writes go to the master. All updates (insert/update/delete) are applied there.
-- Reads can be served by the master or replicated slaves. In typical setups:
-  - Reads are distributed to slaves to offload the master (read scaling).
-  - Writes are not automatically sent to slaves; they originate on the master and are asynchronously replicated to slaves.
-- Replication lag: there is usually some delay (latency) before changes on the master appear on slaves.
-- Consistency: reads from slaves may be slightly stale; reads from the master are up-to-date.
-- Failover: if the master fails, you may promote a slave to master (automatic or manual) and reconfigure clients.
-- Common strategies: read/write splitting with a proxy, multi-master/semi-synchronous replication for stricter consistency.
+- Writes go to the master (primary) database. The master handles all update/insert/delete operations.
+- Reads go to the slaves (replicas). Read requests can be distributed across one or more slaves to balance load.
+- Replication: changes from the master are asynchronously (or semi-synchronously) streamed to slaves to keep them in sync. There’s typically a replication lag.
+- Pros: simple to implement, good read scaling.
+- Cons/cons: eventual consistency (reads may see stale data), single point of write bottleneck at master, lag during high write throughput, failover risk if master unavailable.
+- Typical patterns: read-write split, application logic to route writes to master and reads to slaves; optional multi-master or failover mechanisms for availability.
 
 - Rule score: 10/10
 - Verdict: strong
-- Matched must-have: writes, reads, master, replica
-- Matched nice-to-have: replication lag, failover
+- Matched must-have: writes||запис, reads||чтен, master||мастер, replica||реплик||slave||слейв
+- Matched nice-to-have: replication lag||лаг, failover||переключ||promote
 
 ### Retrieval
 
-- Retrieved 5 chunk(s) (strategy=structural, topK=5)
+- Retrieved 3 chunk(s) (strategy=structural, topK=3)
   1. source=scripts/day21/data/system-design-primer.md; section=Availability patterns > Replication; distance=0.6379
   2. source=scripts/day21/data/system-design-primer.md; section=Database > Relational database management system (RDBMS); distance=0.6390
   3. source=scripts/day21/data/system-design-primer.md; section=Database > Relational database management system (RDBMS); distance=0.6544
-  4. source=scripts/day21/data/system-design-primer.md; section=Index of system design topics; distance=0.7474
-  5. source=scripts/day21/data/system-design-primer.md; section=Cache > When to update the cache; distance=0.8151
 
 ### RAG answer
 
-Cost: $0.000282 (4406/155)
-Rules: 3/11 (partial)
-Judge: 3/3 — Правильно описано: мастер принимает записи, реплики/слейвы обслуживают чтение; упомянут лаг репликации и вопросы фейловера (promote-slave-to-master) и риск потери данных до репликации.
+Cost: $0.000211 (2266/244)
+Rules: 9/11 (strong)
+Judge: 3/3 — Полностью верно: мастер отвечает за записи, реплики/slaves обслуживают чтение; упомянуты задержка репликации (lag) и переключение/промоушен при отказе мастера, что соответствует ожидаемым секциям.
 
-Кратко: в master-slave чтение идёт с реплик (слейвов), запись — на мастер. Мастер обрабатывает все записи и реплицирует их на слейвы, которые затем обслуживают чтение. Возможные недостатки: задержка репликации (лаг), нужно дополнительное управление promote-slave‑to‑master при падении мастера, потенциал потери данных при сбое мастера до репликации. Источники описывают: мастер-slave мастер-майстер различия, слейвы читают, мастер пишет; репликация может создавать лаг и сложность при переключении ролей.
+Кратко:
 
-- Rule score: 3/11
-- Verdict: partial
-- Matched must-have: master
-- Missed must-have: writes, reads, replica
+- Мастер-слейв: мастер принимает и записывает данные; слейвы реплицируют письма от мастера и обслуживают чтение. Чтения идут с слейвов, записи — только на мастере. При выходе мастера система может работать в режиме чтения по слейвам до назначения нового мастера.
+- Проблемы: задержка репликации (lag), необходимость продвижения слейва в мастера при отказе, дополнительная логика для маршрутизации записей и обработки чтений.
+
+Из материалов:
+- Master-slave: мастер служит чтениям и записям, слейвы — только чтение; репликация записей на слейвы; возможна иерархия слейвов. Плюс: при отказе мастера можно перейти в режим только чтения до замены мастера.
+- Предупреждения: задержка репликации, риск потери данных при сбое мастера до репликации, больше нагрузки на мастер из-за записи и репликации.
+
+- Rule score: 9/11
+- Verdict: strong
+- Matched must-have: writes||запис, reads||чтен, master||мастер, replica||реплик||slave||слейв
 - Matched sections: Availability patterns > Replication, Database > Relational database management system (RDBMS)
 
 ## q04: What is the CAP theorem and what are its three properties?
@@ -225,49 +220,48 @@ Judge: 3/3 — Правильно описано: мастер принимае�
 
 ### Baseline (without RAG)
 
-Cost: $0.000084 (46/205)
+Cost: $0.000058 (46/139)
 Rules: 6/7 (strong)
-Judge: 3/3 — Полный и корректный ответ: дано определение CAP, перечислены три свойства (Consistency, Availability, Partition tolerance) и пояснение ограничений при разрыве сети; упомянуты возможные пары свойств (CA, AP, CP).
+Judge: 3/3 — Полное и корректное объяснение CAP, перечислены три свойства и их смысл; соответствует ожиданию и секции Principles > CAP theorem, без заметных ошибок.
 
-CAP theorem: в распределённых системах невозможно одновременно обеспечить все три свойства в любом порядке. За периодическую группу запросов система может обеспечить не более двух из трёх свойств.
+CAP theorem: In a distributed data store, you can’t simultaneously guarantee Consistency, Availability, and Partition tolerance. At most two of the three can be achieved.
 
-Три свойства:
-- Consistency (Согласованность): все узлы видят одни и те же данные в одно и то же время.
-- Availability (Доступность): каждый запрос к системе получает ответ (без гарантии свежести данных).
-- Partition tolerance (Толерантность к разрыву сети): система продолжает работать несмотря на сетевые разделения (разрывы между узлами).
+Three properties:
+- Consistency (C): Every read receives the most recent write or an error.
+- Availability (A): Every request receives a (non-error) response, without guarantee of being the latest.
+- Partition tolerance (P): The system continues to operate despite network partitions that separate nodes.
 
-Краткая суть: в случае сетевого разрыва можно выбрать либо Consistency + Availability (CA) или Availability + Partition tolerance (AP) или Consistency + Partition tolerance (CP); фактически в распределённых системах при разрыве сети приходится пожертвовать либо согласованностью, либо доступностью.
+Implications: In presence of a network partition, you must choose between C and A. Without partitions, you can have C and A.
 
 - Rule score: 6/7
 - Verdict: strong
-- Matched must-have: consistency, availability, partition tolerance
+- Matched must-have: consistency||согласован, availability||доступност, partition tolerance||partition-tolerant||устойчивост к разрыв
 
 ### Retrieval
 
-- Retrieved 5 chunk(s) (strategy=structural, topK=5)
+- Retrieved 3 chunk(s) (strategy=structural, topK=3)
   1. source=scripts/day21/data/system-design-primer.md; section=Database > NoSQL; distance=0.8701
   2. source=scripts/day21/data/system-design-primer.md; section=Asynchronism > Source(s) and further reading; distance=0.8748
   3. source=scripts/day21/data/system-design-primer.md; section=Availability patterns > Availability in numbers; distance=0.9070
-  4. source=scripts/day21/data/system-design-primer.md; section=Reverse proxy (web server) > Disadvantage(s): reverse proxy; distance=0.9109
-  5. source=scripts/day21/data/system-design-primer.md; section=Reverse proxy (web server) > Source(s) and further reading; distance=0.9112
 
 ### RAG answer
 
-Cost: $0.000235 (2832/234)
+Cost: $0.000184 (2358/166)
 Rules: 6/8 (good)
-Judge: 3/3 — Полное и корректное определение CAP теоремы и трёх свойств: Consistency, Availability, Partition tolerance; объяснение trade-off при наличии разрыва связи и упоминание BASE как альтернатива.
+Judge: 3/3 — Полный и корректный ответ. Дано определение CAP-теоремы, перечислены три свойства (consistency, availability, partition tolerance) и их суть; формулировка согласуется с ожидаемой секцией Principles > CAP theorem; присутствуют релевантные контекст и термины (grounding).
 
-CAP теорема (построение распределённых систем) говорит, что в любом распределённом хранении данных нельзя одновременно обеспечить три свойства:
+CAP theorem: In a distributed data system, it is impossible to simultaneously provide all three guarantees—Consistency, Availability, and Partition tolerance. A system can satisfy at most two of the three at any given time.
 
-- C (Consistency) — единая согласованность: чтение возвращает наиболее свежие записанные данные; все узлы видят один и тот же ответ.
-- A (Availability) — доступность: каждый запрос к системе получает ответ (независимо от состояния узлов).
-- P (Partition tolerance) — устойчивость к сетевым разрывам: система продолжает работать при разделении сети, т.е. между кластерами возникают сетевые задержки или потери связи.
+Three properties:
+- Consistency: All nodes see the same data at the same time.
+- Availability: Every request receives a (non-error) response, without guaranteed freshness of data.
+- Partition tolerance: The system continues to operate despite any number of messages being dropped or delayed between nodes (i.e., network partitions).
 
-Применение CAP означает выбирать между согласованностью и доступностью в условиях сетевых разделений (PartitionTolerance обязательна для распределённых систем; в реальности её наличие принято считать данным). В документах материала упоминается BASE как альтернатива CAP, где предпочтение отдаётся доступности и eventual consistency. Если нужно — могу привести примеры trade-offs для SQL/NoSQL систем по материалу.
+Context from materials: The provided sources mention BASE vs CAP and discuss availability and consistency trade-offs in NoSQL systems, highlighting that many NoSQL stores favor availability and eventual consistency over strict ACID/strong consistency.
 
 - Rule score: 6/8
 - Verdict: good
-- Matched must-have: consistency, availability, partition tolerance
+- Matched must-have: consistency||согласован, availability||доступност, partition tolerance||partition-tolerant||устойчивост к разрыв
 
 ## q05: How can I prevent cross-site scripting and cross-site request forgery attacks?
 
@@ -277,80 +271,76 @@ CAP теорема (построение распределённых систе
 
 ### Baseline (without RAG)
 
-Cost: $0.000258 (52/639)
-Rules: 4/8 (strong)
-Judge: 3/3 — Полный и корректный ответ, разделяет XSS и CSRF, охватывает основные контрмеры (санитация/экранирование, CSP, безопасные шаблоны, HttpOnly/Secure cookies для XSS; CSRF‑токены, SameSite, Referer/Origin и безопасные методы) и включает практический список действий.
+Cost: $0.000200 (52/494)
+Rules: 7/8 (strong)
+Judge: 3/3 — Полностью верно и полно: разделение XSS и CSRF, перечисление основных mitigations (экранирование/санитизация и CSP для XSS; CSRF-токены, SameSite, double-submit, Referer/Origin, безопасные методы) и шаги внедрения. Соответствует ожиданиям.
 
-Чтобы предотвратить XSS и CSRF, применяйте сочетание техник и рекомендаций:
+Кратко по делу:
 
 XSS (межсайтовый скриптинг)
-- Экранировать выходные данные: контент, HTML, атрибуты, URL, данные из запросов. Используйте безопасные функции вывода в фреймворке.
-- Свести к минимуму доверие к входящим данным: валидируйте и санитизируйте данные.
-- Используйте Content Security Policy (CSP): ограничивает выполнение скриптов и загрузку ресурсов.
-- Автоматически избегайте инъекций в HTML: используйте шаблонизаторы с экранированием по умолчанию.
-- Защищайте ввод: избегайте рекурсивной передачи пользовательских данных в браузер без обработки.
-- Защита от XSS в URL: энкодируйте параметры URL и избегайте вставки произвольного HTML/JS в контекст.
-- HTTPOnly и Secure флаги для куки: запрещают доступ к кукам через JavaScript.
-- Ограничьте использование dangerouslySet/innerHTML (для React/Vue и т.д.).
+- Валидация и экранирование входящих данных: кодируйте все выходящие данные в контексте (HTML, JS, CSS, URL).
+- Используйте безопасные функции вывода (escape/encode) и шаблоны.
+- Content Security Policy (CSP): ограничьте источники скриптов, стилей и объекты.
+- HttpOnly и Secure флаги для cookies: защищают куки от доступа через JavaScript и отправку по HTTPS.
+- Нетравимые обновления: избегайте инъекций путем использование параметризованных запросов к БД (prepared statements).
+- Ввод ограничений: минимизируйте допустимый ввод и валидируйте на сервере.
+- Защита от DOM-based XSS: избегайте необработанных данных в DOM; используйте безопасные методы манипуляций.
 
-CSRF (межсайтовая подделка запросов)
-- Валидация CSRF-токенов: добавляйте уникальный токен в формы и проверяйте на сервере.
-- SameSite куки: устанавливайте SameSite=Strict или Lax, чтобы куки не отправлялись на сторонние сайты по умолчанию.
-- Проверка Referer/Origin: дополнительная проверка заголовков запроса, если это применимо.
-- Использование безопасных методов: требуйте изменения состояния через POST/PUT и пр.; избегайте действий через GET.
-- Двухфакторная аутентификация и MFA для критичных операций (если релевантно).
-- Не полагайтесь только на пользователя, применяйте многоступенчатую защиту.
+CSRF (межсайтовая подделка запроса)
+- Проверка CSRF-токена: включайте уникальный CSRF-токен в каждую форму и проверяйте на сервере.
+- SameSite cookies: устанавливайте SameSite=Strict или Lax для кук по умолчанию.
+- Double-submit cookies: токен в куках и в теле запроса (при отсутствии HttpOnly).
+- Проверка реферера/Origin: базовая проверка происхождения запроса, особенно для критических действий.
+- Мягкие методы: используйте безопасные методы HTTP для изменений состояния (POST/PUT/DELETE) и требуйте повторную аутентификацию там, где нужно.
+- Аудит и тестирование: регулярно проводите сканирование на XSS/CSRF и внедряйте CSP-слои.
 
-Практический список действий
-- Веб-приложение:
-  - Включите CSP и настройте безопасные источники.
-  - Всегда экранируйте выводимые данные.
-  - Используйте безопасные шаблоны/фреймворки с автоэкранованием.
-  - Установите HTTPOnly и Secure для куки сессий.
-  - Включите SameSite куки (например, SameSite=Strict).
-  - Реализуйте и валидируйте CSRF-токены во всех изменяющих данные запросах.
-  - Ограничьте доступ к API и применяйте CSRF-токены для браузерных клиентов, но не для API-ключей и сервисных аккаунтов.
-  - Регулярно обновляйте зависимости, проводите статический анализ и тестируйте на XSS/CSRF.
+Коротко по шагам
+1) Включите CSP и применяйте строгий контент-дескриптор.
+2) Экранируйте/кодируйте все выходящие данные.
+3) Используйте HttpOnly/Secure куки и SameSite.
+4) Применяйте параметризованные запросы к БД.
+5) Внедрите CSRF-токены для форм и API.
+6) Регулярно тестируйте и обновляйте зависимости.
 
-Если у вас есть контекст (язык/фреймворк и т.д.), могу привести конкретные настройки и примеры кода.
-
-- Rule score: 4/8
+- Rule score: 7/8
 - Verdict: strong
-- Matched must-have: XSS, CSRF
+- Matched must-have: XSS||cross-site scripting, CSRF||cross-site request forgery
+- Matched nice-to-have: escape||экранир, token||токен, same-site||samesite
 
 ### Retrieval
 
-- Retrieved 5 chunk(s) (strategy=structural, topK=5)
+- Retrieved 3 chunk(s) (strategy=structural, topK=3)
   1. source=scripts/day21/data/system-design-primer.md; section=Domain name system > Disadvantage(s): DNS; distance=0.7545
   2. source=scripts/day21/data/system-design-primer.md; section=Cache > Web server caching; distance=0.7863
   3. source=scripts/day21/data/system-design-primer.md; section=Security; distance=0.7974
-  4. source=scripts/day21/data/system-design-primer.md; section=Application layer > Service Discovery; distance=0.8160
-  5. source=scripts/day21/data/system-design-primer.md; section=Content delivery network > Push CDNs; distance=0.8464
 
 ### RAG answer
 
-Cost: $0.000222 (1838/325)
-Rules: 4/9 (good)
-Judge: 2/3 — Частично верно: ответ различает XSS и CSRF и упоминает ключевые mitigations (санитация/экранирование для XSS; токены CSRF и SameSite для CSRF). Однако структура не в явном виде выделена по секциям Security > XSS/CSRF, формулировки местами расплывчатые и есть несвязанная реплика про SQL-инъекции. В целом идеи присутствуют, но оформление и полнота могли быть лучше.
+Cost: $0.000187 (1160/323)
+Rules: 7/9 (good)
+Judge: 2/3 — В целом верно: отделяет XSS и CSRF, перечисляет базовые mitigations (санитизация/экранирование для XSS; CSRF-токены). Недостаточно упомянута защита SameSite (важная мера против CSRF), и часть материала по CSRF может быть не явно подкреплена источниками; некоторые пункты выходят за рамки материалов.
 
-Кратко: в материалах прямо по XSS/CSRF не приведены конкретные инструкции, они косвенно упоминаются в разделе Security.
+Кратко по методам предотвращения XSS и CSRF, опираясь на предоставленные материалы:
 
-Что можно извлечь из материалов:
-- Применяйте базовые меры безопасности: шифрование в движении и в хранении, санитация входящих данных, использование параметризованных запросов и принцип минимума привилегий. Это косвенно помогает уменьшить риск XSS и SQL-инъекций, но не охватывает CSRF напрямую.
-- Санитизация входов и защита от XSS важны: упоминается необходимость санитизации входных параметров, чтобы предотвратить XSS.
-- Для CSRF в представленных материалах прямых рекомендаций нет.
+- XSS:
+  - Санитизация входных данных и параметров, которые отправляются от пользователя (sanitize user inputs) чтобы не допустить внедрения вредоносного кода.
+  - Применение безопасного кодирования при выводе данных в HTML (избегать вывода сырых пользовательских значений без экранирования).
+  - Использовать параметризованные запросы и общую принципиальную защиту на уровне приложения (из раздела Security: “Sanitize all user inputs … to prevent XSS” и “Encrypt in transit and at rest”).
 
- Ограничения базы: в предоставленных источниках слабый фокус на конкретных техниках предотвращения XSS/CSRF. Не могуствовать дополнительные источники из вне.
+- CSRF (CSRF не прямо упомянут в материалах, но логично следует из базовых принципов безопасности и защиты веб-приложений):
+  - Применение сильной аутентификации и проверки CSRF-токенов на состояниях, изменяющих данные.
+  - Принцип минимальных привилегий и проверка подлинности запросов.
 
- Рекомендации (которые обычно применяются, но не подробно в материалах): 
-- XSS: экранирование/санитизация входов и выходов, контентная политика безопасности (CSP), использование безопасных API для DOM, анти-XSS библиотеки.
-- CSRF: использование CSRF-токенов, SameSite cookies (Lax/Strict), проверка Referer/Origin там, где возможно.
+Общие принципы из материалов:
+- Шифрование в транзите и на хранении.
+- Санитация входных данных и использование безопасных практик разработки (OWASP и т.д. в источниках).
 
-Если хотите, могу дать краткую проверочную памятку по каждому пункту без внешних источников.
+Если нужно, могу дать краткий чек-лист по внедрению в коде (например, примеры экранирования вывода, какие заголовки и токены использовать).
 
-- Rule score: 4/9
+- Rule score: 7/9
 - Verdict: good
-- Matched must-have: XSS, CSRF
+- Matched must-have: XSS||cross-site scripting, CSRF||cross-site request forgery
+- Matched nice-to-have: escape||экранир, sanitize||санит, token||токен
 
 ## q06: What is the difference between REST and RPC APIs?
 
@@ -360,67 +350,77 @@ Judge: 2/3 — Частично верно: ответ различает XSS и
 
 ### Baseline (without RAG)
 
-Cost: $0.000137 (42/337)
-Rules: 4/7 (strong)
-Judge: 3/3 — Полный, корректный ответ: REST — ресурс-ориентированный стиль (ресурсы через URL, стандартные HTTP-методы, stateless, чаще JSON/XML, HATEOAS); RPC — операционно-ориентированный стиль (вызов удалённой процедуры/метода, прямые вызовы функций, может работать поверх HTTP или другого транспорта и использовать свои форматы сериализации). Приведены отличия по подходу и стандартам. Есть мелкая опечатка ('журналистика' вместо 'stateless'), но она не ломает смысл.
+Cost: $0.000160 (42/394)
+Rules: 6/7 (strong)
+Judge: 3/3 — Полный и корректный ответ: ясно объясняет различие REST как ресурс-ориентированного стиля и RPC как процедурно-ориентированного. Упоминаются ресурсы, HTTP-методы и гипермедиа для REST; вызовы удалённых процедур/методов, контракты и сериализация для RPC; разобраны ключевые различия, гипермедиа, а также сценарии выбора. Соответствует ожидаемым секциям и терминам.
 
 Кратко:
 
-- REST API
-  - Архитектурный стиль. Ресурсы идентифицируются через URL, операции выполняются по стандартным HTTP-методам (GET, POST, PUT, DELETE и т. д.).
-  - Основан на представлениях ресурсов и состояниях; чаще используют JSON/XML.
-  - Журналистика (stateless): каждый запрос должен содержать всю необходимую информацию; сервер не хранит состояние между запросами.
-  - Часто используют гипермедий (HATEOAS) и конвенции RESTful.
+- REST API:
+  - Архитектурный стиль. Использует ресурсы (URN/URL) и стандартные HTTP-методы (GET, POST, PUT, PATCH, DELETE).
+  - Стратегия: манипуляции ресурсами через их представления; статус — статусы HTTP; чаще используют гипермедиа (HATEOAS).
+  - Фокус на ресурсы, согласование форматов через представления (обычно JSON/XML).
 
-- RPC API
-  - Функционально-ориентирован. Клиент вызывает удалённую процедуру/метод как локальный вызов.
-  - Меньше абстракции над ресурсами; операции часто соответствуют конкретным методам (например, convertCurrency, getUserInfo).
-  - Может быть реализован поверх HTTP (REST-like RPC, gRPC) или другой транспорт.
-  - Часто менее зависим от стандартов HTTP; может использовать собственные форматы сериализации (JSON-RPC, XML-RPC, Protocol Buffers в gRPC).
+- RPC API:
+  - Функциональный стиль. Клиент вызывает удалённую процедуру/метод как локальную функцию.
+  - Вызовы определяются набором методов/эндпойнтов, часто с передачей параметров и возвратом результата.
+  - Меньше акцента на ресурсах; больше на действиях. Может быть собственный контракт и сериализация (JSON, Protobuf, и т. п.).
 
 Ключевые различия:
-- Подход: REST — ресурс-ориентированный; RPC — вызов удалённой функции.
-- Всё в HTTP-методах vs явные методы/граммвызовы.
-- Стейтлесс с ресурсами vs прямые вызовы функций.
-- Стандарты и конвенции REST против конкретного интерфейса RPC.
+- Объект внимания: REST — ресурсы, RPC — функции/методы.
+- Способ взаимодействия: REST — действия через HTTP-методы и состояния ресурса; RPC — вызов удалённой функции.
+- Стандарты: REST опирается на принципы HTTP (статусы, кэширование, гипермедиа); RPC может быть более самодостаточным набором контрактов без строгих HTTP-обязательств.
+- Гипермедиа: в REST может быть навигация через ссылки; в RPC обычно нет.
 
-- Rule score: 4/7
+Когда выбрать:
+- REST: веб-аппликации, публичные API, требующие кэширования, масштабирования и совместимости.
+- RPC: внутренние сервисы, низкозатратные вызовы между микросервисами, требования к четкому контракту и низкой задержке.
+
+- Rule score: 6/7
 - Verdict: strong
-- Matched must-have: REST, RPC
+- Matched must-have: REST||resource-oriented||ресурс, RPC||procedure-oriented||процедур||операц
+- Matched nice-to-have: resource||ресурс, procedure||процедур
 
 ### Retrieval
 
-- Retrieved 5 chunk(s) (strategy=structural, topK=5)
+- Retrieved 3 chunk(s) (strategy=structural, topK=3)
   1. source=scripts/day21/data/system-design-primer.md; section=Asynchronism > Source(s) and further reading; distance=0.8893
   2. source=scripts/day21/data/system-design-primer.md; section=Content delivery network > Disadvantage(s): CDN; distance=0.9002
   3. source=scripts/day21/data/system-design-primer.md; section=Database > NoSQL; distance=0.9182
-  4. source=scripts/day21/data/system-design-primer.md; section=Cache > Disadvantage(s): cache; distance=0.9187
-  5. source=scripts/day21/data/system-design-primer.md; section=Content delivery network > Source(s) and further reading; distance=0.9209
 
 ### RAG answer
 
-Cost: $0.000279 (2102/435)
-Rules: 5/8 (good)
-Judge: 3/3 — Ответ полностью и точно сравнивает REST как стиль, ориентированный на ресурсы и их представления, с RPC как моделью вызова удалённых операций; приводятся ключевые различия (ресурсы vs операции, HTTP-методы vs произвольные вызовы, соответствие HTTP, статeless/кэширование, версионирование). Упомянуты ограничения источников.
-
-В найденных материалах прямого описания различий REST и RPC нет. Поэтому отвечу кратко по сути и отмечу ограниченность источников.
+Cost: $0.000278 (1642/489)
+Rules: 7/8 (good)
+Judge: 2/3 — В целом верно и понятно: REST как ресурс-ориентированный, RPC как процедурно/операционно ориентированный, перечислены практические различия. Однако grounding на предоставленные retrieval-данные слабый (ответ опирается на общие знания), и есть небольшие неточности в формулировках (упоминание «state transfer» и стиль).
 
 Кратко:
-- REST (Representational State Transfer) – архитектурный стиль для веб‑API, основанный на ресурсах (URN/URL), операциях только через стандартные HTTP‑методы (GET, POST, PUT, DELETE и т. д.), самодостаточность ответов, гипермедиа (HATEOAS) может присутствовать. Обычно речь идёт об работе с ресурсами и репрезентациями их состояний.
-- RPC (Remote Procedure Call) – моделирует вызов удалённой процедуры/функции как локального вызова. Часто ориентирован на действия/методы, не обязательно ограничен ресурсами, может использовать любые интерфейсы и уровни абстракции. В REST‑контексте это чаще воспринимается как «многочисленные RPC‑конец точки» поверх HTTP, но без строгой привязки к ресурсам.
 
-Основные практические различия (общий консенсус):
-- Структура: REST опирается на ресурсы и представления; RPC — на вызов конкретной операции.
-- Операции: REST использует стандартные HTTP‑методы; RPC может использовать любой набор методов, чаще передает параметры в теле запроса.
-- Соответствие HTTP: REST‑API хорошо вписываются в принципы HTTP («stateless», кэшируемость, адресуемость ресурса); RPC не обязан следовать этим принципам и может не использовать кэширование на уровне HTTP.
-- Эволюция: REST обычно более гибок к изменениям ресурсов и версионированию через URL/представления; RPC может требовать версионирования операций.
+- REST (Representational State Transfer)
+  - Архитектурный стиль веб-API.
+  - Клиенты взаимодействуют с ресурсами через унифицированные HTTP-методы (GET, POST, PUT, DELETE и т.д.).
+  - Ресурсы идентифицируются по URL; обмен происходит через стандартные форматы данных (обычно JSON или XML).
+  - Структура сообщений и маршрутизация завязаны на ресурсах и гипермедиа (в некоторых реализациях) — «state transfer» через набор операций над ресурсами.
+  - Обычно ориентирован на CRUD-операции и имеет статусы ресурсов, кэшируемость, гипермедию и независимость клиента/сервера.
 
-Ограничение: в предоставленных материалах нет детального объяснения REST/RPC. Если нужен более точный разбор, могу привести внешние источники или расписать примеры.
+- RPC (Remote Procedure Call) API
+  - Инкапсулирует вызов удаленной функции/метода.
+  - Клиент вызывает удаленную процедуру по имени и передает параметры; ответ возвращает результат выполнения.
+  - Не обязательно привязан к HTTP-методам или ресурсам; важно действие/функция и её сигнатура.
+  - Может быть более эффективным для исполнений, где нужен конкретный вызов (например, обновить состояние через одну операцию), но менее «посредственный» в терминах ресурсов и гипермедиа.
 
-- Rule score: 5/8
+Различия на практике
+- Модель: REST — ресурс-ориентированная; RPC — процедура-ориентированная.
+- Инварианты: REST использует статусы HTTP, кэшируемость, URIs как ресурсы; RPC может не следовать этим принципам и чаще фокусируется на вызове конкретной функции.
+- Расширяемость/кешируемость: REST легче кэшировать и разворачивать в веб-инфраструктуре; RPC-проанализировать можно как внутри сервиса, так и поверх HTTP, но кэширование не обязательно стандартно.
+- Эволюция API: REST-подход способствует гипермедиа и самостоятельности сервисов; RPC может быть проще для быстрого взаимодействия, но часто менее гибок в изменениях ресурсов.
+
+Примечание: В доступных материалах напрямую о REST vs RPC упоминаний нет. Если нужно, могу привести дополнительные пояснения или примеры.
+
+- Rule score: 7/8
 - Verdict: good
-- Matched must-have: REST, RPC
-- Matched nice-to-have: procedure
+- Matched must-have: REST||resource-oriented||ресурс, RPC||procedure-oriented||процедур||операц
+- Matched nice-to-have: resource||ресурс, procedure||процедур, operation||операц
 
 ## q07: What does eventual consistency mean in distributed systems?
 
@@ -430,38 +430,50 @@ Judge: 3/3 — Ответ полностью и точно сравнивает 
 
 ### Baseline (without RAG)
 
-Cost: $0.000033 (40/78)
+Cost: $0.000068 (40/166)
 Rules: 4/5 (strong)
-Judge: 3/3 — Полное и корректное определение: описана слабость модели, что реплики сходятся со временем при отсутствии новых обновлений, чтения могут возвращать устаревшие значения, отсутствует гарантия мгновенной консистентности.
+Judge: 3/3 — Полностью верный и исчерпывающий ответ: даёт определение eventual consistency, описывает как реплики сходятся, возможную устаревшую информацию при чтении, асинхронное распространение записей и торговлю между доступностью/низкой задержкой; соответствует ожиданиям и секциям.
 
-Eventual consistency means that in a distributed system, updates to data may not be immediately visible everywhere, but if no new updates occur, all replicas will eventually converge to the same value. Reads may return stale data temporarily, and there is no guarantee of instant consistency; the system guarantees convergence over time.
+Eventual consistency means that in a distributed system, updates to data will propagate to all replicas, and eventually all copies will become consistent with each other. There may be temporary discrepancies after an update, but if no new updates occur, all replicas will converge to the same value.
+
+Key points:
+- Writes can be accepted by any replica and propagate asynchronously.
+- Reads may return stale data for a while.
+- The system guarantees convergence: after some bounded time without new writes, all replicas agree.
+- Often used to improve availability and partition tolerance (as per CAP theorem).
+
+Common scenarios: multi-region databases, caching layers, and some NoSQL stores. Trade-off: higher availability and lower latency at the cost of potential reads returning stale data temporarily.
 
 - Rule score: 4/5
 - Verdict: strong
-- Matched must-have: eventual consistency
-- Matched nice-to-have: replicas, converge
+- Matched must-have: eventual consistency||итогов||eventually consistent
+- Matched nice-to-have: replicas||реплик, converge||сход
 
 ### Retrieval
 
-- Retrieved 5 chunk(s) (strategy=structural, topK=5)
+- Retrieved 3 chunk(s) (strategy=structural, topK=3)
   1. source=scripts/day21/data/system-design-primer.md; section=Availability vs consistency; distance=0.6731
   2. source=scripts/day21/data/system-design-primer.md; section=Consistency patterns; distance=0.7491
   3. source=scripts/day21/data/system-design-primer.md; section=Availability patterns; distance=0.8698
-  4. source=scripts/day21/data/system-design-primer.md; section=Database > NoSQL; distance=0.8713
-  5. source=scripts/day21/data/system-design-primer.md; section=Performance vs scalability; distance=0.8963
 
 ### RAG answer
 
-Cost: $0.000198 (3078/109)
-Rules: 4/6 (good)
-Judge: 3/3 — Полное и корректное объяснение eventual consistency: описано, что реплики не немедленно отражают запись, используются асинхронные propagation, данные могут быть устаревшими на промежуточном этапе, и что реплики сходятся со временем при отсутствии новых обновлений; упоминание контекста CAP/AP уместно.
+Cost: $0.000170 (1686/215)
+Rules: 3/6 (good)
+Judge: 3/3 — Полностью корректное и чётко изложенное определение eventual consistency: слабая модель консистентности, при которой реплики сходятся со временем; упомянута асинхронная репликация и возможность чтения устаревшей версии до завершения синхронизации; соответствует ожиданиям и секции Principles > Consistency.
 
-Eventual consistency means: after you write data, not all reads reflect that write immediately. The system propagates updates asynchronously, and over time (often milliseconds) all replicas converge to the same latest value. During the interim, reads may return stale data, but with no new writes, the data will become consistent eventually. This is common in highly available, partition-tolerant systems (AP in CAP), where reads return something quickly and writes propagate later.
+Eventual consistency в распределённых системах означает, что после записи данные будут синхронизированы между копиями асинхронно, и чтение в конечном итоге увидит последнюю запись. Это обеспечивает высокую доступность и продолжение работы при сбоях, но чтение может вернуть не самую свежую версию на время синхронизации.
 
-- Rule score: 4/6
+Контекст из материалов:
+- AP часть CAP: система может быть доступной и переносимой при разделении, ноReads могут возвращать не самую последнюю версию до завершения репликации (eventual consistency).
+- В разделе Consistency patterns: eventual consistency — копии данных реплицируются асинхронно и читаемость со временем становится согласованной.
+
+Кратко: eventual consistency — гарантирует, что запись со временем становится видимой во всех копиях, но мгновенно прочитанная версия может быть устаревшей до завершения репликации.
+
+- Rule score: 3/6
 - Verdict: good
-- Matched must-have: eventual consistency
-- Matched nice-to-have: replicas, converge
+- Matched must-have: eventual consistency||итогов||eventually consistent
+- Matched nice-to-have: replicas||реплик
 
 ## q08: How can I horizontally scale a relational database using sharding and federation?
 
@@ -471,137 +483,120 @@ Eventual consistency means: after you write data, not all reads reflect that wri
 
 ### Baseline (without RAG)
 
-Cost: $0.000352 (50/874)
+Cost: $0.000454 (50/1128)
 Rules: 6/6 (strong)
-Judge: 3/3 — Полный и корректный обзор sharding и federation: охватываются ключевые концепции, архитектурные паттерны, маршрутизация запросов, обработка кросс-шард транзакций, вопросы согласованности, операционные соображения и примеры потоков. Соответствует ожиданиям и секциям (Database > Federation, Database > Sharding).
+Judge: 3/3 — Полностью соответствует ожиданиям: ясно объясняет шардинг и федерацию как способы горизонтального масштабирования БД, охватывает архитектуру, плюсы/минусы, выбор между подходами, практические шаги и примеры. Учитывает необходимые термины (шард, федерац), упоминает горизонтальное разделение и затрагивает консистентность.
 
-Here’s a concise guide to horizontal scaling with sharding and federation for a relational DB:
+Кратко: горизонтальное масштабирование РСУБД можно за счёт шардинга (sharding) и федерации (federation). Ниже основные идеи и шаги.
 
-1) Decide goals and constraints
-- Workload characteristics: read/write ratio, hot keys, cross-tenant data.
-- Consistency requirements (ACID vs eventual).
-- Operational complexity and tooling.
+1) Шардинг (sharding)
+- Что это: разделение данных на несколько шардов (узлов/файловых систем), каждый хранит подмножество таблиц или подмножество строк.
+- Варианты распределения:
+  - Хэштинг по ключу (hash-based): выбирается shard = hash(ключ_записи) mod N. Быстрый доступ к конкретному ключу, простая консистентность.
+  - Диапазонный шардинг (range): данные по диапазонам значений ключа. Хорошо для диапазонных запросов и прогнозируемой локализации.
+  - Декстентрированный (directory-based): внешний каталог mapping ключ-> shard. Гибко, но требует каталога.
+- Архитектура:
+  - Каждый шард — отдельная РСУБД (PostgreSQL, MySQL, Spanner-like nodes).
+  - Прокси/маршрутизатор: приложение или прокси-сервер выбирает shard по ключу.
+  - Репликация внутри шарда для отказоустойчивости.
+  - Распределённые транзакции: не рекомендуется на уровне SQL; используйте saga-pattern, eventual consistency, или two-phase commit только если нужна строгая консистентность.
+- Применение:
+  - Выбор стратегии: по ключу пользователя, по области данных, по диапазонам.
+  - Обновление схемы: минимально совместимая схема на шардах, миграции по частям.
+  - Мониторинг: баланс нагрузки, горячие и холодные шарды, автомасштабирование.
 
-2) Sharding (data partitioning)
-- Choose shard key: pick a field that evenly distributes data and aligns with queries (e.g., user_id, tenant_id). Avoid high cardinality that causes hotspots.
-- Partition strategy:
-  - Hash-based sharding: simple, even distribution, but cross-shard queries require routing.
-  - Range/consistent hashing: preserves locality for range queries, but can imbalance with skew.
-- Shard topology:
-  - Horizontal shards: each shard is a full relational DB instance with its own storage and compute.
-  - Registry/metadata service: keeps mapping of shards and shard keys to physical nodes.
-- Query routing:
-  - Application-side: route queries to appropriate shard(s) based on shard key.
-  - Middleware/DB proxy: transparent routing, can handle cross-shard joins at higher layers (or reject).
-- Cross-shard operations:
-  - Avoid or decompose: multi-shard transactions are costly; use saga patterns or eventual consistency for cross-shard updates.
-  - Replication: keep read replicas per shard to scale reads.
+2) Федерация (federation)
+- Что это: объединение данных из нескольких баз данных без физического переноса. Запрос определяется к нескольким источникам, затем агрегируется.
+- Архитектура:
+  - Федерированный слой: слой запросов, который отправляет подзапросы каждому источнику, собирает результаты и выполняет финальную агрегацию.
+  - Источники: независимые базы (можно разные версии или разные СУБД).
+  - Транзакции: чаще заканчиваются eventual consistency; распределенные транзакции сложны. Обычно без распределённых транзакций.
+- Применение:
+  - Глобальные аналитические запросы, объединение данных из разных сервисов.
+  - Федерированный доступ к мигрированным частям данных без полного копирования.
+- Ограничения:
+  - Сложности с точной консистентностью и задержками из-за сетевых вызовов.
+  - Запросы могут быть медленнее, чем локальные.
 
-3) Federation (logical aggregation across shards)
-- Federation layer:
-  - Virtual views or federated queries that join data from multiple shards.
-  - Use a query planner to push filters to shards to minimize data transfer.
-- Approaches:
-  - Application-level federation: fetch data from shards and assemble results in app layer.
-  - DB-level federation: use a federated query engine or a gateway that can run distributed joins.
-- Trade-offs:
-  - Pros: can scale reads and maintain single schema view.
-  - Cons: cross-shard joins are expensive; may require denormalization or data duplication.
+3) Как выбрать между ними
+- Шардинг подходит для больших одним источником данных, требующих высокой пропускной способности по конкретным ключам, когда данные можно разделить без частого пересечения запросов между шардами.
+- Федерация подходит для интеграции данных из разнородных систем, когда нужна глобальная видимость без переносов, но не нужна сильная консистентность или ультранизкая задержка.
+- Часто применяют комбинацию: шардинг внутри сервисов для основного ХД, федерацию для кросс-сервисных аналитик и отчётности.
 
-4) Schema design practices
-- Denormalize where it pays off for most queries; keep most hot paths within a shard.
-- Use shard-friendly primary keys (composite keys with shard key).
-- Maintain consistent lookup tables in each shard or centralized metadata.
+4) Практические шаги
+- Определитесь с доменами и ключами шардинга.
+- Выберите технологическую реализацию:
+  - Шардинг: Citus (для PostgreSQL), Vitess (для MySQL), безопасные шарды в CockroachDB, или собственная реализация прокси+шардинг на уровне приложения.
+  - Федерация: есть решения как дистрибутивные движки (например, Apache Calcite, Data Federation слои), или архитектурные подходы через API Gateway и агрегацию на клиенте/сервере.
+- Обеспечьте мониторинг и балансировку:
+  - баланс нагрузки между шардами, репликациями.
+  - распределение горячих данных, патчинг схем.
+- Управление схемой и миграциями:
+  - Безопасные миграции без простоя, версионирование схем.
+- Существенные технологии/инструменты:
+  - Постгрес + Citus для горизонтального шардинга.
+  - Vitess для MySQL шардинга.
+  - CockroachDB как распределённая РСУБД.
+  - Data Virtualization/Calcite или Presto/Trino для федерации аналитики.
 
-5) Consistency and transactions
-- Prefer local transactions within a shard.
-- For cross-shard updates, use eventual consistency patterns (sagas, compensating actions).
-- Use distributed transaction coordinators only if the workload requires strong cross-shard ACID (complex and costly).
+5) Пример сценария
+- Вы запускаете приложение, где учетная запись пользователя определяет shard по user_id (hash-based). Каждый shard — независимая PostgreSQL. В аналитике вы используете federation-слой: ETL/CDC копирует данные в data warehouse, или используете federated запросы к каждому shard через слой агрегации.
 
-6) Operational considerations
-- Shard provisioning: add/remove shards with minimal downtime; re-sharding (reshard) strategies.
-- Rebalancing: move data between shards with minimal impact; handle re-routing logic.
-- Monitoring: shard-level metrics (latency, QPS, hot shards), cross-shard query costs.
-- Backups and restores per shard; global restore plan.
-- Failover: shard-level replication (primary/standby) and automated failover.
-
-7) Tools and patterns
-- Database options: MySQL NDB, Vitess (scaling MySQL with sharding and federation), CockroachDB (built-in sharding with distributed transactions), YugabyteDB (SQL with distributed transactions).
-- Federation/query engines: Presto/Trino, Apache Drill, distributed SQL bridges.
-- Orchestration: Kubernetes for deployment, service mesh for routing, and a metadata service (Zookeeper/etcd) for shard mapping.
-
-8) Example flows
-- Read: determine shard by key, query shard, optionally query replicas for read scaling.
-- Write within shard: single SHARD-transaction; commit locally.
-- Cross-shard read: send subqueries to relevant shards, assemble at gateway.
-- Cross-shard write: orchestrate via saga; publish events to compensate on failure.
-
-9) When to use
-- Use sharding when data volume or throughput outgrows a single node and you can model access patterns around shard keys.
-- Use federation when you need a unified view across shards or when joining data across tenants without duplicating data.
-
-If you share your stack (DB type, workload, query patterns), I can suggest a concrete shard key, shard count, and a simple federation plan.
+Если хотите, скажите вашу СУБД и требования к консистентности и ответам на запросы — подскажу конкретную схему шардинга и пример архитектурного решения.
 
 - Rule score: 6/6
 - Verdict: strong
-- Matched must-have: sharding, federation
-- Matched nice-to-have: horizontal, partition
+- Matched must-have: sharding||шард, federation||федерац
+- Matched nice-to-have: horizontal||горизонт, partition||разделен
 
 ### Retrieval
 
-- Retrieved 5 chunk(s) (strategy=structural, topK=5)
+- Retrieved 3 chunk(s) (strategy=structural, topK=3)
   1. source=scripts/day21/data/system-design-primer.md; section=Load balancer > Horizontal scaling; distance=0.7075
   2. source=scripts/day21/data/system-design-primer.md; section=Database > Relational database management system (RDBMS); distance=0.7313
   3. source=scripts/day21/data/system-design-primer.md; section=Database > Relational database management system (RDBMS); distance=0.7337
-  4. source=scripts/day21/data/system-design-primer.md; section=Database > Relational database management system (RDBMS); distance=0.7530
-  5. source=scripts/day21/data/system-design-primer.md; section=Index of system design topics; distance=0.8311
 
 ### RAG answer
 
-Cost: $0.000567 (4578/845)
-Rules: 4/7 (good)
-Judge: 3/3 — Ответ полно охватывает обе концепции: шардинг и федерацию, объясняет, зачем и как реализовать горизонтальное масштабирование RDBMS через разделение данных, маршрутизацию запросов и агрегацию результатов. Раскрыты архитектурные подходы, компромиссы, проблемы кросс-шардовых операций, репликация для отказоустойчивости, а также рекомендации по денормализации/материализованным представлениям.
+Cost: $0.000400 (2488/688)
+Rules: 5/7 (good)
+Judge: 3/3 — Ответ полно охватывает обе концепции: шардирование и федерацию, объясняет их различия, подходы к горизонтальному масштабированию, риски и ситуации применения, а также даёт практические шаги и примеры комбинирования; текст согласован с ожидаемыми секциями и терминологией.
 
-Кратко: можно использовать шардирование (sharding) и федерацию (federation) для горизонтального масштабирования RDBMS. Опираясь на материалы:
+Кратко: горизонтальное масштабирование RDBMS можно реализовать через шардирование и федерацию, но они решают разные задачи и требуют другой логики приложения.
 
 Что такое и зачем
-- Шардирование: разделение данных по нескольким базам данных (шартам) так, чтобы каждая хранела subset данных. Уменьшаются нагрузка и размер индексов, появляется параллелизм записи/чтения. В случае отказа одного шарда остальные работают. Требуется репликация для надежности.
-- Федерация: чтение/запись через несколько баз данных без единого центрального мастера. Позволяет писать в paralelo, снижает перегрузку на одном узле, но добавляет сложность в логику маршрутизации запросов и сборки данных.
+- Шардирование (sharding): разбиение данных на несколько независимых баз данных (шардов). Каждый шард отвечает за подмножество данных (например, по последней букве имени или по географии). Выносит нагрузку на чтение/запись параллельно и уменьшает размер индексов. Но требует изменений в логике приложения и маршрутизации запросов.
+- Федерация (federation): запросы обрабатываются через несколько баз данных, но данные могут находиться в разных местах. Без единого центра сериализации writes — можно писать параллельно, получая меньшую блокировку и масштабируемость. Математически сложнее писать кросс-базы и агрегировать данные.
 
-Как реализовать на практике (из материалов)
-1) Архитектура и выбор стратегии
-- Определите ключ для шардинга (например, по фамилии начальной букве или по географии). Это иллюстрировано в материалах как типовые подходы к шардингу.
-- Решите, нужна ли федерация в дополнение к шардингу (федерация позволяет объединять данные из разных баз, но добавляет сложность в joins и запросы).
+Как связать с горизонтальным масштабированием
+- Вложите шардирование в архитектуру базы данных:
+  - Разделите данные на несколько шардов, каждый держится отдельно.
+  - Назначайте клиента/запрос конкретному шарду по ключу (например, по географии или части ключа).
+  - Обеспечьте репликацию внутри каждого шарда для устойчивости и читабельности.
+  - Управляйте маршрутизацией на уровне приложения или через прокси/распределённый слой.
+- Используйте federation там, где нужна интеграция данных из нескольких источников без строгой централизованной записи:
+  - Применяйте для сценариев, где данные естественно разбиты по доменам или сервисам.
+  - Учитывайте сложности соединения и агрегации данных между базами (сложность запросов, необходимость сервер‑links, увеличение аппаратной нагрузки).
+- Комбинация:
+  - Часто применяют шардирование для основных таблиц, а федерацию — для распределённых аналитических запросов или межшардинной агрегации, где требуется объединение данных из нескольких источников.
+- Складирование и отказоустойчивость:
+  - У каждого шарда своя репликация (мастер‑слейв или мастер‑мастер), чтобы при падении шарда продолжать работу.
+  - Обеспечьте мониторинг и автоматическое переназначение маршрутов при сбоях.
 
-2) Разделение и маршрутизация
-- В приложении внедрите логику выбора шарда для чтения/записи на основании шардинг-ключа.
-- Для федерации добавьте слой, который направляет запросы в соответствующие источники и агрегирует результаты.
+Типичные недостатки/риски (из материалов)
+- Шардирование:
+  - Требуется изменение логики приложения для работы с шардами и маршрутизацией.
+  - Нужно обеспечить репликацию внутри шарда и обработку сбоев одного шарда.
+- Федерация:
+  - Сложность запросов и агрегации между базами, необходимость управления связями между базами.
+  - Большее аппаратное обеспечение и сложность конфигурации.
 
-3) Потребности и компромиссы
-- Шардирование и федерация снижают нагрузку на отдельные базы, уменьшают репликацию и улучшают кеширование, но требуют:
-  - обновления бизнес-логики для работы с несколькими источниками;
-  - сложностей с кросс-шардовыми join’ами (или их избегания через денормализацию/материализованные представления);
-  - балансировки нагрузки и ребалансировки shard’ов (использование концепции консистентного хеширования снижает перераспределение данных).
-- Рассмотрите денормализацию и/или материализованные представления для уменьшения кросс-шардовых операций и ускорения частых запросов.
+Если хотите, могу привести компакт план миграции: выбрать ключ шардинга, определить шард‑ключ, настроить маршрутизатор/прокси, выбрать репликацию в каждом шарде, а затем рассмотреть сценарии кросс‑шард агрегаций и мониторинг.
 
-4) Надежность и согласованность
-- В мастер-слейв или мастер-майстер подходах есть компромиссы между доступностью и консистентностью. Шарды сами по себе обеспечивают параллельность записи, но может потребоваться репликация между шардами для отказоустойчивости.
-
-5) Проблемы и ограничения
-- Шардинг добавляет сложность в SQL-запросы и может привести к неравномерной нагрузке между шардами; ребалансировка и сложные кросс-шардовые операции требуют дополнительной логики.
-- Федерирование может быть неэффективно при сложных схемах или больших функций/таблиц, сложнее выполнять joins across databases.
-
-Итого
-- Для горизонтального масштабирования RDBMS применяйте шардирование для разделения данных по множеству баз, с параллельной записью и чтением.
-- При необходимости объединяйте данные из нескольких баз через федерацию, но готовьтесь к усложнениям в маршрутизации и соединению данных.
-- Везде используйте репликацию для отказоустойчивости, подумайте о консистентном хешировании для минимизации перераспределения данных при ребалансировке.
-- Применяйте денормализацию/материализованные представления там, где важна скорость чтения и нужна минимизация кросс-шардовых joins.
-
-Если хотите, могу привести схему типичной архитектуры с примером ключа шардинга и примером запроса, основываясь на материалах.
-
-- Rule score: 4/7
+- Rule score: 5/7
 - Verdict: good
-- Matched must-have: sharding, federation
+- Matched must-have: sharding||шард, federation||федерац
+- Matched nice-to-have: horizontal||горизонт
 
 ## q09: How does a Content Delivery Network reduce latency for static assets?
 
@@ -611,55 +606,48 @@ Judge: 3/3 — Ответ полно охватывает обе концепц�
 
 ### Baseline (without RAG)
 
-Cost: $0.000057 (46/136)
-Rules: 6/7 (strong)
-Judge: 2/3 — Ответ в целом верно объясняет, как edge‑локации и кэширование уменьшают задержку и другие техники. Но одна деталь некорректна: упоминание HTTP/2/5 — такого стандарта нет (правильно: HTTP/2 и/или HTTP/3).
+Cost: $0.000060 (46/144)
+Rules: 7/7 (strong)
+Judge: 3/3 — Ответ полностью соответствует ожиданию. Чётко объясняет, что CDN обслуживает статический контент из edge-локаций ближе к пользователю, что снижает задержку по сравнению с обращением к origin. Дополнительные детали (кеширование на краях, маршрутизация/anycast, улучшения протоколов) уточняют механизм и поддерживают основную идею без противоречий.
 
 A CDN reduces latency for static assets by:
-- Caching content at distributed edge servers close to users, so requests travel shorter network distances.
-- Serving content from the nearest edge cache, reducing round-trip time.
-- Using optimized delivery paths and peering to avoid congested routes.
-- Supporting HTTP/2/5 and multiplexing, improving transfer efficiency.
-- Implementing smart routing and health checks to avoid downed or slow nodes.
-- Compressing and optimizing assets (on-edge) to reduce payload size.
-- Prefetching/pushing popular content to edge nodes based on traffic patterns.
 
-- Rule score: 6/7
+- Deploying many edge servers close to users, so requests travel shorter network distances.
+- Caching static content (images, CSS, JS) at edge locations, serving from cache instead of origin.
+- Using efficient routing and anycast to minimize hops and find the fastest path.
+- Pre-warming caches and smart invalidation to keep hot content ready.
+- Leveraging protocol optimizations (HTTP/2, HTTP/3, TLS termination) and gzip/br compression.
+- Reducing origin server load, lowering response time when cache miss occurs (local cache miss is rarer).
+
+- Rule score: 7/7
 - Verdict: strong
-- Matched must-have: CDN, latency
-- Matched nice-to-have: edge, static assets
+- Matched must-have: CDN||content delivery network, latency||задерж
+- Matched nice-to-have: edge||край, origin||origin server||исходн, static assets||статичес
 
 ### Retrieval
 
-- Retrieved 5 chunk(s) (strategy=structural, topK=5)
+- Retrieved 3 chunk(s) (strategy=structural, topK=3)
   1. source=scripts/day21/data/system-design-primer.md; section=Content delivery network > Disadvantage(s): CDN; distance=0.8217
   2. source=scripts/day21/data/system-design-primer.md; section=Content delivery network > Pull CDNs; distance=0.8391
   3. source=scripts/day21/data/system-design-primer.md; section=Latency vs throughput; distance=0.8634
-  4. source=scripts/day21/data/system-design-primer.md; section=Availability patterns > Fail-over; distance=0.8794
-  5. source=scripts/day21/data/system-design-primer.md; section=Load balancer > Disadvantage(s): load balancer; distance=0.8821
 
 ### RAG answer
 
-Cost: $0.000178 (1616/242)
-Rules: 2/8 (partial)
-Judge: 3/3 — Полный и корректный ответ: объясняет, что CDN снижает задержку за счёт размещения копий ближе к пользователям на edge/PoP, кэширования на краях сети (TTL) и варианта pull CDN с кешированием после первого запроса; также упоминается влияние TTL и возможная задержка до заполнения кеша.
+Cost: $0.000132 (954/210)
+Rules: 6/8 (good)
+Judge: 3/3 — Полностью корректный и чётко привязанный к материалам ответ: объясняет, как CDN обслуживает статический контент с edge-локаций ближе к пользователю, уменьшает время до первого байта и общую задержку; упоминаются pull CDNs и кеширование TTL, что соответствует retrieval-контексту.
 
-К CDN уменьшает задержку для статических активов, в основном за счёт:
+CDN снижает задержку статических ресурсов за счет размещения копий контента ближе к пользователю на распределённых серверах (edge servers). Это позволяет клиенту получить файл с ближайшего нода, уменьшая время до первого байта и общую задержку сетевого пути. В материалах упомянуто:
 
-- Размещение копий контента ближе к пользователю в распределённой сети точек присутствия (PoP), что снижает время передачи по дальним маршрутам.
-- Кэширование контента на краях сети (TTL/кэширование), чтобы повторные запросы обслуживались локально без обращения к оригинальному серверу.
-- Возможности pull CDN: сначала контент запрашивается у вашего сервера, затем кэшируется на CDN, уменьшая задержки для последующих запросов.
+- Pull CDNs: сначала копия берётся с вашего сервера при первом запросе, затем кэшируется на CDN; последующие запросы идут к ближайшему edge-узлу, что уменьшает задержку по мере кэширования.
+- TTL кэша: время жизни кэша контролирует, как долго контент остаётся на CDN; обновления могут не попасть мгновенно, если TTL ещё не истёк.
 
-Примечания из материалов:
-- Pull CDN: сначала запрос к вашему серверу, потом кэш на CDN (может быть задержка до кэширования) и TTL для обновления.
-- TTL управляет временем кэширования и влияет на устаревание контента и повторные запросы к CDN.
+Важно: вопросы по стоимости и возможной устарелости контента тоже упомянуты в материалах, но они не напрямую объясняют снижение задержки.
 
-Ограниченность базы: материалы упоминают плюсы/минусы и механизм кэширования, но не дают числовых примеров или альтернативных подходов.
-
-- Rule score: 2/8
-- Verdict: partial
-- Matched must-have: CDN
-- Missed must-have: latency
+- Rule score: 6/8
+- Verdict: good
+- Matched must-have: CDN||content delivery network, latency||задерж
+- Matched nice-to-have: edge||край, static assets||статичес
 
 ## q10: What is the latency of reading 1 MB sequentially from SSD versus memory?
 
@@ -669,57 +657,44 @@ Judge: 3/3 — Полный и корректный ответ: объясняе
 
 ### Baseline (without RAG)
 
-Cost: $0.000162 (54/398)
-Rules: 8/9 (strong)
-Judge: 2/3 — В ответе в целом верные диапазоны латентности RAM и SSD и явное указание, что SSD существенно медленнее RAM. Прямой ссылки на ожидаемую таблицу lateny в Appendix отсутствует; формулировки местами смазаны (разграничение задержки и пропускной способности, равно как и связь с конкретной таблицей). При желании можно сделать более чёткую привязку к таблице и дать единый итоговый пример времени чтения 1 МБ.
+Cost: $0.000100 (54/242)
+Rules: 9/9 (strong)
+Judge: 2/3 — В целом верно: приведены примерно правильные значения задержек для SATA/NVMe SSD и для RAM, и сделан вывод, что RAM значительно быстрее. Но ответ не ссылается на конкретную таблицу задержек и ожидаемую секцию Appendix > Latency numbers, что снижает groundedness и соответствие требуемому формату.
 
-Short answer:
-- 1 MB sequential read from RAM: latency is dominated by memory access granularity; typical random L1/L2 latencies are ~1–100 ns. Sequential prefetch makes effective latency effectively near 2–10 ns for cache, but main memory access (DRAM) is ~50–100 ns.
-- 1 MB sequential read from SSD: latency is on the order of tens to hundreds of microseconds, plus transfer time. Random access to SSD is ~100 µs–1 ms; sequential read throughput is high (hundreds of MB/s to a few GB/s), so time = 1 MB / bandwidth plus startup latency.
+- SSD: Sequential read latency is dominated by transfer time plus small random access overhead. For a 1 MB read, typical SATA SSDs ~0.1–0.3 ms (100–300 µs) plus ~0.2–0.5 ms if micro‑seconds depends. NVMe SSDs are faster: ~0.05–0.15 ms (50–150 µs) for 1 MB, assuming cache can fill; real worst case higher if not cached.
 
-Concrete ballpark:
-- RAM (DRAM, in a modern system): latency ~50–100 ns for a DRAM access; if data already cached (L1/L2/L3), effective latency ~1–10 ns.
-- SSD (SATA): around 100–400 µs startup latency, sustained sequential read bandwidth ~500 MB/s to 3 GB/s depending on device; 1 MB would take ~2–3 ms at 500 MB/s. NAND-based NVMe SSDs can have lower startup but still tens of microseconds, with 1 MB transfer taking a few hundred microseconds to a few milliseconds depending on queue depth and bandwidth.
+- DRAM memory: Latency is tens of nanoseconds. Typical random/streaming 1–2 ns (nanoseconds) for on‑chip/cache, ~10–100 ns for DDR4/DDR5 memory access; sequential 1 MB read bandwidth the latency is just the access latency + memory controller overhead, so around 50–100 ns in modern systems.
 
-If you assume no caching and pure sequential:
-- RAM: ~60 ns (DRAM) – effectively almost instantaneous.
-- SSD: ~100 µs to 1 ms startup plus 1 MB / bandwidth (e.g., 1 MB / 1 GB/s = 1 ms). So total ~1–3 ms.
+In short: memory latency ~ tens to low hundreds of nanoseconds; SSD latency ~ tens to hundreds of microseconds (NVMe faster than SATA). Memory is ~1000x lower latency; bandwidth differences depend on size and caching.
 
-Note: exact numbers vary by device, interface (SATA vs NVMe), queue depth, and whether data is cold or warm. If you want a specific model, tell me the SSD type and memory type.
-
-- Rule score: 8/9
+- Rule score: 9/9
 - Verdict: strong
-- Matched must-have: SSD, memory, 1 MB
-- Matched nice-to-have: latency, microseconds
+- Matched must-have: SSD||ssd, memory||RAM||памят, 1 MB||1MB||1 МБ||1мб
+- Matched nice-to-have: latency||задерж, microseconds||микросек, nanoseconds||наносек
 
 ### Retrieval
 
-- Retrieved 5 chunk(s) (strategy=structural, topK=5)
+- Retrieved 3 chunk(s) (strategy=structural, topK=3)
   1. source=scripts/day21/data/system-design-primer.md; section=Latency vs throughput; distance=0.7313
   2. source=scripts/day21/data/system-design-primer.md; section=Cache > When to update the cache; distance=0.8118
   3. source=scripts/day21/data/system-design-primer.md; section=Availability patterns > Availability in numbers; distance=0.8377
-  4. source=scripts/day21/data/system-design-primer.md; section=Asynchronism > Source(s) and further reading; distance=0.8436
-  5. source=scripts/day21/data/system-design-primer.md; section=Appendix; distance=0.8635
 
 ### RAG answer
 
-Cost: $0.000194 (2088/224)
-Rules: 2/10 (partial)
-Judge: 1/3 — Не даёт конкретных цифр и не ссылается на Appendix с числами задержек; отсутствует явное сравнение SSD против RAM, как требовалось.
+Cost: $0.000189 (1508/284)
+Rules: 8/10 (good)
+Judge: 1/3 — Ответ частично верен по тематике (SSD медленнее RAM, даются общие диапазоны задержек), но не выполняет требования: не ссылается на таблицу задержек Appendix > Latency numbers every programmer should know и не приводит конкретных чисел для чтения 1 MB последовательно с SSD и RAM из ожидаемого раздела. Также retrieval-данные не явно используются для обоснования цифр.
 
-В найденных материалах прямого числа латентности чтения 1 МБ последовательно с SSD и с ОЗУ не приведено. Упоминания относятся к общим понятиям латентности и пропускной способности, без конкретных цифр по устройствам.
+Найденные материалы не содержат конкретных чисел по задержке чтения 1 МБ последовательно с SSD и с памятью (RAM). В материалах обсуждаются общие понятия latency vs throughput, а также общие примеры доступности, но без апдейтов по конкретным размерам данных и устройствам.
 
-- Источник 1: объясняет разницу между латентностью и пропускной способностью, без конкретных значений для SSD или памяти.
-- Остальные источники также обсуждают концепции и общие принципы, без чисел.
+Поэтому ответить точно по источникам не могу. Могу предложить ориентироваться на общие оценки:
+- Латентность чтения последовательного блока с SSD обычно выше, чем задержка доступа к оперативной памяти, и составляет миллисекунды для больших блоков на обычных SATA/NVMe-картах в реальных системах, но точное число зависит от интерфейса, типа SSD, параллелизма и контроллера.
+- Оперативная память имеет очень низкую латентность (несколько десятков наносекунд) на произвольный доступ, но для последовательного чтения 1 МБ реальная задержка включает prefetching и DRAM throughput, часто в диапазоне десятков наносекунд до сотен наносекунд.
 
-Следовательно, в имеющейся базе нет конкретной цифры для:
-- латентности чтения 1 МБ последовательно с SSD
-- латентности чтения 1 МБ последовательно из памяти
+Если хотите, могу поискать дополнительную информацию и привести конкретные диапазоны из внешних источников, либо объяснить, как измерить эти значения в вашей конфигурации.
 
-Если нужно, могу привести ориентировочные оценки на основе типичных диапазонов из общих знаний (например, за счет скорости последовательного чтения SSD и памяти), но это будет отдельной оценкой и не основано на приведённых источниках.
-
-- Rule score: 2/10
-- Verdict: partial
-- Matched must-have: SSD
-- Missed must-have: memory, 1 MB
+- Rule score: 8/10
+- Verdict: good
+- Matched must-have: SSD||ssd, memory||RAM||памят, 1 MB||1MB||1 МБ||1мб
+- Matched nice-to-have: latency||задерж, nanoseconds||наносек
 

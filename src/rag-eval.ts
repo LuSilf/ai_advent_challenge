@@ -58,9 +58,9 @@ function parseRagStrategy(raw: string | null): "fixed" | "structural" {
   return raw === "fixed" ? "fixed" : "structural";
 }
 
-function parseTopK(raw: string | null): number {
-  const parsed = Number(raw ?? "5");
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : 5;
+function parseTopK(raw: string | null, fallback = 5): number {
+  const parsed = Number(raw ?? String(fallback));
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function startSpinner(message: string): () => void {
@@ -136,8 +136,8 @@ async function main(): Promise<void> {
   const ragService = new RagService(embedder, vectorIndex);
   const judgeService = new RagJudgeService(llmClient, modelRepo);
 
-  const ragStrategy = parseRagStrategy(optionsRepo.get("rag_strategy"));
-  const ragTopK = parseTopK(optionsRepo.get("rag_top_k"));
+  const ragStrategy = parseRagStrategy(flags.strategy ?? optionsRepo.get("rag_strategy"));
+  const ragTopK = parseTopK(flags.topk ?? null, 3);
   if (vectorIndex.countByStrategy(ragStrategy) === 0) {
     fail(
       `Индекс для стратегии ${ragStrategy} пуст. Сначала проиндексируйте документ, например:\n` +

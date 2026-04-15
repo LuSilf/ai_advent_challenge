@@ -39,11 +39,11 @@ export function scoreAnswer(
   const niceToHave = question.niceToHave ?? [];
   const expectedSections = question.expectedSections ?? [];
 
-  const matchedMustInclude = mustInclude.filter((term) => contains(answer, term));
-  const matchedNiceToHave = niceToHave.filter((term) => contains(answer, term));
-  const missedMustInclude = mustInclude.filter((term) => !contains(answer, term));
+  const matchedMustInclude = mustInclude.filter((term) => matchesTerm(answer, term));
+  const matchedNiceToHave = niceToHave.filter((term) => matchesTerm(answer, term));
+  const missedMustInclude = mustInclude.filter((term) => !matchesTerm(answer, term));
   const matchedSections = retrieval?.status === "ok"
-    ? expectedSections.filter((section) => retrieval.hits.some((hit) => contains(hit.section ?? "", section)))
+    ? expectedSections.filter((section) => retrieval.hits.some((hit) => matchesTerm(hit.section ?? "", section)))
     : [];
 
   const sectionBonus = expectedSections.length > 0 && retrieval ? 1 : 0;
@@ -61,8 +61,15 @@ export function scoreAnswer(
   };
 }
 
-function contains(text: string, token: string): boolean {
-  return text.toLowerCase().includes(token.toLowerCase());
+function matchesTerm(text: string, token: string): boolean {
+  return expandAlternatives(token).some((variant) => text.toLowerCase().includes(variant.toLowerCase()));
+}
+
+function expandAlternatives(token: string): string[] {
+  return token
+    .split("||")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
 }
 
 function buildVerdict(

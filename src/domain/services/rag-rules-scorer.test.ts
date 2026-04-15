@@ -53,6 +53,20 @@ describe("scoreAnswer", () => {
     expect(result.verdict).toBe("strong");
   });
 
+  test("supports alternative spellings and languages via || separator", () => {
+    const result = scoreAnswer(
+      {
+        ...sampleQuestion(),
+        mustInclude: ["writes||записи", "reads||чтение", "replica||реплик"],
+      },
+      "Мастер принимает записи, а реплики обслуживают чтение.",
+    );
+
+    expect(result.matchedMustInclude).toEqual(["writes||записи", "reads||чтение", "replica||реплик"]);
+    expect(result.score).toBe(6);
+    expect(result.verdict).toBe("strong");
+  });
+
   test("returns weak verdict when nothing matches", () => {
     const result = scoreAnswer(sampleQuestion(), "I do not know.");
     expect(result.score).toBe(0);

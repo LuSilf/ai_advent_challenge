@@ -53,6 +53,7 @@ describe("RagJudgeService", () => {
     expect(result.verdict).toBe("Полный и корректный ответ");
     expect(result.modelId).toBe("openai/gpt-5-nano");
     expect(llmClient.lastRequest?.instructions).toContain("строгий оценщик");
+    expect(llmClient.lastRequest?.instructions).toContain("groundedness");
     expect(llmClient.lastRequest?.messages[0]?.content).toContain("What is cache-aside?");
   });
 });
@@ -91,6 +92,7 @@ describe("buildJudgeInput", () => {
 
     expect(input).toContain("Ожидание: Explain cache-aside.");
     expect(input).toContain("Ожидаемые секции: Cache > When to update the cache");
+    expect(input).toContain("expected_section_hits=Cache > When to update the cache");
     expect(input).toContain("primer.md :: Cache > When to update the cache :: 0.1234");
   });
 });
