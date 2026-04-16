@@ -19,6 +19,7 @@ import { ChatService } from "./domain/services/chat-service";
 import { ProfileService } from "./domain/services/profile-service";
 import { RagPipelineService, type RagMode, type PipelineRetrieveResult } from "./domain/services/rag-pipeline-service";
 import { LlmRerankerService } from "./domain/services/llm-reranker-service";
+import { QueryRewriteService } from "./domain/services/query-rewrite-service";
 import { RagJudgeService } from "./domain/services/rag-judge-service";
 import { scoreAnswer, type RulesScore } from "./domain/services/rag-rules-scorer";
 import { renderMultiModeReport, type MultiModeQuestionResult, type ModeResult } from "./domain/services/rag-multimode-report";
@@ -194,6 +195,15 @@ async function main(): Promise<void> {
       topKFinal: 3,
       threshold,
       reranker,
+    },
+    {
+      name: "rag-full",
+      strategy: ragStrategy,
+      topKInitial: 10,
+      topKFinal: 3,
+      threshold,
+      reranker,
+      queryRewriter: new QueryRewriteService({ baseUrl: ollamaBaseUrl, model: rerankerModel }),
     },
   ];
 
