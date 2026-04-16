@@ -370,7 +370,7 @@ function renderDay24Report(results: QuestionResult[]): string {
     lines.push(`**Confidence:** ${r.citation.confidence}`);
     lines.push(`**Sources:** ${r.citation.sourceCount} | **Quotes:** ${r.citation.quoteCount}`);
     lines.push(`**Rules:** ${r.rules.score}/${r.rules.maxScore} (${r.rules.verdict})`);
-    lines.push(`**Judge:** ${r.judge.score}/3 �� ${r.judge.verdict}`);
+    lines.push(`**Judge:** ${r.judge.score}/3 — ${r.judge.verdict}`);
     if (r.faithfulness) {
       lines.push(`**Faithfulness:** ${r.faithfulness.score}/3 — ${r.faithfulness.verdict}`);
     }
