@@ -18,6 +18,7 @@ import { CostService } from "./domain/services/cost-service";
 import { ChatService } from "./domain/services/chat-service";
 import { ProfileService } from "./domain/services/profile-service";
 import { RagPipelineService, type RagMode, type PipelineRetrieveResult } from "./domain/services/rag-pipeline-service";
+import { LlmRerankerService } from "./domain/services/llm-reranker-service";
 import { RagJudgeService } from "./domain/services/rag-judge-service";
 import { scoreAnswer, type RulesScore } from "./domain/services/rag-rules-scorer";
 import { renderMultiModeReport, type MultiModeQuestionResult, type ModeResult } from "./domain/services/rag-multimode-report";
@@ -165,6 +166,13 @@ async function main(): Promise<void> {
     }
   };
 
+  const ollamaBaseUrl = indexingConfig.embeddingBaseUrl;
+  const rerankerModel = flags["reranker-model"] ?? "qwen2.5-coder:3b";
+  const reranker = new LlmRerankerService(
+    { baseUrl: ollamaBaseUrl, model: rerankerModel },
+    0.3,
+  );
+
   const modes: RagMode[] = [
     {
       name: "rag-plain",
@@ -179,11 +187,20 @@ async function main(): Promise<void> {
       topKFinal: 3,
       threshold,
     },
+    {
+      name: "rag-reranker",
+      strategy: ragStrategy,
+      topKInitial: 10,
+      topKFinal: 3,
+      threshold,
+      reranker,
+    },
   ];
 
   console.log(pc.bold(`Day 23 pipeline evaluation on ${questions.length} questions`));
   console.log(pc.dim(`  strategy: ${ragStrategy}`));
   console.log(pc.dim(`  threshold: ${threshold}`));
+  console.log(pc.dim(`  reranker model: ${rerankerModel}`));
   console.log(pc.dim(`  modes: ${modes.map((m) => m.name).join(", ")}`));
 
   const results: MultiModeQuestionResult[] = [];
