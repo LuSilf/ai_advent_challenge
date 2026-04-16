@@ -113,8 +113,9 @@ export class RagPipelineService implements RagRetriever {
     }
 
     if (hits.length === 0) {
+      const hadHitsBeforeFiltering = hitsBeforeFilter > 0;
       return {
-        status: "no_hits",
+        status: hadHitsBeforeFiltering ? "insufficient_context" : "no_hits",
         strategy: mode.strategy,
         topK: mode.topKFinal,
         hits,

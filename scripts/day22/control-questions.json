@@ -78,5 +78,23 @@
     "expectedSections": ["Appendix > Latency numbers every programmer should know"],
     "mustInclude": ["SSD||ssd", "memory||RAM||памят", "1 MB||1MB||1 МБ||1мб"],
     "niceToHave": ["latency||задерж", "microseconds||микросек", "nanoseconds||наносек"]
+  },
+  {
+    "id": "q11_oos",
+    "question": "Как приготовить борщ?",
+    "expectation": "Model should refuse to answer because the knowledge base contains no cooking information. Expected confidence: insufficient.",
+    "outOfScope": true
+  },
+  {
+    "id": "q12_oos",
+    "question": "Какова столица Мадагаскара?",
+    "expectation": "Model should refuse to answer because the knowledge base contains no geography information. Expected confidence: insufficient.",
+    "outOfScope": true
+  },
+  {
+    "id": "q13_oos",
+    "question": "Расскажи про квантовые вычисления и кубиты",
+    "expectation": "Model should refuse to answer because the knowledge base is about system design, not quantum computing. Expected confidence: insufficient.",
+    "outOfScope": true
   }
 ]

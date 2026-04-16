@@ -141,4 +141,23 @@ describe("prepareRagPrompt", () => {
     expect(result.notice).toContain("ничего не найдено");
     expect(result.retrieval?.status).toBe("no_hits");
   });
+
+  test("returns fallback notice when context is insufficient", async () => {
+    const retriever = new FakeRetriever({
+      status: "insufficient_context",
+      strategy: "structural",
+      topK: 3,
+      hits: [],
+    });
+
+    const result = await prepareRagPrompt(
+      "как приготовить борщ?",
+      ragState({ enabled: true }),
+      retriever,
+    );
+
+    expect(result.userPromptSuffix).toBeUndefined();
+    expect(result.notice).toContain("нерелевантны");
+    expect(result.retrieval?.status).toBe("insufficient_context");
+  });
 });

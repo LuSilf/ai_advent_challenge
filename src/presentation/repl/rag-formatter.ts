@@ -12,6 +12,13 @@ export function formatRagTechBlock(result: RagRetrieveResult): string {
     ].join("\n");
   }
 
+  if (result.status === "insufficient_context") {
+    return [
+      pc.yellow("[RAG] insufficient context"),
+      pc.dim(`  Найденные материалы отфильтрованы как нерелевантные (strategy=${result.strategy}). Контекст недостаточен для ответа.`),
+    ].join("\n");
+  }
+
   if (result.status === "no_hits") {
     return [
       pc.dim("[RAG] retrieval empty"),

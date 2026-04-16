@@ -70,6 +70,14 @@ export async function prepareRagPrompt(
     };
   }
 
+  if (retrieval.status === "insufficient_context") {
+    return {
+      retrieval,
+      userPromptSuffix: existingSuffix,
+      notice: `[RAG] Найденные материалы нерелевантны (отфильтрованы), отвечаю без RAG`,
+    };
+  }
+
   return {
     retrieval,
     userPromptSuffix: existingSuffix,

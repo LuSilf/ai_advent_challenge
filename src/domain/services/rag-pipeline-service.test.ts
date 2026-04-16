@@ -73,7 +73,7 @@ describe("RagPipelineService", () => {
     expect(result.thresholdFilter?.rejected[0]!.id).toBe(3);
   });
 
-  test("threshold filters everything returns no_hits", async () => {
+  test("threshold filters everything returns insufficient_context", async () => {
     const hits = [makeHit(1, 0.9), makeHit(2, 0.95)];
     const mode: RagMode = {
       name: "rag-threshold",
@@ -85,8 +85,9 @@ describe("RagPipelineService", () => {
     const service = new RagPipelineService(createMockEmbedder(), createMockVectorIndex(hits), mode);
     const result = await service.retrieve("test question");
 
-    expect(result.status).toBe("no_hits");
+    expect(result.status).toBe("insufficient_context");
     expect(result.hits).toHaveLength(0);
+    expect(result.hitsBeforeFilter).toBe(2);
   });
 
   test("empty index returns no_index", async () => {
