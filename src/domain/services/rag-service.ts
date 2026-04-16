@@ -91,3 +91,33 @@ export function buildRagPromptSuffix(hits: VectorSearchHit[]): string {
     ...sources,
   ].join("\n\n");
 }
+
+export function buildCitedRagPromptSuffix(hits: VectorSearchHit[]): string {
+  const sources = hits.map((hit, index) => {
+    const sourceMeta = [
+      `source=${hit.source}`,
+      `section=${hit.section ?? "(none)"}`,
+      `distance=${hit.distance.toFixed(4)}`,
+    ].join(" | ");
+
+    return [`[Источник ${index + 1}] ${sourceMeta}`, hit.text.trim()].join("\n");
+  });
+
+  return [
+    "Ты — ассистент на основе базы знаний. Твой ответ ОБЯЗАН быть структурированным JSON.",
+    "",
+    "ПРАВИЛА:",
+    "1. Отвечай ТОЛЬКО на основе найденных материалов ниже. НЕ используй свои знания.",
+    "2. В поле sources — перечисли ВСЕ использованные источники с их sourceIndex, source и section.",
+    "3. В поле quotes — приведи ДОСЛОВНЫЕ цитаты из найденных материалов, подтверждающие твой ответ. Цитируй точно, не перефразируй.",
+    "4. Каждое утверждение в answer должно быть подкреплено хотя бы одной цитатой в quotes.",
+    "5. Поле confidence:",
+    "   - \"high\" — ответ полностью подкреплён найденными материалами",
+    "   - \"low\" — ответ частично подкреплён, есть пробелы",
+    "   - \"insufficient\" — найденные материалы НЕ содержат ответа на вопрос. В этом случае в answer напиши: \"К сожалению, в доступной базе знаний нет информации для ответа на этот вопрос. Попробуйте переформулировать запрос или уточнить тему.\"",
+    "6. Если ни один источник не релевантен вопросу — ставь confidence=\"insufficient\", sources=[], quotes=[].",
+    "",
+    "Найденные материалы:",
+    ...sources,
+  ].join("\n");
+}

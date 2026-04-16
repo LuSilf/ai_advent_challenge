@@ -117,4 +117,40 @@ describe("buildOpenAIRequest", () => {
     const result = buildOpenAIRequest(request, "test");
     expect(result.tools).toBeUndefined();
   });
+
+  test("sets text.format with json_schema when responseFormat is provided", () => {
+    const request = makeRequest({
+      responseFormat: {
+        type: "json_schema",
+        name: "test_schema",
+        strict: true,
+        schema: {
+          type: "object",
+          required: ["answer"],
+          additionalProperties: false,
+          properties: { answer: { type: "string" } },
+        },
+      },
+    });
+    const result = buildOpenAIRequest(request, "test");
+    expect((result as any).text).toEqual({
+      format: {
+        type: "json_schema",
+        name: "test_schema",
+        strict: true,
+        schema: {
+          type: "object",
+          required: ["answer"],
+          additionalProperties: false,
+          properties: { answer: { type: "string" } },
+        },
+      },
+    });
+  });
+
+  test("does not set text.format when responseFormat is not provided", () => {
+    const request = makeRequest();
+    const result = buildOpenAIRequest(request, "test");
+    expect((result as any).text).toBeUndefined();
+  });
 });

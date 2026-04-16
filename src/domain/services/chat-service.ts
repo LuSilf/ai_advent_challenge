@@ -1,4 +1,4 @@
-import type { CostInfo, LLMRequest, LLMResponse, LLMToolDefinition, LLMToolCall, Model, Message } from "../models";
+import type { CostInfo, LLMRequest, LLMResponse, LLMToolDefinition, LLMToolCall, Model, Message, ResponseFormat } from "../models";
 import type { LLMClient, StreamEvent } from "../ports/llm-client";
 import type { MessageRepository } from "../ports/message-repository";
 import type { FactRepository } from "../ports/fact-repository";
@@ -35,6 +35,7 @@ export type SendMessageOptions = {
   onDelta?: (text: string) => void;
   onReasoningSummary?: (text: string) => void;
   userPromptSuffix?: string;
+  responseFormat?: ResponseFormat;
   toolProvider?: ToolProvider;
   onToolCall?: (event: ToolCallEvent) => void;
   maxToolRounds?: number;
@@ -124,6 +125,7 @@ export class ChatService {
         stream: hasTools ? false : (options.useStreaming ?? false),
       },
       tools: hasTools ? tools : undefined,
+      responseFormat: options.responseFormat,
     };
 
     // Если есть tools — запускаем tool-use loop (без стриминга)

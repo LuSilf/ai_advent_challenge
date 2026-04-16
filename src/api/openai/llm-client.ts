@@ -59,6 +59,18 @@ export function buildOpenAIRequest(request: LLMRequest, userPrompt: string): Res
     }));
   }
 
+  // Structured output через JSON schema
+  if (request.responseFormat) {
+    params.text = {
+      format: {
+        type: "json_schema",
+        name: request.responseFormat.name,
+        strict: request.responseFormat.strict,
+        schema: request.responseFormat.schema,
+      },
+    };
+  }
+
   return params;
 }
 

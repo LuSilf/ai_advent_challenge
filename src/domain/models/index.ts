@@ -53,12 +53,20 @@ export type LLMToolDefinition = {
   parameters: unknown;
 };
 
+export type ResponseFormat = {
+  type: "json_schema";
+  name: string;
+  strict: boolean;
+  schema: Record<string, unknown>;
+};
+
 export type LLMRequest = {
   messages: Message[];
   instructions: string;
   model: string;
   params: GenerationParams;
   tools?: LLMToolDefinition[];
+  responseFormat?: ResponseFormat;
 };
 
 export type LLMToolCall = {
