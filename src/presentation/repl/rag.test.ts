@@ -80,7 +80,7 @@ describe("prepareRagPrompt", () => {
     expect(result.retrieval).toBeUndefined();
   });
 
-  test("combines existing suffix with retrieved context when rag succeeds", async () => {
+  test("combines existing suffix with cited prompt when rag succeeds", async () => {
     const retriever = new FakeRetriever({
       status: "ok",
       strategy: "structural",
@@ -99,7 +99,8 @@ describe("prepareRagPrompt", () => {
     expect(retriever.calls).toEqual([
       { question: "what is cache-aside?", strategy: "structural", topK: 5 },
     ]);
-    expect(result.userPromptSuffix).toBe("task reminder\n\nretrieved context");
+    expect(result.userPromptSuffix).toContain("task reminder");
+    expect(result.userPromptSuffix).toContain("ОБЯЗАН быть структурированным JSON");
     expect(result.notice).toBeUndefined();
     expect(result.retrieval?.status).toBe("ok");
   });
