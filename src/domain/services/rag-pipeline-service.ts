@@ -1,7 +1,7 @@
 import type { VectorSearchHit } from "../models/chunking";
 import type { Embedder } from "../ports/embedder";
 import type { VectorIndex } from "../ports/vector-index";
-import { type RagRetrieveResult, type RagRetriever, buildRagPromptSuffix } from "./rag-service";
+import { type RagRetrieveResult, type RagRetriever, buildRagPromptSuffix, buildCitedRagPromptSuffix } from "./rag-service";
 import { filterByThreshold, type ThresholdFilterResult } from "./threshold-filter";
 
 export type RagMode = {
@@ -12,6 +12,7 @@ export type RagMode = {
   threshold?: number;
   reranker?: Reranker;
   queryRewriter?: QueryRewriter;
+  useCitations?: boolean;
 };
 
 export interface Reranker {
@@ -112,8 +113,9 @@ export class RagPipelineService implements RagRetriever {
     }
 
     if (hits.length === 0) {
+      const hadHitsBeforeFiltering = hitsBeforeFilter > 0;
       return {
-        status: "no_hits",
+        status: hadHitsBeforeFiltering ? "insufficient_context" : "no_hits",
         strategy: mode.strategy,
         topK: mode.topKFinal,
         hits,
@@ -130,7 +132,7 @@ export class RagPipelineService implements RagRetriever {
       strategy: mode.strategy,
       topK: mode.topKFinal,
       hits,
-      promptSuffix: buildRagPromptSuffix(hits),
+      promptSuffix: mode.useCitations ? buildCitedRagPromptSuffix(hits) : buildRagPromptSuffix(hits),
       modeName: mode.name,
       hitsBeforeFilter,
       rewrittenQuery,

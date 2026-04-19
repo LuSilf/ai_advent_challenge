@@ -59,6 +59,18 @@ describe("formatRagTechBlock", () => {
     expect(block).toContain("ничего не найдено");
     expect(block).toContain("без RAG");
   });
+
+  test("formats insufficient_context message", () => {
+    const block = formatRagTechBlock({
+      status: "insufficient_context",
+      strategy: "structural",
+      topK: 3,
+      hits: [],
+    });
+
+    expect(block).toContain("insufficient context");
+    expect(block).toContain("нерелевантные");
+  });
 });
 
 describe("formatRagErrorBlock", () => {

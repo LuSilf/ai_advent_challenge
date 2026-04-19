@@ -80,7 +80,7 @@ describe("prepareRagPrompt", () => {
     expect(result.retrieval).toBeUndefined();
   });
 
-  test("combines existing suffix with retrieved context when rag succeeds", async () => {
+  test("combines existing suffix with cited prompt when rag succeeds", async () => {
     const retriever = new FakeRetriever({
       status: "ok",
       strategy: "structural",
@@ -99,7 +99,8 @@ describe("prepareRagPrompt", () => {
     expect(retriever.calls).toEqual([
       { question: "what is cache-aside?", strategy: "structural", topK: 5 },
     ]);
-    expect(result.userPromptSuffix).toBe("task reminder\n\nretrieved context");
+    expect(result.userPromptSuffix).toContain("task reminder");
+    expect(result.userPromptSuffix).toContain("ОБЯЗАН быть структурированным JSON");
     expect(result.notice).toBeUndefined();
     expect(result.retrieval?.status).toBe("ok");
   });
@@ -140,5 +141,24 @@ describe("prepareRagPrompt", () => {
     expect(result.userPromptSuffix).toBeUndefined();
     expect(result.notice).toContain("ничего не найдено");
     expect(result.retrieval?.status).toBe("no_hits");
+  });
+
+  test("returns fallback notice when context is insufficient", async () => {
+    const retriever = new FakeRetriever({
+      status: "insufficient_context",
+      strategy: "structural",
+      topK: 3,
+      hits: [],
+    });
+
+    const result = await prepareRagPrompt(
+      "как приготовить борщ?",
+      ragState({ enabled: true }),
+      retriever,
+    );
+
+    expect(result.userPromptSuffix).toBeUndefined();
+    expect(result.notice).toContain("нерелевантны");
+    expect(result.retrieval?.status).toBe("insufficient_context");
   });
 });

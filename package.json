@@ -7,7 +7,8 @@
     "start": "bun run src/main.ts",
     "scheduler": "bun run src/scheduler.ts",
     "indexing": "bun run src/indexing.ts",
-    "rag-eval": "bun run src/rag-eval.ts"
+    "rag-eval": "bun run src/rag-eval.ts",
+    "rag-citation-eval": "bun run src/rag-citation-eval.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

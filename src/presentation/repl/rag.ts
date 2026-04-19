@@ -1,6 +1,7 @@
 import type { ChunkStrategy } from "../../domain/models/chunking";
 import type { OptionsRepository } from "../../domain/ports/options-repository";
 import type { RagRetrieveResult, RagRetriever } from "../../domain/services/rag-service";
+import { buildCitedRagPromptSuffix } from "../../domain/services/rag-service";
 
 export const DEFAULT_RAG_STRATEGY: ChunkStrategy = "structural";
 export const DEFAULT_RAG_TOP_K = 5;
@@ -56,9 +57,10 @@ export async function prepareRagPrompt(
   });
 
   if (retrieval.status === "ok") {
+    const citedSuffix = buildCitedRagPromptSuffix(retrieval.hits);
     return {
       retrieval,
-      userPromptSuffix: combineSuffixes(existingSuffix, retrieval.promptSuffix),
+      userPromptSuffix: combineSuffixes(existingSuffix, citedSuffix),
     };
   }
 
@@ -67,6 +69,14 @@ export async function prepareRagPrompt(
       retrieval,
       userPromptSuffix: existingSuffix,
       notice: `[RAG] Индекс для стратегии ${state.strategy} не найден, отвечаю без RAG`,
+    };
+  }
+
+  if (retrieval.status === "insufficient_context") {
+    return {
+      retrieval,
+      userPromptSuffix: existingSuffix,
+      notice: `[RAG] Найденные материалы нерелевантны (отфильтрованы), отвечаю без RAG`,
     };
   }
 

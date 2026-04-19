@@ -9,6 +9,7 @@ export type ControlQuestion = {
   expectedSections?: string[];
   mustInclude?: string[];
   niceToHave?: string[];
+  outOfScope?: boolean;
 };
 
 export type AnswerRunResult = {

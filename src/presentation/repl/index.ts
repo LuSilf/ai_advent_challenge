@@ -42,6 +42,8 @@ import {
   type RagRuntimeState,
 } from "./rag";
 import type { ToolProvider } from "../../domain/services/chat-service";
+import { citedRagResponseToOpenAISchema, parseCitedRagResponse } from "../../domain/models/cited-rag-response";
+import { formatCitedRagResponse } from "./cited-response-formatter";
 import { TaskStateMachine } from "../../domain/services/task-state-machine";
 
 export type ReplDeps = {
@@ -1652,15 +1654,19 @@ ${schedList}
         }
       }
 
+      const ragHasHits = state.rag.enabled && state.rag.lastResult?.status === "ok";
+      const ragResponseFormat = ragHasHits ? citedRagResponseToOpenAISchema() as any : undefined;
+
       const stopMainSpinner = startSpinner("Генерация ответа...");
       let mainSpinnerStopped = false;
 
       const result = await chatService.sendMessage(state.sessionId, text, {
         historyLimit: config.historyLimit,
         systemPrompt,
-        useStreaming: config.useStreaming,
+        useStreaming: ragHasHits ? false : config.useStreaming,
         memoryBlocks: memoryService.getMemoryBlocks() || undefined,
         userPromptSuffix,
+        responseFormat: ragResponseFormat,
         temperature: config.temperature,
         topP: config.topP,
         maxCompletionTokens: config.maxCompletionTokens,
@@ -1716,10 +1722,20 @@ ${schedList}
       }
 
       // Tool-use всегда non-streaming, поэтому нужно вывести ответ
-      const usedStreaming = config.useStreaming && !toolProvider;
+      const usedStreaming = config.useStreaming && !toolProvider && !ragHasHits;
       if (!usedStreaming) {
-        const text = TaskPhasePrompts.stripTaskMarkers(result.response.content);
-        if (text) process.stdout.write(text);
+        if (ragHasHits) {
+          const cited = parseCitedRagResponse(result.response.content);
+          if (cited) {
+            process.stdout.write(formatCitedRagResponse(cited));
+          } else {
+            const text = TaskPhasePrompts.stripTaskMarkers(result.response.content);
+            if (text) process.stdout.write(text);
+          }
+        } else {
+          const text = TaskPhasePrompts.stripTaskMarkers(result.response.content);
+          if (text) process.stdout.write(text);
+        }
       }
 
       process.stdout.write("\n");
