@@ -18,6 +18,7 @@ function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     historyDb: "./data/history.db",
     historyLimit: 50,
     contextStrategy: "full",
+    day25Mode: false,
     ...overrides
   };
 }

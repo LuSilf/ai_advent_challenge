@@ -135,6 +135,7 @@ const config = {
   historyDb: DB_PATH,
   historyLimit: 50,
   contextStrategy: "full",
+  day25Mode: false,
 };
 
 const mcpServerRepo = new SqliteMcpServerRepository();

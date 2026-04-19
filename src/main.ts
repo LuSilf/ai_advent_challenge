@@ -13,6 +13,7 @@ import { SqliteCheckpointRepository } from "./storage/sqlite/checkpoint-reposito
 import { SqliteProfileRepository } from "./storage/sqlite/profile-repository";
 import { SqliteMemoryRepository } from "./storage/sqlite/memory-repository";
 import { SqliteTaskRepository } from "./storage/sqlite/task-repository";
+import { SqliteTaskStateRepository } from "./storage/sqlite/task-state-repository";
 import { SqliteTaskTransitionRepository } from "./storage/sqlite/task-transition-repository";
 import { SqliteMcpServerRepository } from "./storage/sqlite/mcp-server-repository";
 import { SqliteSchedulerRepository } from "./storage/sqlite/scheduler-repository";
@@ -29,6 +30,7 @@ import { ChatService } from "./domain/services/chat-service";
 import { MemoryService } from "./domain/services/memory-service";
 import { ProfileService } from "./domain/services/profile-service";
 import { TaskService } from "./domain/services/task-service";
+import { TaskStateService } from "./domain/services/task-state-service";
 import { McpClientService } from "./domain/services/mcp-client-service";
 import { McpConnectionManager } from "./domain/services/mcp-connection-manager";
 import { SchedulerService } from "./domain/services/scheduler-service";
@@ -70,6 +72,7 @@ const profileRepo = new SqliteProfileRepository();
 const memoryRepo = new SqliteMemoryRepository();
 const taskRepo = new SqliteTaskRepository();
 const taskTransitionRepo = new SqliteTaskTransitionRepository();
+const taskStateRepo = new SqliteTaskStateRepository();
 const mcpServerRepo = new SqliteMcpServerRepository();
 const schedulerRepo = new SqliteSchedulerRepository();
 const vectorIndex = new SqliteVectorIndex();
@@ -101,6 +104,7 @@ const chatService = new ChatService(
 );
 const memoryService = new MemoryService(memoryRepo, llmClient, modelRepo);
 const taskService = new TaskService(taskRepo, taskTransitionRepo);
+const taskStateService = new TaskStateService(taskStateRepo);
 const mcpClientService = new McpClientService();
 const mcpConnectionManager = new McpConnectionManager(mcpServerRepo, mcpClientService);
 
@@ -126,6 +130,7 @@ if (!config.prompt) {
     mcpConnectionManager,
     schedulerRepo,
     ragService,
+    taskStateService,
   });
 } else {
   // Single-shot mode

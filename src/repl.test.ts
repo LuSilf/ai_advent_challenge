@@ -24,6 +24,7 @@ function makeConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     historyDb: join(tmpDir, "test.db"),
     historyLimit: 50,
     contextStrategy: "full",
+    day25Mode: false,
     ...overrides,
   };
 }

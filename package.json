@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "bun run src/main.ts",
+    "chat": "bun run src/main.ts --day25",
     "scheduler": "bun run src/scheduler.ts",
     "indexing": "bun run src/indexing.ts",
     "rag-eval": "bun run src/rag-eval.ts",

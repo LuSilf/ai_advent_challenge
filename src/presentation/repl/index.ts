@@ -30,6 +30,7 @@ import type { McpConnectionManager } from "../../domain/services/mcp-connection-
 import { SchedulerService } from "../../domain/services/scheduler-service";
 import { TaskPhasePrompts } from "../../domain/services/task-phase-prompts";
 import type { RagRetriever } from "../../domain/services/rag-service";
+import type { TaskStateService } from "../../domain/services/task-state-service";
 import { formatToolCallStart, formatToolCallResult } from "./tool-use-formatter";
 import { formatRagErrorBlock, formatRagTechBlock } from "./rag-formatter";
 import {
@@ -66,6 +67,7 @@ export type ReplDeps = {
   schedulerRepo: SchedulerRepository;
   schedulerService?: SchedulerService;
   ragService?: RagRetriever;
+  taskStateService?: TaskStateService;
 };
 
 export type ReplState = {
@@ -268,6 +270,9 @@ function printHelp(): void {
   console.log("  /rag off                  Выключить RAG");
   console.log("  /rag strategy <type>      Установить fixed|structural");
   console.log("  /rag topk <n>             Установить количество чанков");
+  console.log(pc.bold("Память задачи (day25):"));
+  console.log("  /taskstate show [--raw]   Показать состояние задачи");
+  console.log("  /taskstate clear          Очистить состояние задачи");
   console.log(pc.bold("Ветвление:"));
   console.log("  /checkpoint       Создать точку ветвления");
   console.log("  /branch [name]    Создать ветку от checkpoint");
@@ -1332,6 +1337,33 @@ export async function handleCommand(
         }
       }
     }
+    case "/taskstate": {
+      const service = deps.taskStateService;
+      if (!service) {
+        console.log(pc.red("Модуль состояния задачи не подключён"));
+        return null;
+      }
+      const [subCmd, ...subArgs] = args.split(/\s+/).filter(Boolean);
+
+      if (!subCmd || subCmd === "show") {
+        const taskState = service.getState(state.sessionId);
+        if (subArgs[0] === "--raw") {
+          console.log(service.formatForRawDisplay(taskState));
+        } else {
+          console.log(service.formatForDisplay(taskState));
+        }
+        return null;
+      }
+
+      if (subCmd === "clear") {
+        service.clear(state.sessionId);
+        console.log(pc.green("Состояние задачи очищено"));
+        return null;
+      }
+
+      console.log(pc.red(`Неизвестная подкоманда: /taskstate ${subCmd}. Доступны: show [--raw], clear`));
+      return null;
+    }
     case "/help": {
       printHelp();
       return null;
@@ -1424,11 +1456,16 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
     sessionId: 0,
     messagesSinceReconciliation: 0,
     rag: {
-      enabled: persistedRagState.enabled,
+      enabled: config.day25Mode ? true : persistedRagState.enabled,
       strategy: persistedRagState.strategy ?? DEFAULT_RAG_STRATEGY,
       topK: persistedRagState.topK ?? DEFAULT_RAG_TOP_K,
     },
   };
+
+  if (config.day25Mode) {
+    console.log(pc.bold(pc.cyan("Режим day25: RAG включён для каждого вопроса, память задачи активна")));
+    console.log(pc.dim("Команды: /taskstate show [--raw] | /taskstate clear"));
+  }
 
   const lastSession = sessionService.getLastSession();
   if (lastSession) {

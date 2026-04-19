@@ -60,6 +60,7 @@ function createTestConfig(): AppConfig {
     historyDb: ":memory:",
     historyLimit: 50,
     contextStrategy: "full",
+    day25Mode: false,
   };
 }
 

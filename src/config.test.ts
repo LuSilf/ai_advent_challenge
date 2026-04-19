@@ -60,6 +60,23 @@ describe("loadConfig", () => {
     expect(() => loadConfig(["--session", "-1"], fail)).toThrow("Invalid --session value");
   });
 
+  test("day25Mode is false by default", () => {
+    const config = loadConfig([], fail);
+    expect(config.day25Mode).toBe(false);
+  });
+
+  test("--day25 flag enables day25Mode", () => {
+    const config = loadConfig(["--day25"], fail);
+    expect(config.day25Mode).toBe(true);
+    expect(config.prompt).toBe("");
+  });
+
+  test("--day25 can be combined with --session", () => {
+    const config = loadConfig(["--session", "3", "--day25"], fail);
+    expect(config.day25Mode).toBe(true);
+    expect(config.sessionId).toBe(3);
+  });
+
   test("default historyDb", () => {
     const config = loadConfig([], fail);
     expect(config.historyDb).toBe("./data/history.db");
