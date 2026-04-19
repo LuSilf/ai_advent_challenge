@@ -205,7 +205,7 @@ describe("TaskStateService.reconcile", () => {
       JSON.stringify({
         goal: "горизонтально масштабировать RDBMS",
         constraints: [],
-        terms: {},
+        terms: [],
         openQuestions: [],
         resolvedFacts: [],
       }),
@@ -236,7 +236,7 @@ describe("TaskStateService.reconcile", () => {
       JSON.stringify({
         goal: "цель",
         constraints: [],
-        terms: {},
+        terms: [],
         openQuestions: [],
         resolvedFacts: [],
       }),
@@ -262,7 +262,7 @@ describe("TaskStateService.reconcile", () => {
       JSON.stringify({
         goal: "цель",
         constraints: ["только open source", "read-heavy"],
-        terms: {},
+        terms: [],
         openQuestions: [],
         resolvedFacts: [],
       }),
@@ -290,7 +290,7 @@ describe("TaskStateService.reconcile", () => {
       JSON.stringify({
         goal: "цель",
         constraints: [],
-        terms: {},
+        terms: [],
         openQuestions: [],
         resolvedFacts: [],
       }),
@@ -346,7 +346,7 @@ describe("TaskStateService.reconcile", () => {
     const payload = JSON.stringify({
       goal: "цель",
       constraints: ["c1"],
-      terms: {},
+      terms: [],
       openQuestions: [],
       resolvedFacts: [],
     });
@@ -377,7 +377,7 @@ describe("TaskStateService.reconcile", () => {
       JSON.stringify({
         goal: "цель",
         constraints: [],
-        terms: { "Y": "определение-2" },
+        terms: [{ key: "Y", value: "определение-2" }],
         openQuestions: [],
         resolvedFacts: [],
       }),

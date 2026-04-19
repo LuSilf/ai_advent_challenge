@@ -36,8 +36,10 @@ function mergeTaskStates(current: TaskState, payload: TaskStatePayload): TaskSta
   const constraints = Array.from(constraintsSet);
 
   const terms: Record<string, string> = { ...current.terms };
-  for (const [k, v] of Object.entries(payload.terms)) {
-    if (k.trim() && v.trim()) terms[k.trim()] = v.trim();
+  for (const entry of payload.terms) {
+    const k = entry.key.trim();
+    const v = entry.value.trim();
+    if (k && v) terms[k] = v;
   }
 
   const openQuestions = payload.openQuestions.map((q) => q.trim()).filter(Boolean);

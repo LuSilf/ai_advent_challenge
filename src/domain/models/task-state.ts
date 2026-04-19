@@ -37,7 +37,12 @@ export function isEmptyTaskState(state: TaskState): boolean {
 export const TaskStatePayloadSchema = z.object({
   goal: z.string().nullable(),
   constraints: z.array(z.string()),
-  terms: z.record(z.string(), z.string()),
+  terms: z.array(
+    z.object({
+      key: z.string(),
+      value: z.string(),
+    }),
+  ),
   openQuestions: z.array(z.string()),
   resolvedFacts: z.array(z.string()),
 });
@@ -64,9 +69,17 @@ export function taskStatePayloadToOpenAISchema(): Record<string, unknown> {
           items: { type: "string" },
         },
         terms: {
-          type: "object",
-          description: "Договорённая терминология: ключ — термин, значение — согласованное определение в рамках диалога.",
-          additionalProperties: { type: "string" },
+          type: "array",
+          description: "Договорённая терминология: массив пар {key, value}, где key — термин, value — согласованное определение.",
+          items: {
+            type: "object",
+            required: ["key", "value"],
+            additionalProperties: false,
+            properties: {
+              key: { type: "string", description: "Название термина" },
+              value: { type: "string", description: "Согласованное определение" },
+            },
+          },
         },
         openQuestions: {
           type: "array",
