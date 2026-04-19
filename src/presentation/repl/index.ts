@@ -1691,6 +1691,14 @@ ${schedList}
         }
       }
 
+      if (deps.taskStateService) {
+        const currentTaskState = deps.taskStateService.getState(state.sessionId);
+        const stateBlock = deps.taskStateService.formatForPrompt(currentTaskState);
+        if (stateBlock) {
+          systemPrompt = `${stateBlock}\n\n${systemPrompt}`;
+        }
+      }
+
       const ragHasHits = state.rag.enabled && state.rag.lastResult?.status === "ok";
       const ragResponseFormat = ragHasHits ? citedRagResponseToOpenAISchema() as any : undefined;
 
@@ -1896,6 +1904,31 @@ ${schedList}
           state.messagesSinceReconciliation = 0;
           const dialogContent = `Пользователь: ${text}\nАссистент: ${result.response.content}`;
           await suggestMemorySave(deps, rl, dialogContent);
+        }
+
+        // Task state reconciliation (day25)
+        if (deps.taskStateService) {
+          try {
+            const rec = await deps.taskStateService.reconcile(state.sessionId, text, result.response.content);
+            if (rec.error) {
+              if (config.debug) {
+                console.error(pc.dim(`[TaskState] Ошибка reconcile: ${rec.error}`));
+              }
+            } else if (rec.changed) {
+              console.log(pc.dim("[TaskState] обновлено"));
+            }
+            if (rec.inputTokens + rec.outputTokens > 0) {
+              const factsModel = modelRepo.getRole("facts");
+              if (factsModel) {
+                const label = rec.changed ? "TaskState обновлён" : "TaskState без изменений";
+                console.log(pc.dim(costService.formatMemoryCost(rec.inputTokens, rec.outputTokens, factsModel, label)));
+              }
+            }
+          } catch (e) {
+            if (config.debug) {
+              console.error(pc.dim(`[TaskState] Ошибка: ${e instanceof Error ? e.message : String(e)}`));
+            }
+          }
         }
       }
     } catch (error) {

@@ -104,7 +104,7 @@ const chatService = new ChatService(
 );
 const memoryService = new MemoryService(memoryRepo, llmClient, modelRepo);
 const taskService = new TaskService(taskRepo, taskTransitionRepo);
-const taskStateService = new TaskStateService(taskStateRepo);
+const taskStateService = new TaskStateService(taskStateRepo, llmClient, modelRepo);
 const mcpClientService = new McpClientService();
 const mcpConnectionManager = new McpConnectionManager(mcpServerRepo, mcpClientService);
 
