@@ -1,0 +1,23 @@
+[
+  {
+    "id": "q01_factual",
+    "category": "factual",
+    "prompt": "What is the capital of France? Answer with the city name only, no extra words.",
+    "description": "Short factual lookup — basic response path.",
+    "expectedLanguage": "en"
+  },
+  {
+    "id": "q02_reasoning",
+    "category": "reasoning",
+    "prompt": "Explain the difference between cache-aside and write-through caching strategies. Include at least one trade-off for each approach.",
+    "description": "Mid-complexity reasoning — same domain as day22-24 eval, allows cross-day comparison.",
+    "expectedLanguage": "en"
+  },
+  {
+    "id": "q03_code",
+    "category": "code",
+    "prompt": "Write a TypeScript function `binarySearch(arr: number[], target: number): number` that returns the index of `target` in a sorted numeric array, or -1 if not found. Include JSDoc with @param and @returns. Output only the code, no explanation.",
+    "description": "Code generation with structural requirements — tests longer output and format adherence.",
+    "expectedLanguage": "code"
+  }
+]
