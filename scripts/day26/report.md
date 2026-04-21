@@ -1,28 +1,39 @@
 # Day 26 — Local LLM smoke-benchmark report
 
-Generated at: 2026-04-21T05:54:21.251Z
+Generated at: 2026-04-21T06:01:00.618Z
+
+## Hardware
+- CPU: Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz
+- RAM: 62.44 GB
+- Backend: CUDA
+- GPU: NVIDIA GeForce GTX 1650 with Max-Q Design
+- VRAM: 4 GB
 
 ## Configuration
 - temperature=0, seed=42
 - Ollama base URL: http://localhost:11434/v1
+- Cloud base URL: https://openrouter.ai/api/v1
 - Targets:
   - qwen2.5-coder:7b (local) — model `qwen2.5-coder:7b`
   - llama3.2:3b (local) — model `llama3.2:3b`
+  - openai/gpt-5-nano (cloud) — model `openai/gpt-5-nano`
 
 ## Summary
-| Target | q01_factual latency / tps | q02_reasoning latency / tps | q03_code latency / tps |
+| Target | q01_factual latency / tps / cost | q02_reasoning latency / tps / cost | q03_code latency / tps / cost |
 | --- | --- | --- | --- |
-| qwen2.5-coder:7b (local) | 2400 ms / 0.83 tps | 41235 ms / 9.51 tps | 18449 ms / 9.32 tps |
-| llama3.2:3b (local) | 2343 ms / 0.85 tps | 14082 ms / 38.42 tps | 5166 ms / 36.78 tps |
+| qwen2.5-coder:7b (local) | 2657 ms / 0.75 tps / $0.000000 | 41196 ms / 9.52 tps / $0.000000 | 18559 ms / 9.27 tps / $0.000000 |
+| llama3.2:3b (local) | 2274 ms / 0.88 tps / $0.000000 | 14135 ms / 38.27 tps / $0.000000 | 5179 ms / 36.69 tps / $0.000000 |
+| openai/gpt-5-nano (cloud) | 3180 ms / 30.19 tps / $0.000040 | 25728 ms / 108.01 tps / $0.001113 | 14167 ms / 64.09 tps / $0.000366 |
 
 ## q01_factual — factual
 
 **Prompt:** What is the capital of France? Answer with the city name only, no extra words.
 
 ### qwen2.5-coder:7b (local)
-- Latency: 2400 ms
-- Prompt tokens: 47, Completion tokens: 2, tokens/sec: 0.83
+- Latency: 2657 ms
+- Prompt tokens: 47, Completion tokens: 2, tokens/sec: 0.75
 - finish_reason: `stop`
+- Cost: $0.000000
 
 **Answer:**
 
@@ -31,9 +42,22 @@ Paris
 ```
 
 ### llama3.2:3b (local)
-- Latency: 2343 ms
-- Prompt tokens: 43, Completion tokens: 2, tokens/sec: 0.85
+- Latency: 2274 ms
+- Prompt tokens: 43, Completion tokens: 2, tokens/sec: 0.88
 - finish_reason: `stop`
+- Cost: $0.000000
+
+**Answer:**
+
+```
+Paris
+```
+
+### openai/gpt-5-nano (cloud)
+- Latency: 3180 ms
+- Prompt tokens: 24, Completion tokens: 96, tokens/sec: 30.19
+- finish_reason: `stop`
+- Cost: $0.000040
 
 **Answer:**
 
@@ -46,9 +70,10 @@ Paris
 **Prompt:** Explain the difference between cache-aside and write-through caching strategies. Include at least one trade-off for each approach.
 
 ### qwen2.5-coder:7b (local)
-- Latency: 41235 ms
-- Prompt tokens: 53, Completion tokens: 392, tokens/sec: 9.51
+- Latency: 41196 ms
+- Prompt tokens: 53, Completion tokens: 392, tokens/sec: 9.52
 - finish_reason: `stop`
+- Cost: $0.000000
 
 **Answer:**
 
@@ -75,9 +100,10 @@ In summary, Cache-Aside provides better performance but may lead to inconsistenc
 ```
 
 ### llama3.2:3b (local)
-- Latency: 14082 ms
-- Prompt tokens: 49, Completion tokens: 541, tokens/sec: 38.42
+- Latency: 14135 ms
+- Prompt tokens: 49, Completion tokens: 541, tokens/sec: 38.27
 - finish_reason: `stop`
+- Cost: $0.000000
 
 **Answer:**
 
@@ -118,14 +144,70 @@ In summary:
 * Write-Through caching prioritizes consistency and ensures that data is up-to-date across all layers, but can lead to increased latency due to the additional round trip to the storage for every write operation.
 ```
 
+### openai/gpt-5-nano (cloud)
+- Latency: 25728 ms
+- Prompt tokens: 29, Completion tokens: 2779, tokens/sec: 108.01
+- finish_reason: `stop`
+- Cost: $0.001113
+
+**Answer:**
+
+```
+Here’s a concise comparison of cache-aside (lazy loading) and write-through caching, plus key trade-offs for each.
+
+What they are
+
+- Cache-aside (lazy loading)
+  - How it works:
+    - Reads: The application checks the cache first. On a miss, it loads from the backing store (e.g., database), then stores that value in the cache.
+    - Writes: The application writes to the backing store. The cache is then invalidated or updated (often invalidated) to avoid serving stale data until the next read.
+  - Typical behavior: The cache sits “aside” and is populated on demand. The cache and store can drift until the next access.
+
+- Write-through caching
+  - How it works:
+    - Writes: The system writes to both the cache and the backing store in a single operation (often atomically in a transaction or via coordinated steps).
+    - Reads: Reads typically come from the cache; if the entry is missing, it may be loaded from the store and then cached.
+  - Typical behavior: The cache and store stay in sync, and users see consistent results for recent writes.
+
+Key trade-offs
+
+- Cache-aside
+  - Pros:
+    - Lower cache write traffic: Writes go directly to the backing store, not the cache, which can be cheaper and faster for write-heavy workloads.
+    - Greater control and flexibility: You can implement custom invalidation or selective caching.
+  - Cons:
+    - Potential for stale reads: After a write, the cache may serve stale data until the next read triggers a reload.
+    - More complexity to maintain coherence: The app must handle invalidation or refresh logic, which can be error-prone in distributed systems.
+
+- Write-through
+  - Pros:
+    - Stronger consistency between cache and store: Writes are applied to both in a coordinated way, reducing the chance of reading stale data.
+    - Simpler read path: Reads can reliably hit the cache without worrying about drift, assuming cache is kept up-to-date.
+  - Cons:
+    - Higher write latency: Each write must propagate to the cache and the backing store, which can slow write-heavy workloads.
+    - More complex transactional/availability considerations: Ensuring atomicity across cache and store can be challenging, especially in distributed environments.
+
+When to use which
+
+- Cache-aside is often preferred when:
+  - You have a large, mostly-read dataset with infrequent updates, and you want fine-grained control over what gets cached.
+  - You want to minimize cache writes and tolerate occasional cache misses on reads.
+- Write-through is often preferred when:
+  - You need stronger consistency between cache and backing store and want simpler reasoning about read results after writes.
+  - You can tolerate a bit more latency on writes or have a cache and store that can atomically coordinate updates.
+
+In short: cache-aside gives you lazy, on-demand caching with explicit invalidation (more control, potentially more complexity), while write-through keeps cache and store in sync at write time (simpler consistency, but higher write latency).
+```
+
 ## q03_code — code
 
 **Prompt:** Write a TypeScript function `binarySearch(arr: number[], target: number): number` that returns the index of `target` in a sorted numeric array, or -1 if not found. Include JSDoc with @param and @returns. Output only the code, no explanation.
 
 ### qwen2.5-coder:7b (local)
-- Latency: 18449 ms
-- Prompt tokens: 86, Completion tokens: 172, tokens/sec: 9.32
+- Latency: 18559 ms
+- Prompt tokens: 86, Completion tokens: 172, tokens/sec: 9.27
 - finish_reason: `stop`
+- Cost: $0.000000
 
 **Answer:**
 
@@ -159,9 +241,10 @@ function binarySearch(arr: number[], target: number): number {
 ```
 
 ### llama3.2:3b (local)
-- Latency: 5166 ms
-- Prompt tokens: 82, Completion tokens: 190, tokens/sec: 36.78
+- Latency: 5179 ms
+- Prompt tokens: 82, Completion tokens: 190, tokens/sec: 36.69
 - finish_reason: `stop`
+- Cost: $0.000000
 
 **Answer:**
 
@@ -194,4 +277,40 @@ function binarySearch(arr: number[], target: number): number {
     return -1;
 }
 ```
+```
+
+### openai/gpt-5-nano (cloud)
+- Latency: 14167 ms
+- Prompt tokens: 64, Completion tokens: 908, tokens/sec: 64.09
+- finish_reason: `stop`
+- Cost: $0.000366
+
+**Answer:**
+
+```
+/**
+ * Binary search for a target value in a sorted numeric array.
+ * @param arr - A sorted array of numbers.
+ * @param target - The value to search for.
+ * @returns The index of the target if found, otherwise -1.
+ */
+function binarySearch(arr: number[], target: number): number {
+  let left = 0;
+  let right = arr.length - 1;
+
+  while (left <= right) {
+    const mid = Math.floor((left + right) / 2);
+    const value = arr[mid];
+
+    if (value === target) {
+      return mid;
+    } else if (value < target) {
+      left = mid + 1;
+    } else {
+      right = mid - 1;
+    }
+  }
+
+  return -1;
+}
 ```
