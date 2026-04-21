@@ -17,6 +17,7 @@ export type AppConfig = {
   historyLimit: number;
   contextStrategy: string;
   sessionId?: number;
+  day25Mode: boolean;
   reasoningEffort?: ReasoningEffort;
   reasoningSummary?: ReasoningSummaryMode;
   temperature?: number;
@@ -132,6 +133,7 @@ function parseReasoningSummary(rawValue: string | undefined, fail: (message: str
 
 export function loadConfig(args: string[], fail: (message: string) => never): AppConfig {
   let sessionId: number | undefined;
+  let day25Mode = false;
   const promptParts: string[] = [];
 
   for (let i = 0; i < args.length; i++) {
@@ -142,6 +144,8 @@ export function loadConfig(args: string[], fail: (message: string) => never): Ap
       }
       sessionId = parsed;
       i++;
+    } else if (args[i] === "--day25") {
+      day25Mode = true;
     } else {
       promptParts.push(args[i]);
     }
@@ -177,6 +181,7 @@ export function loadConfig(args: string[], fail: (message: string) => never): Ap
     historyLimit,
     contextStrategy,
     sessionId,
+    day25Mode,
     reasoningEffort: parseReasoningEffort(getEnv("OPENAI_REASONING_EFFORT"), fail),
     reasoningSummary: parseReasoningSummary(getEnv("OPENAI_REASONING_SUMMARY"), fail),
     temperature: parseBoundedNumber("OPENAI_TEMPERATURE", 0, 2, fail),

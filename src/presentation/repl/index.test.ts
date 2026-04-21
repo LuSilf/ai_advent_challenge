@@ -60,6 +60,7 @@ function createTestConfig(): AppConfig {
     historyDb: ":memory:",
     historyLimit: 50,
     contextStrategy: "full",
+    day25Mode: false,
   };
 }
 
@@ -419,5 +420,73 @@ describe("presentation/repl handleCommand", () => {
     const active = deps.taskService.getActiveTask(newSessionId);
     expect(active).not.toBeNull();
     expect(active!.title).toBe("Задача в новой сессии");
+  });
+
+  // Task state commands (day25)
+
+  test("/taskstate без сервиса показывает ошибку", async () => {
+    const result = await handleCommand("/taskstate", "show", state, deps);
+    expect(result).toBeNull();
+  });
+
+  test("/taskstate show на пустом стейте возвращает 'пусто'", async () => {
+    const { TaskStateService } = await import("../../domain/services/task-state-service");
+    const { SqliteTaskStateRepository } = await import("../../storage/sqlite/task-state-repository");
+    deps.taskStateService = new TaskStateService(new SqliteTaskStateRepository());
+    const result = await handleCommand("/taskstate", "show", state, deps);
+    expect(result).toBeNull();
+  });
+
+  test("/taskstate show отображает заполненный стейт", async () => {
+    const { TaskStateService } = await import("../../domain/services/task-state-service");
+    const { SqliteTaskStateRepository } = await import("../../storage/sqlite/task-state-repository");
+    const repo = new SqliteTaskStateRepository();
+    deps.taskStateService = new TaskStateService(repo);
+    repo.upsert({
+      sessionId: state.sessionId,
+      goal: "test goal",
+      constraints: ["c1"],
+      terms: {},
+      openQuestions: [],
+      resolvedFacts: [],
+      updatedAt: "",
+    });
+    const result = await handleCommand("/taskstate", "show", state, deps);
+    expect(result).toBeNull();
+    expect(deps.taskStateService.getState(state.sessionId).goal).toBe("test goal");
+  });
+
+  test("/taskstate clear обнуляет состояние", async () => {
+    const { TaskStateService } = await import("../../domain/services/task-state-service");
+    const { SqliteTaskStateRepository } = await import("../../storage/sqlite/task-state-repository");
+    const repo = new SqliteTaskStateRepository();
+    deps.taskStateService = new TaskStateService(repo);
+    repo.upsert({
+      sessionId: state.sessionId,
+      goal: "удалить меня",
+      constraints: [],
+      terms: {},
+      openQuestions: [],
+      resolvedFacts: [],
+      updatedAt: "",
+    });
+    await handleCommand("/taskstate", "clear", state, deps);
+    expect(deps.taskStateService.getState(state.sessionId).goal).toBeNull();
+  });
+
+  test("/taskstate show --raw выводит JSON", async () => {
+    const { TaskStateService } = await import("../../domain/services/task-state-service");
+    const { SqliteTaskStateRepository } = await import("../../storage/sqlite/task-state-repository");
+    deps.taskStateService = new TaskStateService(new SqliteTaskStateRepository());
+    const result = await handleCommand("/taskstate", "show --raw", state, deps);
+    expect(result).toBeNull();
+  });
+
+  test("/taskstate неизвестная подкоманда не падает", async () => {
+    const { TaskStateService } = await import("../../domain/services/task-state-service");
+    const { SqliteTaskStateRepository } = await import("../../storage/sqlite/task-state-repository");
+    deps.taskStateService = new TaskStateService(new SqliteTaskStateRepository());
+    const result = await handleCommand("/taskstate", "nonsense", state, deps);
+    expect(result).toBeNull();
   });
 });

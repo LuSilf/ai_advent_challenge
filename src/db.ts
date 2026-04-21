@@ -199,6 +199,16 @@ export function initDb(dbPath: string): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_chunks_strategy_source ON chunks(strategy, source);
+
+    CREATE TABLE IF NOT EXISTS task_states (
+      session_id INTEGER PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+      goal TEXT,
+      constraints TEXT NOT NULL DEFAULT '[]',
+      terms TEXT NOT NULL DEFAULT '{}',
+      open_questions TEXT NOT NULL DEFAULT '[]',
+      resolved_facts TEXT NOT NULL DEFAULT '[]',
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   db.exec(`
