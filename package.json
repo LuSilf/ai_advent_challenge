@@ -10,7 +10,8 @@
     "indexing": "bun run src/indexing.ts",
     "rag-eval": "bun run src/rag-eval.ts",
     "rag-citation-eval": "bun run src/rag-citation-eval.ts",
-    "day25-scenarios": "bun run scripts/day25/run-scenarios.ts"
+    "day25-scenarios": "bun run scripts/day25/run-scenarios.ts",
+    "day26-local": "bun run scripts/day26/run-queries.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
