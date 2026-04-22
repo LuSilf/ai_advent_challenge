@@ -24,7 +24,7 @@ describe("loadTelegramConfig", () => {
     const cfg = loadTelegramConfig(env, fail);
     expect(cfg.botToken).toBe("123:ABC");
     expect(cfg.allowedChatIdsCsv).toBe("1,2,3");
-    expect(cfg.model).toBe("llama3.2:3b");
+    expect(cfg.model).toBe("qwen3:4b-instruct-2507-q4_K_M");
     expect(cfg.baseUrl).toBe("http://localhost:11434/v1");
     expect(cfg.timeoutMs).toBe(180_000);
     expect(cfg.maxCompletionTokens).toBe(768);

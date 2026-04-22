@@ -8,7 +8,7 @@ export type TelegramConfig = {
   systemPrompt: string;
 };
 
-const DEFAULT_MODEL = "llama3.2:3b";
+const DEFAULT_MODEL = "qwen3:4b-instruct-2507-q4_K_M";
 const DEFAULT_BASE_URL = "http://localhost:11434/v1";
 const DEFAULT_TIMEOUT_MS = 180_000;
 const DEFAULT_MAX_TOKENS = 768;
