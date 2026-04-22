@@ -36,7 +36,7 @@ describe("loadTelegramConfig", () => {
       TELEGRAM_BOT_TOKEN: "t",
       TELEGRAM_ALLOWED_CHAT_IDS: "7",
       TELEGRAM_MODEL: "qwen2.5-coder:3b",
-      OPENAI_BASE_URL: "http://remote:11434/v1/",
+      TELEGRAM_BASE_URL: "http://remote:11434/v1/",
       TELEGRAM_TIMEOUT_MS: "60000",
       TELEGRAM_MAX_TOKENS: "256",
       TELEGRAM_SYSTEM_PROMPT: "Custom prompt",
@@ -48,6 +48,17 @@ describe("loadTelegramConfig", () => {
     expect(cfg.timeoutMs).toBe(60_000);
     expect(cfg.maxCompletionTokens).toBe(256);
     expect(cfg.systemPrompt).toBe("Custom prompt");
+  });
+
+  test("OPENAI_BASE_URL does NOT leak into bot config", () => {
+    const env = envFrom({
+      TELEGRAM_BOT_TOKEN: "t",
+      TELEGRAM_ALLOWED_CHAT_IDS: "1",
+      OPENAI_BASE_URL: "https://openrouter.ai/api/v1",
+    });
+    const { fail } = collectingFail();
+    const cfg = loadTelegramConfig(env, fail);
+    expect(cfg.baseUrl).toBe("http://localhost:11434/v1");
   });
 
   test("fails when TELEGRAM_BOT_TOKEN is missing", () => {
@@ -100,7 +111,7 @@ describe("loadTelegramConfig", () => {
     const env = envFrom({
       TELEGRAM_BOT_TOKEN: "t",
       TELEGRAM_ALLOWED_CHAT_IDS: "1",
-      OPENAI_BASE_URL: "http://localhost:11434/v1/",
+      TELEGRAM_BASE_URL: "http://localhost:11434/v1/",
     });
     const { fail } = collectingFail();
     const cfg = loadTelegramConfig(env, fail);

@@ -22,7 +22,7 @@ export function loadTelegramConfig(env: EnvReader, fail: (message: string) => ne
   const allowedChatIdsCsv = requireString(env, "TELEGRAM_ALLOWED_CHAT_IDS", fail);
 
   const model = readString(env, "TELEGRAM_MODEL") ?? DEFAULT_MODEL;
-  const baseUrl = (readString(env, "OPENAI_BASE_URL") ?? DEFAULT_BASE_URL).replace(/\/$/, "");
+  const baseUrl = (readString(env, "TELEGRAM_BASE_URL") ?? DEFAULT_BASE_URL).replace(/\/$/, "");
 
   const timeoutMs = readPositiveInt(env, "TELEGRAM_TIMEOUT_MS", DEFAULT_TIMEOUT_MS, fail);
   const maxCompletionTokens = readPositiveInt(env, "TELEGRAM_MAX_TOKENS", DEFAULT_MAX_TOKENS, fail);
