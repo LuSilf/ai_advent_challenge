@@ -1,13 +1,11 @@
 import { Bot } from "grammy";
-import type { LLMClient } from "../../domain/ports/llm-client";
-import type { LLMRequest } from "../../domain/models";
-import { WhitelistGuard } from "./whitelist";
+import type { TelegramChatHandler } from "./chat-handler";
+import type { WhitelistGuard } from "./whitelist";
 
 export type TelegramWiringDeps = {
   botToken: string;
   whitelist: WhitelistGuard;
-  llmClient: LLMClient;
-  model: string;
+  chatHandler: TelegramChatHandler;
 };
 
 export function createTelegramBot(deps: TelegramWiringDeps): Bot {
@@ -15,8 +13,17 @@ export function createTelegramBot(deps: TelegramWiringDeps): Bot {
 
   bot.command("start", async (ctx) => {
     await ctx.reply(
-      "Привет! Я работаю на локальной LLM через Ollama. Пиши любое сообщение — отвечу.\n\nКоманды:\n/new — сбросить историю (появится в следующей фазе)",
+      "Привет! Я работаю на локальной LLM через Ollama. Пиши любое сообщение — отвечу.\n\nКоманды:\n/new — сбросить историю и начать сначала",
     );
+  });
+
+  bot.command("new", async (ctx) => {
+    if (!deps.whitelist.isAllowed(ctx.chat.id)) {
+      await ctx.reply("Этот бот приватный.");
+      return;
+    }
+    deps.chatHandler.clearHistory(ctx.chat.id);
+    await ctx.reply("История очищена. Начнём сначала.");
   });
 
   bot.on("message:text", async (ctx) => {
@@ -31,21 +38,8 @@ export function createTelegramBot(deps: TelegramWiringDeps): Bot {
 
     try {
       await ctx.replyWithChatAction("typing");
-
-      const request: LLMRequest = {
-        messages: [],
-        instructions: "",
-        model: deps.model,
-        params: {},
-      };
-      // single user-turn: pass as userPrompt path through empty history
-      request.messages = [
-        { id: 0, sessionId: 0, role: "user", content: ctx.message.text, createdAt: "" },
-      ];
-
-      const result = await deps.llmClient.send(request);
-      const answer = result.content?.trim() || "(пустой ответ)";
-      await ctx.reply(answer);
+      const answer = await deps.chatHandler.handleMessage(chatId, ctx.message.text);
+      await ctx.reply(answer || "(пустой ответ)");
     } catch (err) {
       const message = explainError(err);
       console.error("[telegram] inference error", err);

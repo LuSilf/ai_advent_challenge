@@ -2,6 +2,8 @@ import OpenAI from "openai";
 
 import { OpenAILLMClient } from "./api/openai/llm-client";
 import { WhitelistGuard } from "./presentation/telegram/whitelist";
+import { ChatHistoryStore } from "./presentation/telegram/history";
+import { TelegramChatHandler } from "./presentation/telegram/chat-handler";
 import { createTelegramBot } from "./presentation/telegram";
 
 function fail(message: string): never {
@@ -41,11 +43,17 @@ const openaiClient = new OpenAI({
 });
 const llmClient = new OpenAILLMClient(openaiClient);
 
+const history = new ChatHistoryStore();
+const chatHandler = new TelegramChatHandler({
+  llmClient,
+  history,
+  model,
+});
+
 const bot = createTelegramBot({
   botToken,
   whitelist,
-  llmClient,
-  model,
+  chatHandler,
 });
 
 const shutdown = async (signal: string) => {
