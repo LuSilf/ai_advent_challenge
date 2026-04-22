@@ -30,10 +30,7 @@ export type SendMessageOptions = {
   temperature?: number;
   topP?: number;
   maxCompletionTokens?: number;
-  reasoningEffort?: string;
-  reasoningSummary?: string;
   onDelta?: (text: string) => void;
-  onReasoningSummary?: (text: string) => void;
   userPromptSuffix?: string;
   responseFormat?: ResponseFormat;
   toolProvider?: ToolProvider;
@@ -120,8 +117,6 @@ export class ChatService {
         temperature: options.temperature,
         topP: options.topP,
         maxCompletionTokens: options.maxCompletionTokens,
-        reasoningEffort: options.reasoningEffort,
-        reasoningSummary: options.reasoningSummary,
         stream: hasTools ? false : (options.useStreaming ?? false),
       },
       tools: hasTools ? tools : undefined,
@@ -154,8 +149,6 @@ export class ChatService {
         if (event.type === "delta") {
           responseText += event.text;
           options.onDelta?.(event.text);
-        } else if (event.type === "reasoning_summary") {
-          options.onReasoningSummary?.(event.text);
         } else if (event.type === "done") {
           finalResponse = event.response;
           rawResponse = event.rawResponse;

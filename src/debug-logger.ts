@@ -1,4 +1,4 @@
-import type { Response } from "openai/resources/responses/responses";
+import type { ChatCompletion } from "openai/resources/chat/completions";
 import pc from "picocolors";
 
 import type { AppConfig } from "./config";
@@ -59,25 +59,6 @@ function debugPrintNote(message: string): void {
   console.error(pc.yellow(`Note: ${message}`));
 }
 
-function extractReasoningSummaries(response: Response): string[] {
-  const summaries: string[] = [];
-
-  for (const item of response.output) {
-    if (item.type !== "reasoning") {
-      continue;
-    }
-
-    for (const part of item.summary) {
-      const text = part.text?.trim();
-      if (text) {
-        summaries.push(text);
-      }
-    }
-  }
-
-  return summaries;
-}
-
 export function printOutputMarker(): void {
   console.error(pc.bold(pc.green("[Model output]")));
 }
@@ -93,7 +74,7 @@ export function printRequestDebug(config: AppConfig, model?: string, ctx?: Debug
   const messageCount = ctx?.messageCount;
   const factsCount = ctx?.factsBlock ? 1 : 0;
   debugPrintHeader("Request Debug");
-  debugPrintField("Requesting", `${config.baseUrl}/responses`);
+  debugPrintField("Requesting", `${config.baseUrl}/chat/completions`);
   debugPrintField("Model", model ?? "(unknown)");
   debugPrintField("Context strategy", config.contextStrategy);
   if (messageCount !== undefined) {
@@ -104,8 +85,6 @@ export function printRequestDebug(config: AppConfig, model?: string, ctx?: Debug
   }
   debugPrintField("Timeout", `${config.effectiveTimeoutMs}ms`);
   debugPrintField("Stream", config.useStreaming ? "enabled" : "disabled");
-  debugPrintField("Reasoning effort", formatOptional(config.reasoningEffort));
-  debugPrintField("Reasoning summary mode", formatOptional(config.reasoningSummary));
   debugPrintField("Temperature", formatOptional(config.temperature));
   debugPrintField("Top-p", formatOptional(config.topP));
   debugPrintField("N", formatOptional(config.n));
@@ -113,16 +92,8 @@ export function printRequestDebug(config: AppConfig, model?: string, ctx?: Debug
   debugPrintField("Presence penalty", formatOptional(config.presencePenalty));
   debugPrintField("Frequency penalty", formatOptional(config.frequencyPenalty));
 
-  if (config.n !== undefined) {
-    debugPrintNote("OPENAI_N is not supported by Responses API and will be ignored");
-  }
-
-  if (config.presencePenalty !== undefined) {
-    debugPrintNote("OPENAI_PRESENCE_PENALTY is not supported by Responses API and will be ignored");
-  }
-
-  if (config.frequencyPenalty !== undefined) {
-    debugPrintNote("OPENAI_FREQUENCY_PENALTY is not supported by Responses API and will be ignored");
+  if (config.n !== undefined && config.n !== 1) {
+    debugPrintNote("OPENAI_N > 1 is not wired through the current request builder");
   }
 
   debugPrintSection("Prompts");
@@ -148,39 +119,28 @@ export function printRequestDebug(config: AppConfig, model?: string, ctx?: Debug
   debugPrintFooter();
 }
 
-export function printResponseDebug(response: Response, startedAtMs: number, fallbackSummaries?: string[]): void {
-  const completedAtMsFromApi = response.completed_at ? response.completed_at * 1000 : undefined;
-  const createdAtMsFromApi = response.created_at ? response.created_at * 1000 : undefined;
-
+export function printResponseDebug(response: ChatCompletion, startedAtMs: number): void {
   const wallTimeMs = Date.now() - startedAtMs;
-  const queueToCompletionMs =
-    createdAtMsFromApi !== undefined && completedAtMsFromApi !== undefined
-      ? Math.max(0, completedAtMsFromApi - createdAtMsFromApi)
-      : undefined;
 
   debugPrintHeader("Response Debug");
-  debugPrintField("Response ID", response.id);
-  debugPrintField("Response status", formatOptional(response.status));
-  debugPrintField("Service tier", formatOptional(response.service_tier));
-  debugPrintField("Created at", formatUnixSeconds(response.created_at));
-  debugPrintField("Completed at", formatUnixSeconds(response.completed_at));
-  debugPrintField("Model queue->complete", formatMs(queueToCompletionMs));
+  debugPrintField("Response ID", response.id ?? "(not set)");
+  debugPrintField("Model", response.model ?? "(not set)");
+  debugPrintField("Created at", formatUnixSeconds(response.created));
   debugPrintField("Client wall time", formatMs(wallTimeMs));
+
+  const finishReason = response.choices?.[0]?.finish_reason;
+  debugPrintField("Finish reason", formatOptional(finishReason ?? null));
 
   const usage = response.usage;
   if (usage) {
-    const inputTokens = usage.input_tokens;
-    const outputTokens = usage.output_tokens;
-    const totalTokens = usage.total_tokens;
-    const cachedInputTokens = usage.input_tokens_details.cached_tokens;
-    const reasoningTokens = usage.output_tokens_details.reasoning_tokens;
+    const inputTokens = usage.prompt_tokens ?? 0;
+    const outputTokens = usage.completion_tokens ?? 0;
+    const totalTokens = usage.total_tokens ?? inputTokens + outputTokens;
 
     debugPrintSection("Token usage");
-    debugPrintField("Input tokens", inputTokens);
-    debugPrintField("Output tokens", outputTokens);
+    debugPrintField("Prompt tokens", inputTokens);
+    debugPrintField("Completion tokens", outputTokens);
     debugPrintField("Total tokens", totalTokens);
-    debugPrintField("Cached input tokens", cachedInputTokens);
-    debugPrintField("Reasoning tokens", reasoningTokens);
 
     if (wallTimeMs > 0) {
       const outputTps = outputTokens / (wallTimeMs / 1000);
@@ -189,26 +149,6 @@ export function printResponseDebug(response: Response, startedAtMs: number, fall
   } else {
     debugPrintSection("Token usage");
     debugPrintField("Availability", "(not returned by provider)");
-  }
-
-  const summaries = extractReasoningSummaries(response);
-  const effectiveSummaries = summaries.length > 0 ? summaries : fallbackSummaries ?? [];
-  if (effectiveSummaries.length > 0) {
-    debugPrintSection("Reasoning summary");
-    for (const summary of effectiveSummaries) {
-      console.error(`- ${summary}`);
-    }
-  } else {
-    debugPrintSection("Reasoning summary");
-    debugPrintField("Availability", "(not returned)");
-  }
-
-  if (response.incomplete_details?.reason) {
-    debugPrintField("Incomplete reason", response.incomplete_details.reason);
-  }
-
-  if (response.error) {
-    debugPrintField("Response error", response.error.message);
   }
 
   debugPrintFooter();

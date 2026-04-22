@@ -162,8 +162,6 @@ async function main(): Promise<void> {
         temperature: config.temperature,
         topP: config.topP,
         maxCompletionTokens: config.maxCompletionTokens,
-        reasoningEffort: config.reasoningEffort,
-        reasoningSummary: config.reasoningSummary,
       });
       return {
         answer: result.response.content,

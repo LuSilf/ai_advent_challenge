@@ -162,7 +162,5 @@ export type GenerationParams = {
   temperature?: number;
   topP?: number;
   maxCompletionTokens?: number;
-  reasoningEffort?: string;
-  reasoningSummary?: string;
   stream?: boolean;
 };

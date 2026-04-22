@@ -173,12 +173,7 @@ if (!config.prompt) {
       temperature: config.temperature,
       topP: config.topP,
       maxCompletionTokens: config.maxCompletionTokens,
-      reasoningEffort: config.reasoningEffort,
-      reasoningSummary: config.reasoningSummary,
       onDelta: (text) => process.stdout.write(text),
-      onReasoningSummary: (text) => {
-        // collected for debug
-      },
     });
 
     if (!config.useStreaming) {
@@ -205,14 +200,16 @@ if (!config.prompt) {
       if (session && !session.title && sessionService.getMessageCount(sessionId) === 2) {
         try {
           const titleModelObj = modelRepo.getRole("title");
-          const titleModelId = titleModelObj?.id ?? "openai/gpt-5-nano";
-          const titleResponse = await openaiClient.responses.create({
+          const titleModelId = titleModelObj?.id ?? "llama3.2:3b";
+          const titleResponse = await openaiClient.chat.completions.create({
             model: titleModelId,
-            instructions: "Придумай короткое название (до 50 символов) для диалога по первому обмену сообщениями. Ответь только названием, без кавычек.",
-            input: `Пользователь: ${config.prompt}\nАссистент: ${result.response.content}`,
+            messages: [
+              { role: "system", content: "Придумай короткое название (до 50 символов) для диалога по первому обмену сообщениями. Ответь только названием, без кавычек." },
+              { role: "user", content: `Пользователь: ${config.prompt}\nАссистент: ${result.response.content}` },
+            ],
             stream: false,
           });
-          const title = titleResponse.output_text?.trim();
+          const title = titleResponse.choices[0]?.message?.content?.trim();
           if (title) {
             sessionService.autoTitle(sessionId, title);
           }
