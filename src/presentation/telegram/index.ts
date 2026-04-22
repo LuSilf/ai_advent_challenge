@@ -50,7 +50,7 @@ export function createTelegramBot(deps: TelegramWiringDeps): Bot {
   return bot;
 }
 
-function explainError(err: unknown): string {
+export function explainError(err: unknown): string {
   if (typeof err === "object" && err !== null) {
     const name = (err as { name?: unknown }).name;
     const code = (err as { code?: unknown }).code;
@@ -60,7 +60,12 @@ function explainError(err: unknown): string {
     if (name === "AbortError" || code === "ETIMEDOUT" || /timeout/i.test(message)) {
       return "Модель думает слишком долго. Попробуйте ещё раз.";
     }
-    if (code === "ECONNREFUSED" || code === "ECONNRESET" || /fetch failed|ECONNREFUSED/i.test(message)) {
+    if (
+      name === "APIConnectionError" ||
+      code === "ECONNREFUSED" ||
+      code === "ECONNRESET" ||
+      /connection error|fetch failed|ECONNREFUSED/i.test(message)
+    ) {
       return "Модель недоступна. Убедитесь, что Ollama запущена.";
     }
     if (typeof status === "number" && status === 404) {
