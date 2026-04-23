@@ -229,6 +229,7 @@ async function main(): Promise<void> {
   const runs = flags.runs ?? parseIntEnv("DAY28_RUNS", 3, 1);
   const temperature = parseFloatEnv("DAY28_TEMPERATURE", 0.2, 0, 2);
   const maxCompletionTokens = parseIntEnv("DAY28_MAX_TOKENS", 800, 16);
+  const cloudMaxCompletionTokens = parseIntEnv("DAY28_CLOUD_MAX_TOKENS", 4000, 16);
   const strategyRaw = (process.env.DAY28_STRATEGY?.trim() || "structural").toLowerCase();
   if (strategyRaw !== "structural" && strategyRaw !== "fixed") {
     fail(`Invalid DAY28_STRATEGY: ${strategyRaw}. Use structural|fixed`);
@@ -238,7 +239,7 @@ async function main(): Promise<void> {
 
   const cloudApiKey = getEnv("OPENAI_API_KEY");
   const cloudBaseUrl = (process.env.OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1").replace(/\/$/, "");
-  const cloudTimeoutMs = parseIntEnv("OPENAI_TIMEOUT_MS", 60000, 1);
+  const cloudTimeoutMs = parseIntEnv("DAY28_CLOUD_TIMEOUT_MS", 180_000, 1);
 
   const questionsPath = flags.questionsPath ?? "scripts/day22/control-questions.json";
   let questions = JSON.parse(readFileSync(questionsPath, "utf8")) as ControlQuestion[];
@@ -282,7 +283,7 @@ async function main(): Promise<void> {
   console.log(pc.dim(`  cloud model:   ${cloudModel}`));
   console.log(pc.dim(`  runs:          ${runs}`));
   console.log(pc.dim(`  temperature:   ${temperature}`));
-  console.log(pc.dim(`  max tokens:    ${maxCompletionTokens}`));
+  console.log(pc.dim(`  max tokens:    local=${maxCompletionTokens}, cloud=${cloudMaxCompletionTokens}`));
   console.log(pc.dim(`  threshold:     ${threshold}`));
   console.log(pc.dim(`  questions:     ${questions.length} (from ${questionsPath})`));
 
@@ -308,7 +309,7 @@ async function main(): Promise<void> {
 
   const backends: BackendConfig[] = [
     { name: "local", llmClient: localLlmClient, modelId: localModel },
-    { name: "cloud", llmClient: cloudLlmClient, modelId: cloudModel },
+    { name: "cloud", llmClient: cloudLlmClient, modelId: cloudModel, maxCompletionTokens: cloudMaxCompletionTokens },
   ];
 
   const totalRuns = questions.length * modes.length * backends.length * runs;

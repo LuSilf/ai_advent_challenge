@@ -14,6 +14,7 @@ export type BackendConfig = {
   llmClient: LLMClient;
   modelId: string;
   systemPrompt?: string;
+  maxCompletionTokens?: number;
 };
 
 export type EvalMode = {
@@ -149,7 +150,7 @@ async function executeOne(
     params: {
       stream: false,
       temperature,
-      maxCompletionTokens,
+      maxCompletionTokens: backend.maxCompletionTokens ?? maxCompletionTokens,
     },
   };
 
