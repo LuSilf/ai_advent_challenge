@@ -17,6 +17,10 @@ import {
   type RunMeta,
   type RunProgress,
 } from "../../src/domain/services/dual-backend-eval-service";
+import { DualJudgeService } from "../../src/domain/services/dual-judge-service";
+import { RagJudgeService } from "../../src/domain/services/rag-judge-service";
+import type { Model, ModelRole } from "../../src/domain/models";
+import type { ModelRepository } from "../../src/domain/ports/model-repository";
 import { LlmRerankerService } from "../../src/domain/services/llm-reranker-service";
 import { QueryRewriteService } from "../../src/domain/services/query-rewrite-service";
 import type { RagMode } from "../../src/domain/services/rag-pipeline-service";
@@ -354,7 +358,65 @@ async function main(): Promise<void> {
     }
   }
 
-  console.log(pc.green("\n✓ Phase 2 done — judge & report phases pending"));
+  const cloudJudgeModel =
+    process.env.DAY28_CLOUD_JUDGE_MODEL?.trim() ||
+    modelRepo.getRole("judge")?.id ||
+    cloudModel;
+  const cloudJudge = new RagJudgeService(cloudLlmClient, modelRepo);
+  const localJudgeRepo = staticModelRepo(localModel);
+  const localJudge = new RagJudgeService(localLlmClient, localJudgeRepo);
+  const dualJudgeService = new DualJudgeService(cloudJudge, localJudge);
+
+  console.log(pc.bold(`\nPhase 3: dual judge (${results.length * 2} calls)`));
+  console.log(pc.dim(`  cloud judge:   ${cloudJudgeModel}`));
+  console.log(pc.dim(`  local judge:   ${localModel}`));
+
+  const judgeStarted = Date.now();
+  const judged = await dualJudgeService.judgeAll(results, questions, {
+    onJudgeStart: (meta, progress) => {
+      process.stdout.write(
+        pc.dim(`  [${progress.index}/${progress.total}] judge ${meta.questionId} · ${meta.modeName} · ${meta.backendName} · run ${meta.runIndex} ... `),
+      );
+    },
+    onJudgeDone: (j) => {
+      const cloudPart = j.cloudJudge ? `C=${j.cloudJudge.score}` : pc.red("C=ERR");
+      const localPart = j.localJudge ? `L=${j.localJudge.score}` : pc.red("L=ERR");
+      process.stdout.write(pc.dim(`${cloudPart} ${localPart}\n`));
+    },
+  });
+  const judgeElapsed = Date.now() - judgeStarted;
+
+  const cloudJudgeErrors = judged.filter((j) => j.cloudJudgeError).length;
+  const localJudgeErrors = judged.filter((j) => j.localJudgeError).length;
+  const bothScored = judged.filter((j) => j.cloudJudge && j.localJudge).length;
+
+  console.log(pc.bold("\nPhase 3 summary"));
+  console.log(pc.dim(`  elapsed:       ${formatLatency(judgeElapsed)}`));
+  console.log(pc.dim(`  both scored:   ${bothScored}/${judged.length}`));
+  console.log(pc.dim(`  cloud errors:  ${cloudJudgeErrors}`));
+  console.log(pc.dim(`  local errors:  ${localJudgeErrors}`));
+
+  console.log(pc.green("\n✓ Phases 0-3 done — aggregation & report pending"));
+}
+
+function staticModelRepo(modelId: string): ModelRepository {
+  const model: Model = {
+    id: modelId,
+    name: modelId,
+    inputPrice: 0,
+    outputPrice: 0,
+    contextSize: 0,
+  };
+  return {
+    getAll: (): Model[] => [model],
+    getById: (id: string): Model | null => (id === modelId ? model : null),
+    getRole: (role: string): Model | null =>
+      role === "judge" || role === "chat" ? model : null,
+    getRoles: (): (ModelRole & { modelName: string })[] => [],
+    setRole: (): void => {
+      throw new Error("static repo: setRole not supported");
+    },
+  };
 }
 
 main().catch((error) => {
