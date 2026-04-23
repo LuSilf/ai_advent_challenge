@@ -19,6 +19,14 @@ import {
 } from "../../src/domain/services/dual-backend-eval-service";
 import { DualJudgeService } from "../../src/domain/services/dual-judge-service";
 import { RagJudgeService } from "../../src/domain/services/rag-judge-service";
+import {
+  aggregateByModeBackend,
+  computeJudgeAgreement,
+  findTopUnstable,
+  type ModeBackendCell,
+} from "../../src/domain/services/rag-dual-backend-stats";
+import { renderDualBackendReport } from "../../src/domain/services/rag-dual-backend-report";
+import { writeFileSync } from "node:fs";
 import type { Model, ModelRole } from "../../src/domain/models";
 import type { ModelRepository } from "../../src/domain/ports/model-repository";
 import { LlmRerankerService } from "../../src/domain/services/llm-reranker-service";
@@ -396,7 +404,75 @@ async function main(): Promise<void> {
   console.log(pc.dim(`  cloud errors:  ${cloudJudgeErrors}`));
   console.log(pc.dim(`  local errors:  ${localJudgeErrors}`));
 
-  console.log(pc.green("\n✓ Phases 0-3 done — aggregation & report pending"));
+  console.log(pc.bold("\nPhase 4: aggregation"));
+  const cells = aggregateByModeBackend(judged);
+  printCellsTable(cells);
+
+  const judgePairs: Array<[number, number]> = judged
+    .filter((j) => j.cloudJudge && j.localJudge)
+    .map((j) => [j.cloudJudge!.score, j.localJudge!.score]);
+  const agreement = computeJudgeAgreement(judgePairs);
+  console.log(pc.bold("\nDual-judge agreement"));
+  console.log(pc.dim(`  pairs:   ${agreement.count}`));
+  console.log(pc.dim(`  exact:   ${agreement.exact}`));
+  console.log(pc.dim(`  ±1:      ${agreement.within1}`));
+  console.log(pc.dim(`  ≥2:      ${agreement.off2plus}`));
+  console.log(pc.dim(`  pearson: ${agreement.pearson === null ? "—" : agreement.pearson.toFixed(3)}`));
+
+  const topJudgeUnstable = findTopUnstable(judged, "judge", 3);
+  const topLatencyUnstable = findTopUnstable(judged, "latency", 3);
+  if (topJudgeUnstable.length > 0) {
+    console.log(pc.bold("\nTop-3 unstable by judge std"));
+    for (const row of topJudgeUnstable) {
+      console.log(pc.dim(`  ${row.questionId} · ${row.modeName} · ${row.backendName}: stdC=${fmt(row.stdCloud)} stdL=${fmt(row.stdLocal)}`));
+    }
+  }
+  if (topLatencyUnstable.length > 0) {
+    console.log(pc.bold("\nTop-3 unstable by latency std"));
+    for (const row of topLatencyUnstable) {
+      console.log(pc.dim(`  ${row.questionId} · ${row.modeName} · ${row.backendName}: mean=${fmt(row.meanLatency)}ms std=${fmt(row.stdLatency)}`));
+    }
+  }
+
+  console.log(pc.bold("\nPhase 5: render report"));
+  const reportPath = flags.report ?? "scripts/day28/report.md";
+  const report = renderDualBackendReport({
+    runs: judged,
+    questions,
+    options: {
+      generatedAt: new Date().toISOString(),
+      strategy,
+      localModel,
+      cloudModel,
+      runsPerCell: runs,
+      temperature,
+    },
+  });
+  writeFileSync(reportPath, report, "utf8");
+  console.log(pc.green(`  ✓ Report saved: ${reportPath}`));
+
+  console.log(pc.bold("\nDone"));
+  console.log(pc.dim(`  total elapsed: ${formatLatency(Date.now() - startedAt)}`));
+}
+
+function fmt(v: number | null): string {
+  if (v === null) return "—";
+  return v.toFixed(2);
+}
+
+function printCellsTable(cells: ModeBackendCell[]): void {
+  console.log(pc.dim("  mode          backend  C-judge  L-judge  p50(ms)  p95(ms)  err"));
+  for (const c of cells) {
+    const cAvg = c.cloudJudgeAvg === null ? "—" : c.cloudJudgeAvg.toFixed(2);
+    const lAvg = c.localJudgeAvg === null ? "—" : c.localJudgeAvg.toFixed(2);
+    const p50 = c.latency.p50 === null ? "—" : Math.round(c.latency.p50).toString();
+    const p95 = c.latency.p95 === null ? "—" : Math.round(c.latency.p95).toString();
+    console.log(
+      pc.dim(
+        `  ${c.modeName.padEnd(13)} ${c.backendName.padEnd(7)} ${cAvg.padEnd(7)} ${lAvg.padEnd(7)} ${p50.padEnd(8)} ${p95.padEnd(8)} ${c.errors}`,
+      ),
+    );
+  }
 }
 
 function staticModelRepo(modelId: string): ModelRepository {
