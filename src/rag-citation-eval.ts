@@ -183,8 +183,6 @@ async function main(): Promise<void> {
         temperature: config.temperature,
         topP: config.topP,
         maxCompletionTokens: config.maxCompletionTokens,
-        reasoningEffort: config.reasoningEffort,
-        reasoningSummary: config.reasoningSummary,
       });
       const cited = parseCitedRagResponse(result.response.content);
       return {

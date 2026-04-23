@@ -5,7 +5,6 @@ import { writeFileSync, readFileSync, unlinkSync, mkdirSync, existsSync } from "
 import { spawnSync } from "node:child_process";
 import pc from "picocolors";
 import type OpenAI from "openai";
-import type { Response } from "openai/resources/responses/responses";
 
 import type { AppConfig } from "../../config";
 import { applyDbOptions } from "../../config";
@@ -1440,13 +1439,15 @@ async function generateTitle(
   assistantMessage: string,
 ): Promise<string> {
   const titleModel = modelRepo.getRole("title");
-  const response = await openaiClient.responses.create({
-    model: titleModel?.id ?? "openai/gpt-5-nano",
-    instructions: "Придумай короткое название (до 50 символов) для диалога по первому обмену сообщениями. Ответь только названием, без кавычек.",
-    input: `Пользователь: ${userMessage}\nАссистент: ${assistantMessage}`,
+  const response = await openaiClient.chat.completions.create({
+    model: titleModel?.id ?? "llama3.2:3b",
+    messages: [
+      { role: "system", content: "Придумай короткое название (до 50 символов) для диалога по первому обмену сообщениями. Ответь только названием, без кавычек." },
+      { role: "user", content: `Пользователь: ${userMessage}\nАссистент: ${assistantMessage}` },
+    ],
     stream: false,
   });
-  return response.output_text?.trim() || "Без названия";
+  return response.choices[0]?.message?.content?.trim() || "Без названия";
 }
 
 export async function startRepl(deps: ReplDeps): Promise<void> {
@@ -1511,8 +1512,6 @@ export async function startRepl(deps: ReplDeps): Promise<void> {
       temperature: config.temperature,
       topP: config.topP,
       maxCompletionTokens: config.maxCompletionTokens,
-      reasoningEffort: config.reasoningEffort,
-      reasoningSummary: config.reasoningSummary,
     }),
     onExecution: (task, execution) => {
       let output: string;
@@ -1715,8 +1714,6 @@ ${schedList}
         temperature: config.temperature,
         topP: config.topP,
         maxCompletionTokens: config.maxCompletionTokens,
-        reasoningEffort: config.reasoningEffort,
-        reasoningSummary: config.reasoningSummary,
         toolProvider,
         onToolCall: (event) => {
           if (!mainSpinnerStopped) {
@@ -1832,8 +1829,6 @@ ${schedList}
                     temperature: config.temperature,
                     topP: config.topP,
                     maxCompletionTokens: config.maxCompletionTokens,
-                    reasoningEffort: config.reasoningEffort,
-                    reasoningSummary: config.reasoningSummary,
                   });
                   stopRetrySpinner();
 

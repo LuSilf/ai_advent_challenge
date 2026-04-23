@@ -1,9 +1,5 @@
 const DEFAULT_TIMEOUT_MS = 30_000;
-
-const REASONING_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh"] as const;
-
-type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
-type ReasoningSummaryMode = "auto" | "concise" | "detailed";
+const DEFAULT_BASE_URL = "http://localhost:11434/v1";
 
 export type AppConfig = {
   prompt: string;
@@ -18,8 +14,6 @@ export type AppConfig = {
   contextStrategy: string;
   sessionId?: number;
   day25Mode: boolean;
-  reasoningEffort?: ReasoningEffort;
-  reasoningSummary?: ReasoningSummaryMode;
   temperature?: number;
   topP?: number;
   n?: number;
@@ -105,32 +99,6 @@ function parseMinInteger(name: string, min: number, fail: (message: string) => n
   return parsed;
 }
 
-function parseReasoningEffort(rawValue: string | undefined, fail: (message: string) => never): ReasoningEffort | undefined {
-  if (!rawValue) {
-    return undefined;
-  }
-
-  const normalized = rawValue.toLowerCase();
-  if ((REASONING_EFFORTS as readonly string[]).includes(normalized)) {
-    return normalized as ReasoningEffort;
-  }
-
-  fail(`Invalid OPENAI_REASONING_EFFORT value: ${rawValue}. Use none|minimal|low|medium|high|xhigh`);
-}
-
-function parseReasoningSummary(rawValue: string | undefined, fail: (message: string) => never): ReasoningSummaryMode | undefined {
-  if (!rawValue) {
-    return undefined;
-  }
-
-  const normalized = rawValue.toLowerCase();
-  if (normalized === "auto" || normalized === "concise" || normalized === "detailed") {
-    return normalized;
-  }
-
-  fail(`Invalid OPENAI_REASONING_SUMMARY value: ${rawValue}. Use auto|concise|detailed`);
-}
-
 export function loadConfig(args: string[], fail: (message: string) => never): AppConfig {
   let sessionId: number | undefined;
   let day25Mode = false;
@@ -172,7 +140,7 @@ export function loadConfig(args: string[], fail: (message: string) => never): Ap
   return {
     prompt,
     apiKey,
-    baseUrl: (getEnv("OPENAI_BASE_URL") ?? "https://api.openai.com/v1").replace(/\/$/, ""),
+    baseUrl: (getEnv("OPENAI_BASE_URL") ?? DEFAULT_BASE_URL).replace(/\/$/, ""),
     systemPrompt: process.env.OPENAI_SYSTEM_PROMPT ?? DEFAULT_SYSTEM_PROMPT,
     effectiveTimeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_TIMEOUT_MS,
     debug: parseBooleanEnv("OPENAI_DEBUG", false, fail),
@@ -182,8 +150,6 @@ export function loadConfig(args: string[], fail: (message: string) => never): Ap
     contextStrategy,
     sessionId,
     day25Mode,
-    reasoningEffort: parseReasoningEffort(getEnv("OPENAI_REASONING_EFFORT"), fail),
-    reasoningSummary: parseReasoningSummary(getEnv("OPENAI_REASONING_SUMMARY"), fail),
     temperature: parseBoundedNumber("OPENAI_TEMPERATURE", 0, 2, fail),
     topP: parseBoundedNumber("OPENAI_TOP_P", 0, 1, fail),
     n: parseMinInteger("OPENAI_N", 1, fail),

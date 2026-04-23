@@ -1,41 +1,28 @@
 import type OpenAI from "openai";
-import type { ResponseCreateParams } from "openai/resources/responses/responses";
-import type { Response } from "openai/resources/responses/responses";
+import type { ChatCompletion, ChatCompletionCreateParams, ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import type { LLMRequest, LLMResponse, LLMToolCall } from "../../domain/models";
 import type { LLMClient, StreamEvent } from "../../domain/ports/llm-client";
 
-export function buildOpenAIRequest(request: LLMRequest, userPrompt: string): ResponseCreateParams {
-  let input: ResponseCreateParams["input"];
+export function buildOpenAIRequest(request: LLMRequest, userPrompt: string): ChatCompletionCreateParams {
+  const messages: ChatCompletionMessageParam[] = [];
 
-  if (request.messages.length > 0) {
-    input = [
-      ...request.messages.map((m) => ({
-        role: m.role as "user" | "assistant",
-        content: m.content,
-      })),
-      { role: "user" as const, content: userPrompt },
-    ];
-  } else {
-    input = userPrompt;
+  if (request.instructions) {
+    messages.push({ role: "system", content: request.instructions });
   }
 
-  const params: ResponseCreateParams = {
+  for (const m of request.messages) {
+    messages.push({ role: m.role, content: m.content });
+  }
+
+  if (request.messages.length === 0 || request.messages[request.messages.length - 1]?.content !== userPrompt) {
+    messages.push({ role: "user", content: userPrompt });
+  }
+
+  const params: ChatCompletionCreateParams = {
     model: request.model,
-    instructions: request.instructions,
-    input,
+    messages,
     stream: request.params.stream ?? false,
   };
-
-  if (request.params.reasoningEffort) {
-    params.reasoning = {
-      effort: request.params.reasoningEffort as "low" | "medium" | "high",
-      summary: (request.params.reasoningSummary as "auto" | "concise" | "detailed") ?? "auto",
-    };
-  } else if (request.params.reasoningSummary) {
-    params.reasoning = {
-      summary: request.params.reasoningSummary as "auto" | "concise" | "detailed",
-    };
-  }
 
   if (request.params.temperature !== undefined) {
     params.temperature = request.params.temperature;
@@ -46,24 +33,24 @@ export function buildOpenAIRequest(request: LLMRequest, userPrompt: string): Res
   }
 
   if (request.params.maxCompletionTokens !== undefined) {
-    params.max_output_tokens = request.params.maxCompletionTokens;
+    params.max_completion_tokens = request.params.maxCompletionTokens;
   }
 
-  // Добавляем tools если есть
   if (request.tools && request.tools.length > 0) {
     params.tools = request.tools.map((t) => ({
       type: "function" as const,
-      name: t.name,
-      description: t.description,
-      parameters: t.parameters as Record<string, unknown>,
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.parameters as Record<string, unknown>,
+      },
     }));
   }
 
-  // Structured output через JSON schema
   if (request.responseFormat) {
-    params.text = {
-      format: {
-        type: "json_schema",
+    params.response_format = {
+      type: "json_schema",
+      json_schema: {
         name: request.responseFormat.name,
         strict: request.responseFormat.strict,
         schema: request.responseFormat.schema,
@@ -74,17 +61,22 @@ export function buildOpenAIRequest(request: LLMRequest, userPrompt: string): Res
   return params;
 }
 
-function parseToolCalls(response: Response): LLMToolCall[] {
-  const calls: LLMToolCall[] = [];
+function parseToolCalls(completion: ChatCompletion): LLMToolCall[] {
+  const message = completion.choices[0]?.message;
+  if (!message?.tool_calls || message.tool_calls.length === 0) {
+    return [];
+  }
 
-  for (const item of response.output) {
-    if (item.type === "function_call") {
-      calls.push({
-        id: item.call_id,
-        name: item.name,
-        arguments: item.arguments,
-      });
+  const calls: LLMToolCall[] = [];
+  for (const call of message.tool_calls) {
+    if (call.type !== "function") {
+      continue;
     }
+    calls.push({
+      id: call.id,
+      name: call.function.name,
+      arguments: call.function.arguments,
+    });
   }
 
   return calls;
@@ -94,69 +86,82 @@ export class OpenAILLMClient implements LLMClient {
   constructor(private readonly client: OpenAI) {}
 
   async send(request: LLMRequest): Promise<LLMResponse & { rawResponse?: unknown }> {
-    const params = buildOpenAIRequest(request, request.messages.length > 0
+    const userPrompt = request.messages.length > 0
       ? request.messages[request.messages.length - 1].content
-      : "");
+      : "";
+    const params = buildOpenAIRequest(request, userPrompt);
 
-    const response = await this.client.responses.create({ ...params, stream: false });
-
-    const toolCalls = parseToolCalls(response);
+    const completion = await this.client.chat.completions.create({ ...params, stream: false }) as ChatCompletion;
+    const message = completion.choices[0]?.message;
+    const toolCalls = parseToolCalls(completion);
 
     return {
-      content: response.output_text ?? "",
-      inputTokens: response.usage?.input_tokens ?? 0,
-      outputTokens: response.usage?.output_tokens ?? 0,
+      content: message?.content ?? "",
+      inputTokens: completion.usage?.prompt_tokens ?? 0,
+      outputTokens: completion.usage?.completion_tokens ?? 0,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-      rawResponse: response,
+      rawResponse: completion,
     };
   }
 
   async *stream(request: LLMRequest): AsyncIterable<StreamEvent> {
-    const params = buildOpenAIRequest(request, request.messages.length > 0
+    const userPrompt = request.messages.length > 0
       ? request.messages[request.messages.length - 1].content
-      : "");
+      : "";
+    const params = buildOpenAIRequest(request, userPrompt);
 
-    const stream = await this.client.responses.create({ ...params, stream: true });
+    const stream = await this.client.chat.completions.create({
+      ...params,
+      stream: true,
+      stream_options: { include_usage: true },
+    });
 
     let responseText = "";
-    let completedResponse: Response | undefined;
-    const reasoningSummaryParts: string[] = [];
+    let promptTokens = 0;
+    let completionTokens = 0;
+    const toolCallAccumulators: Map<number, { id?: string; name?: string; arguments: string }> = new Map();
+    let lastRawChunk: unknown;
 
-    for await (const event of stream) {
-      if (event.type === "response.output_text.delta" && event.delta.length > 0) {
-        responseText += event.delta;
-        yield { type: "delta", text: event.delta };
+    for await (const chunk of stream) {
+      lastRawChunk = chunk;
+      const choice = chunk.choices[0];
+      if (choice?.delta?.content) {
+        responseText += choice.delta.content;
+        yield { type: "delta", text: choice.delta.content };
       }
 
-      if (event.type === "response.reasoning_summary_text.done") {
-        const text = event.text.trim();
-        if (text) {
-          reasoningSummaryParts.push(text);
-          yield { type: "reasoning_summary", text };
+      if (choice?.delta?.tool_calls) {
+        for (const toolDelta of choice.delta.tool_calls) {
+          const slot = toolCallAccumulators.get(toolDelta.index) ?? { arguments: "" };
+          if (toolDelta.id) slot.id = toolDelta.id;
+          if (toolDelta.function?.name) slot.name = toolDelta.function.name;
+          if (toolDelta.function?.arguments) slot.arguments += toolDelta.function.arguments;
+          toolCallAccumulators.set(toolDelta.index, slot);
         }
       }
 
-      if (event.type === "response.completed") {
-        completedResponse = event.response;
+      if (chunk.usage) {
+        promptTokens = chunk.usage.prompt_tokens ?? promptTokens;
+        completionTokens = chunk.usage.completion_tokens ?? completionTokens;
       }
     }
 
-    if (!responseText && completedResponse?.output_text) {
-      responseText = completedResponse.output_text;
-      yield { type: "delta", text: responseText };
+    const toolCalls: LLMToolCall[] = [];
+    for (const slot of toolCallAccumulators.values()) {
+      if (slot.id && slot.name) {
+        toolCalls.push({ id: slot.id, name: slot.name, arguments: slot.arguments });
+      }
     }
-
-    const toolCalls = completedResponse ? parseToolCalls(completedResponse) : [];
 
     yield {
       type: "done",
       response: {
         content: responseText,
-        inputTokens: completedResponse?.usage?.input_tokens ?? 0,
-        outputTokens: completedResponse?.usage?.output_tokens ?? 0,
+        inputTokens: promptTokens,
+        outputTokens: completionTokens,
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       },
-      rawResponse: completedResponse,
+      rawResponse: lastRawChunk,
     };
   }
 }

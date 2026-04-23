@@ -2,7 +2,6 @@ import type { LLMRequest, LLMResponse } from "../models";
 
 export type StreamEvent =
   | { type: "delta"; text: string }
-  | { type: "reasoning_summary"; text: string }
   | { type: "done"; response: LLMResponse; rawResponse?: unknown };
 
 export interface LLMClient {

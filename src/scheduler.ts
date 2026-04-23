@@ -159,8 +159,6 @@ async function main() {
       temperature: config.temperature,
       topP: config.topP,
       maxCompletionTokens: config.maxCompletionTokens,
-      reasoningEffort: config.reasoningEffort,
-      reasoningSummary: config.reasoningSummary,
     }),
     onExecution: async (task, execution) => {
       if (execution.status === "success") {

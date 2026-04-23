@@ -17,28 +17,46 @@ function makeMessage(role: "user" | "assistant", content: string, id = 1): Messa
 }
 
 describe("buildOpenAIRequest", () => {
-  test("converts empty messages to simple input", () => {
+  test("wraps bare user prompt with system instruction", () => {
     const request = makeRequest({ messages: [] });
     const result = buildOpenAIRequest(request, "новый вопрос");
     expect(result.model).toBe("test/model");
-    expect(result.instructions).toBe("system prompt");
-    expect(result.input).toBe("новый вопрос");
+    const messages = result.messages;
+    expect(messages).toHaveLength(2);
+    expect(messages[0]).toEqual({ role: "system", content: "system prompt" });
+    expect(messages[1]).toEqual({ role: "user", content: "новый вопрос" });
   });
 
-  test("converts messages to OpenAI format with user prompt appended", () => {
-    const messages = [
+  test("skips system message when instructions empty", () => {
+    const request = makeRequest({ instructions: "" });
+    const result = buildOpenAIRequest(request, "тест");
+    const messages = result.messages;
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toEqual({ role: "user", content: "тест" });
+  });
+
+  test("includes conversation history before user prompt", () => {
+    const history = [
       makeMessage("user", "prev q", 1),
       makeMessage("assistant", "prev a", 2),
     ];
-    const request = makeRequest({ messages });
+    const request = makeRequest({ messages: history });
     const result = buildOpenAIRequest(request, "новый вопрос");
-    expect(Array.isArray(result.input)).toBe(true);
-    const input = result.input as Array<{ role: string; content: string }>;
-    expect(input).toHaveLength(3);
-    expect(input[0].role).toBe("user");
-    expect(input[0].content).toBe("prev q");
-    expect(input[2].role).toBe("user");
-    expect(input[2].content).toBe("новый вопрос");
+    const messages = result.messages;
+    expect(messages).toHaveLength(4);
+    expect(messages[0].role).toBe("system");
+    expect(messages[1]).toEqual({ role: "user", content: "prev q" });
+    expect(messages[2]).toEqual({ role: "assistant", content: "prev a" });
+    expect(messages[3]).toEqual({ role: "user", content: "новый вопрос" });
+  });
+
+  test("does not duplicate last user message when it matches userPrompt", () => {
+    const history = [makeMessage("user", "тот же вопрос", 1)];
+    const request = makeRequest({ messages: history });
+    const result = buildOpenAIRequest(request, "тот же вопрос");
+    const messages = result.messages;
+    expect(messages).toHaveLength(2);
+    expect(messages[1]).toEqual({ role: "user", content: "тот же вопрос" });
   });
 
   test("passes temperature from params", () => {
@@ -53,16 +71,10 @@ describe("buildOpenAIRequest", () => {
     expect(result.top_p).toBe(0.9);
   });
 
-  test("passes maxCompletionTokens from params", () => {
+  test("passes maxCompletionTokens as max_completion_tokens", () => {
     const request = makeRequest({ params: { maxCompletionTokens: 1000 } });
     const result = buildOpenAIRequest(request, "test");
-    expect(result.max_output_tokens).toBe(1000);
-  });
-
-  test("passes reasoning from params", () => {
-    const request = makeRequest({ params: { reasoningEffort: "high", reasoningSummary: "auto" } });
-    const result = buildOpenAIRequest(request, "test");
-    expect(result.reasoning).toEqual({ effort: "high", summary: "auto" });
+    expect(result.max_completion_tokens).toBe(1000);
   });
 
   test("stream defaults to false", () => {
@@ -77,7 +89,7 @@ describe("buildOpenAIRequest", () => {
     expect(result.stream).toBe(true);
   });
 
-  test("includes tools as function definitions", () => {
+  test("converts tools to chat.completions function shape", () => {
     const request = makeRequest({
       tools: [
         {
@@ -88,22 +100,20 @@ describe("buildOpenAIRequest", () => {
             properties: { count: { type: "number" } },
           },
         },
-        {
-          name: "test-server__echo",
-          description: "Echo text",
-          parameters: { type: "object", properties: { text: { type: "string" } } },
-        },
       ],
     });
 
     const result = buildOpenAIRequest(request, "test");
     expect(result.tools).toBeDefined();
-    expect(result.tools!.length).toBe(2);
-
-    const tool = result.tools![0] as { type: string; name: string; description: string };
+    expect(result.tools!.length).toBe(1);
+    const tool = result.tools![0] as { type: string; function: { name: string; description: string; parameters: unknown } };
     expect(tool.type).toBe("function");
-    expect(tool.name).toBe("git-analyzer__git_log");
-    expect(tool.description).toBe("Show recent commits");
+    expect(tool.function.name).toBe("git-analyzer__git_log");
+    expect(tool.function.description).toBe("Show recent commits");
+    expect(tool.function.parameters).toEqual({
+      type: "object",
+      properties: { count: { type: "number" } },
+    });
   });
 
   test("does not set tools when array is empty", () => {
@@ -118,7 +128,7 @@ describe("buildOpenAIRequest", () => {
     expect(result.tools).toBeUndefined();
   });
 
-  test("sets text.format with json_schema when responseFormat is provided", () => {
+  test("sets response_format with json_schema when responseFormat is provided", () => {
     const request = makeRequest({
       responseFormat: {
         type: "json_schema",
@@ -133,9 +143,9 @@ describe("buildOpenAIRequest", () => {
       },
     });
     const result = buildOpenAIRequest(request, "test");
-    expect((result as any).text).toEqual({
-      format: {
-        type: "json_schema",
+    expect(result.response_format).toEqual({
+      type: "json_schema",
+      json_schema: {
         name: "test_schema",
         strict: true,
         schema: {
@@ -148,9 +158,9 @@ describe("buildOpenAIRequest", () => {
     });
   });
 
-  test("does not set text.format when responseFormat is not provided", () => {
+  test("does not set response_format when responseFormat is not provided", () => {
     const request = makeRequest();
     const result = buildOpenAIRequest(request, "test");
-    expect((result as any).text).toBeUndefined();
+    expect(result.response_format).toBeUndefined();
   });
 });
