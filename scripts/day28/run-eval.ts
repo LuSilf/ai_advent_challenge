@@ -41,6 +41,7 @@ function fail(message: string): never {
 
 type CliFlags = {
   questions?: number;
+  questionIds?: string;
   modes?: string;
   runs?: number;
   report?: string;
@@ -56,6 +57,7 @@ function parseArgs(argv: string[]): CliFlags {
     const next = argv[i + 1];
     if (next !== undefined && !next.startsWith("--")) {
       if (name === "questions") flags.questions = Number(next);
+      else if (name === "question-ids") flags.questionIds = next;
       else if (name === "modes") flags.modes = next;
       else if (name === "runs") flags.runs = Number(next);
       else if (name === "report") flags.report = next;
@@ -246,7 +248,13 @@ async function main(): Promise<void> {
   if (!Array.isArray(questions) || questions.length === 0) {
     fail(`${questionsPath} must contain a non-empty array of control questions`);
   }
-  if (flags.questions !== undefined && Number.isInteger(flags.questions) && flags.questions > 0) {
+  if (flags.questionIds) {
+    const wanted = new Set(flags.questionIds.split(",").map((s) => s.trim()).filter(Boolean));
+    questions = questions.filter((q) => wanted.has(q.id));
+    if (questions.length === 0) {
+      fail(`No questions match --question-ids: ${flags.questionIds}`);
+    }
+  } else if (flags.questions !== undefined && Number.isInteger(flags.questions) && flags.questions > 0) {
     questions = questions.slice(0, flags.questions);
   }
 
