@@ -83,18 +83,21 @@
     "id": "q11_oos",
     "question": "Как приготовить борщ?",
     "expectation": "Model should refuse to answer because the knowledge base contains no cooking information. Expected confidence: insufficient.",
-    "outOfScope": true
+    "outOfScope": true,
+    "topicalTerms": ["борщ", "рецепт", "свёкл", "свекл", "ингредиент", "варить", "бульон", "кастрюл", "мясо", "капуст", "морковь", "лук"]
   },
   {
     "id": "q12_oos",
     "question": "Какова столица Мадагаскара?",
     "expectation": "Model should refuse to answer because the knowledge base contains no geography information. Expected confidence: insufficient.",
-    "outOfScope": true
+    "outOfScope": true,
+    "topicalTerms": ["мадагаскар", "антананариву", "столиц", "madagascar", "antananarivo", "capital", "остров", "island", "africa", "африк"]
   },
   {
     "id": "q13_oos",
     "question": "Расскажи про квантовые вычисления и кубиты",
     "expectation": "Model should refuse to answer because the knowledge base is about system design, not quantum computing. Expected confidence: insufficient.",
-    "outOfScope": true
+    "outOfScope": true,
+    "topicalTerms": ["квантов", "кубит", "qubit", "quantum", "суперпозиц", "запутанност", "entangle", "superposition", "shor", "grover"]
   }
 ]
