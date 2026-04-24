@@ -58,6 +58,10 @@ export function buildOpenAIRequest(request: LLMRequest, userPrompt: string): Cha
     };
   }
 
+  if (request.params.extraBody) {
+    Object.assign(params, request.params.extraBody);
+  }
+
   return params;
 }
 

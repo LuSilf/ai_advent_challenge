@@ -92,6 +92,32 @@ export function buildRagPromptSuffix(hits: VectorSearchHit[]): string {
   ].join("\n\n");
 }
 
+export function buildStrictRefusalRagPromptSuffix(hits: VectorSearchHit[]): string {
+  const sources = hits.map((hit, index) => {
+    const sourceMeta = [
+      `source=${hit.source}`,
+      `section=${hit.section ?? "(none)"}`,
+      `distance=${hit.distance.toFixed(4)}`,
+    ].join(" | ");
+
+    return [`[Источник ${index + 1}] ${sourceMeta}`, hit.text.trim()].join("\n");
+  });
+
+  return [
+    "СТРОГОЕ ПРАВИЛО: отвечай ТОЛЬКО на основании найденных материалов ниже.",
+    "Если ни один из найденных материалов не содержит ответа — откажись фразой:",
+    '  "В базе знаний нет информации по этому вопросу."',
+    "НЕ используй общие знания. НЕ придумывай. НЕ додумывай. Это правило важнее желания помочь.",
+    "",
+    "STRICT RULE: answer ONLY based on the retrieved materials below.",
+    'If the materials do not contain a relevant answer — refuse with: "No information in the knowledge base."',
+    "Do NOT use general knowledge. Do NOT invent. Do NOT fabricate.",
+    "",
+    "Найденные материалы / Retrieved materials:",
+    ...sources,
+  ].join("\n\n");
+}
+
 export function buildCitedRagPromptSuffix(hits: VectorSearchHit[]): string {
   const sources = hits.map((hit, index) => {
     const sourceMeta = [

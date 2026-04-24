@@ -1,8 +1,16 @@
 import type { VectorSearchHit } from "../models/chunking";
 import type { Embedder } from "../ports/embedder";
 import type { VectorIndex } from "../ports/vector-index";
-import { type RagRetrieveResult, type RagRetriever, buildRagPromptSuffix, buildCitedRagPromptSuffix } from "./rag-service";
+import {
+  type RagRetrieveResult,
+  type RagRetriever,
+  buildRagPromptSuffix,
+  buildCitedRagPromptSuffix,
+  buildStrictRefusalRagPromptSuffix,
+} from "./rag-service";
 import { filterByThreshold, type ThresholdFilterResult } from "./threshold-filter";
+
+export type PromptVariant = "soft" | "strict" | "cited";
 
 export type RagMode = {
   name: string;
@@ -13,6 +21,7 @@ export type RagMode = {
   reranker?: Reranker;
   queryRewriter?: QueryRewriter;
   useCitations?: boolean;
+  promptVariant?: PromptVariant;
 };
 
 export interface Reranker {
@@ -132,7 +141,7 @@ export class RagPipelineService implements RagRetriever {
       strategy: mode.strategy,
       topK: mode.topKFinal,
       hits,
-      promptSuffix: mode.useCitations ? buildCitedRagPromptSuffix(hits) : buildRagPromptSuffix(hits),
+      promptSuffix: buildPromptSuffix(hits, mode),
       modeName: mode.name,
       hitsBeforeFilter,
       rewrittenQuery,
@@ -140,4 +149,10 @@ export class RagPipelineService implements RagRetriever {
       rerankedHits,
     };
   }
+}
+
+function buildPromptSuffix(hits: VectorSearchHit[], mode: RagMode): string {
+  if (mode.promptVariant === "strict") return buildStrictRefusalRagPromptSuffix(hits);
+  if (mode.promptVariant === "cited" || mode.useCitations) return buildCitedRagPromptSuffix(hits);
+  return buildRagPromptSuffix(hits);
 }

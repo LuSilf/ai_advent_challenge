@@ -15,6 +15,8 @@ export type BackendConfig = {
   modelId: string;
   systemPrompt?: string;
   maxCompletionTokens?: number;
+  temperatureOverride?: number;
+  ollamaOptions?: { numCtx?: number; numPredict?: number; temperature?: number };
 };
 
 export type EvalMode = {
@@ -135,6 +137,16 @@ async function executeOne(
   const userContent = promptSuffix
     ? `${question.question}\n\n${promptSuffix}`
     : question.question;
+  const effectiveTemperature = backend.temperatureOverride ?? temperature;
+  const extraBody = backend.ollamaOptions
+    ? {
+        options: {
+          ...(backend.ollamaOptions.numCtx !== undefined ? { num_ctx: backend.ollamaOptions.numCtx } : {}),
+          ...(backend.ollamaOptions.numPredict !== undefined ? { num_predict: backend.ollamaOptions.numPredict } : {}),
+          ...(backend.ollamaOptions.temperature !== undefined ? { temperature: backend.ollamaOptions.temperature } : {}),
+        },
+      }
+    : undefined;
   const request: LLMRequest = {
     model: backend.modelId,
     instructions: backend.systemPrompt ?? "",
@@ -149,8 +161,9 @@ async function executeOne(
     ],
     params: {
       stream: false,
-      temperature,
+      temperature: effectiveTemperature,
       maxCompletionTokens: backend.maxCompletionTokens ?? maxCompletionTokens,
+      extraBody,
     },
   };
 

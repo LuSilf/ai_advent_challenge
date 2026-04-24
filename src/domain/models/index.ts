@@ -163,4 +163,5 @@ export type GenerationParams = {
   topP?: number;
   maxCompletionTokens?: number;
   stream?: boolean;
+  extraBody?: Record<string, unknown>;
 };
