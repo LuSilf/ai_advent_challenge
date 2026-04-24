@@ -7,7 +7,7 @@ export type RagQueryOptions = {
   topK: number;
 };
 
-export type RagRetrieveStatus = "ok" | "no_index" | "no_hits" | "insufficient_context";
+export type RagRetrieveStatus = "ok" | "no_index" | "no_hits" | "insufficient_context" | "refused";
 
 export type RagRetrieveResult = {
   status: RagRetrieveStatus;

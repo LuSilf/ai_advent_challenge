@@ -99,5 +99,12 @@
     "expectation": "Model should refuse to answer because the knowledge base is about system design, not quantum computing. Expected confidence: insufficient.",
     "outOfScope": true,
     "topicalTerms": ["квантов", "кубит", "qubit", "quantum", "суперпозиц", "запутанност", "entangle", "superposition", "shor", "grover"]
+  },
+  {
+    "id": "q12b_oos",
+    "question": "Какой курс доллара к рублю сегодня?",
+    "expectation": "Model should refuse — a realtime FX rate is neither in the knowledge base nor in the model weights (temporal cutoff). Used in day29 part2 as a replacement for q12_oos (Madagascar capital, which the model knows from weights and thus gives a false success to any pipeline refusal).",
+    "outOfScope": true,
+    "topicalTerms": ["курс", "доллар", "рубл", "usd", "rub", "обмен", "биржа", "exchange", "цена"]
   }
 ]

@@ -12,6 +12,14 @@ import { filterByThreshold, type ThresholdFilterResult } from "./threshold-filte
 
 export type PromptVariant = "soft" | "strict" | "cited";
 
+export interface RefusalPolicy {
+  decide(retrieval: PipelineRetrieveResult): {
+    shouldRefuse: boolean;
+    reason: string | null;
+    maxRelevanceScore: number | null;
+  };
+}
+
 export type RagMode = {
   name: string;
   strategy: "fixed" | "structural";
@@ -22,6 +30,8 @@ export type RagMode = {
   queryRewriter?: QueryRewriter;
   useCitations?: boolean;
   promptVariant?: PromptVariant;
+  refusalPolicy?: RefusalPolicy;
+  refusalText?: string;
 };
 
 export interface Reranker {
@@ -42,6 +52,10 @@ export type PipelineRetrieveResult = RagRetrieveResult & {
   hitsBeforeFilter: number;
   thresholdFilter?: ThresholdFilterResult;
   rerankedHits?: RankedHit[];
+  refusalReason?: string | null;
+  refusalText?: string;
+  maxRelevanceScore?: number | null;
+  retrievalLatencyMs?: number;
 };
 
 export class RagPipelineService implements RagRetriever {
@@ -121,33 +135,49 @@ export class RagPipelineService implements RagRetriever {
       hits = hits.slice(0, mode.topKFinal);
     }
 
-    if (hits.length === 0) {
-      const hadHitsBeforeFiltering = hitsBeforeFilter > 0;
-      return {
-        status: hadHitsBeforeFiltering ? "insufficient_context" : "no_hits",
-        strategy: mode.strategy,
-        topK: mode.topKFinal,
-        hits,
-        modeName: mode.name,
-        hitsBeforeFilter,
-        rewrittenQuery,
-        thresholdFilter: thresholdResult,
-        rerankedHits,
-      };
+    const baseResult: PipelineRetrieveResult =
+      hits.length === 0
+        ? {
+            status: hitsBeforeFilter > 0 ? "insufficient_context" : "no_hits",
+            strategy: mode.strategy,
+            topK: mode.topKFinal,
+            hits,
+            modeName: mode.name,
+            hitsBeforeFilter,
+            rewrittenQuery,
+            thresholdFilter: thresholdResult,
+            rerankedHits,
+          }
+        : {
+            status: "ok",
+            strategy: mode.strategy,
+            topK: mode.topKFinal,
+            hits,
+            promptSuffix: buildPromptSuffix(hits, mode),
+            modeName: mode.name,
+            hitsBeforeFilter,
+            rewrittenQuery,
+            thresholdFilter: thresholdResult,
+            rerankedHits,
+          };
+
+    if (mode.refusalPolicy) {
+      const decision = mode.refusalPolicy.decide(baseResult);
+      if (decision.shouldRefuse) {
+        const refusalText = mode.refusalText ?? "В базе знаний нет информации по этому вопросу.";
+        return {
+          ...baseResult,
+          status: "refused",
+          refusalReason: decision.reason,
+          refusalText,
+          maxRelevanceScore: decision.maxRelevanceScore,
+          promptSuffix: undefined,
+        };
+      }
+      return { ...baseResult, maxRelevanceScore: decision.maxRelevanceScore };
     }
 
-    return {
-      status: "ok",
-      strategy: mode.strategy,
-      topK: mode.topKFinal,
-      hits,
-      promptSuffix: buildPromptSuffix(hits, mode),
-      modeName: mode.name,
-      hitsBeforeFilter,
-      rewrittenQuery,
-      thresholdFilter: thresholdResult,
-      rerankedHits,
-    };
+    return baseResult;
   }
 }
 

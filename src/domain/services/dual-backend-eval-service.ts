@@ -42,6 +42,8 @@ export type AnswerRun = {
   errorClass?: AnswerErrorClass;
   usage?: { inputTokens: number; outputTokens: number };
   retrieval?: PipelineRetrieveResult;
+  skippedLLM?: boolean;
+  refusalReason?: string | null;
 };
 
 export type RunMeta = {
@@ -85,9 +87,12 @@ export class DualBackendEvalService {
 
     for (const question of questions) {
       for (const mode of modes) {
-        const retrieval = mode.rag
-          ? await new RagPipelineService(this.embedder, this.vectorIndex, mode.rag).retrieve(question.question)
-          : undefined;
+        let retrieval: PipelineRetrieveResult | undefined;
+        if (mode.rag) {
+          const retrievalStart = Date.now();
+          retrieval = await new RagPipelineService(this.embedder, this.vectorIndex, mode.rag).retrieve(question.question);
+          retrieval.retrievalLatencyMs = Date.now() - retrievalStart;
+        }
         const promptSuffix =
           retrieval && retrieval.status === "ok" ? retrieval.promptSuffix : undefined;
 
@@ -134,6 +139,21 @@ async function executeOne(
   temperature: number | undefined,
   maxCompletionTokens: number | undefined,
 ): Promise<AnswerRun> {
+  if (retrieval && retrieval.status === "refused") {
+    const latencyMs = retrieval.retrievalLatencyMs ?? 0;
+    return {
+      questionId: question.id,
+      modeName: mode.name,
+      backendName: backend.name,
+      runIndex,
+      latencyMs,
+      answer: retrieval.refusalText ?? "В базе знаний нет информации по этому вопросу.",
+      retrieval,
+      skippedLLM: true,
+      refusalReason: retrieval.refusalReason ?? null,
+    };
+  }
+
   const userContent = promptSuffix
     ? `${question.question}\n\n${promptSuffix}`
     : question.question;
