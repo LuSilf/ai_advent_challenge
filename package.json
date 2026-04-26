@@ -13,7 +13,8 @@
     "day25-scenarios": "bun run scripts/day25/run-scenarios.ts",
     "day26-local": "bun run scripts/day26/run-queries.ts",
     "bot": "bun run src/bot.ts",
-    "server": "bun run src/server.ts"
+    "server": "bun run src/server.ts",
+    "day30-load": "bun run scripts/day30/load-test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
