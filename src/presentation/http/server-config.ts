@@ -3,12 +3,14 @@ export type ServerConfig = {
   port: number;
   ollamaBaseUrl: string;
   requestTimeoutMs: number;
+  allowedModels: string[];
 };
 
 const DEFAULT_HOST = "0.0.0.0";
 const DEFAULT_PORT = 8080;
 const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434";
 const DEFAULT_TIMEOUT_MS = 180_000;
+const DEFAULT_ALLOWED_MODELS = ["llama3.2:3b", "qwen2.5-coder:7b"];
 
 export type EnvReader = (name: string) => string | undefined;
 
@@ -17,8 +19,27 @@ export function loadServerConfig(env: EnvReader, fail: (message: string) => neve
   const port = readPort(env, "LLM_SERVICE_PORT", DEFAULT_PORT, fail);
   const ollamaBaseUrl = (readString(env, "OLLAMA_BASE_URL") ?? DEFAULT_OLLAMA_BASE_URL).replace(/\/$/, "");
   const requestTimeoutMs = readPositiveInt(env, "LLM_SERVICE_TIMEOUT_MS", DEFAULT_TIMEOUT_MS, fail);
+  const allowedModels = readAllowedModels(env, fail);
 
-  return { host, port, ollamaBaseUrl, requestTimeoutMs };
+  return { host, port, ollamaBaseUrl, requestTimeoutMs, allowedModels };
+}
+
+function readAllowedModels(env: EnvReader, fail: (message: string) => never): string[] {
+  const raw = readString(env, "LLM_SERVICE_ALLOWED_MODELS");
+  if (!raw) return [...DEFAULT_ALLOWED_MODELS];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of raw.split(",")) {
+    const token = part.trim();
+    if (!token) continue;
+    if (seen.has(token)) continue;
+    seen.add(token);
+    out.push(token);
+  }
+  if (out.length === 0) {
+    fail("Invalid LLM_SERVICE_ALLOWED_MODELS value: list is empty after parsing.");
+  }
+  return out;
 }
 
 function readString(env: EnvReader, name: string): string | undefined {

@@ -10,6 +10,23 @@ export type ServerDeps = {
 export function createServer(deps: ServerDeps): Hono {
   const app = new Hono();
 
+  app.get("/health", async (c) => {
+    const ping = await deps.proxy.ping();
+    if (!ping.ok) {
+      return c.json({ status: "degraded", ollama: "down" }, 503);
+    }
+    return c.json({ status: "ok", ollama: "up", models: ping.models ?? [] }, 200);
+  });
+
+  app.get("/v1/models", (c) => {
+    const data = deps.config.allowedModels.map((id) => ({
+      id,
+      object: "model",
+      owned_by: "local",
+    }));
+    return c.json({ object: "list", data }, 200);
+  });
+
   app.post("/v1/chat/completions", async (c) => {
     let body: Record<string, unknown>;
     try {

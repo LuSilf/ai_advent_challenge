@@ -23,6 +23,7 @@ describe("loadServerConfig (phase 1)", () => {
     expect(cfg.port).toBe(8080);
     expect(cfg.ollamaBaseUrl).toBe("http://localhost:11434");
     expect(cfg.requestTimeoutMs).toBe(180_000);
+    expect(cfg.allowedModels).toEqual(["llama3.2:3b", "qwen2.5-coder:7b"]);
   });
 
   test("overrides apply from env", () => {
@@ -87,5 +88,26 @@ describe("loadServerConfig (phase 1)", () => {
     const { fail } = collectingFail();
     const cfg = loadServerConfig(env, fail);
     expect(cfg.host).toBe("0.0.0.0");
+  });
+
+  test("allowedModels parsed from CSV with trimming", () => {
+    const env = envFrom({ LLM_SERVICE_ALLOWED_MODELS: " a:1 , b:2 ,c:3" });
+    const { fail } = collectingFail();
+    const cfg = loadServerConfig(env, fail);
+    expect(cfg.allowedModels).toEqual(["a:1", "b:2", "c:3"]);
+  });
+
+  test("allowedModels ignores empty tokens and dedupes", () => {
+    const env = envFrom({ LLM_SERVICE_ALLOWED_MODELS: "a,,b,a" });
+    const { fail } = collectingFail();
+    const cfg = loadServerConfig(env, fail);
+    expect(cfg.allowedModels).toEqual(["a", "b"]);
+  });
+
+  test("fails on empty allowedModels list", () => {
+    const env = envFrom({ LLM_SERVICE_ALLOWED_MODELS: " , , " });
+    const { fail, messages } = collectingFail();
+    expect(() => loadServerConfig(env, fail)).toThrow();
+    expect(messages[0]).toMatch(/LLM_SERVICE_ALLOWED_MODELS/);
   });
 });
