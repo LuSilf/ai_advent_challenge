@@ -4,6 +4,12 @@ import { OllamaProxy } from "./proxy/ollama-proxy";
 import { ApiKeyAuth } from "./auth/api-key-auth";
 import { RateLimiter } from "./rate-limit/rate-limiter";
 import { TokenCounter, type CountableMessage } from "./validation/token-counter";
+import {
+  createAccessLogMiddleware,
+  type AccessLogFields,
+  type AccessLogVars,
+  type LogSink,
+} from "./logging/access-log";
 
 export type ServerDeps = {
   config: ServerConfig;
@@ -11,12 +17,15 @@ export type ServerDeps = {
   auth: ApiKeyAuth;
   rateLimiter: RateLimiter;
   tokenCounter: TokenCounter;
+  logSink?: LogSink;
 };
 
-type AuthVars = { keyId: string };
+type Vars = AccessLogVars;
 
-export function createServer(deps: ServerDeps): Hono<{ Variables: AuthVars }> {
-  const app = new Hono<{ Variables: AuthVars }>();
+export function createServer(deps: ServerDeps): Hono<{ Variables: Vars }> {
+  const app = new Hono<{ Variables: Vars }>();
+
+  app.use("*", createAccessLogMiddleware(deps.logSink));
 
   app.get("/health", async (c) => {
     const ping = await deps.proxy.ping();
@@ -62,21 +71,30 @@ export function createServer(deps: ServerDeps): Hono<{ Variables: AuthVars }> {
   const allowedModels = new Set(deps.config.allowedModels);
 
   app.post("/v1/chat/completions", async (c) => {
+    const fields: AccessLogFields = {};
+    c.set("logFields", fields);
+
     let body: Record<string, unknown>;
     try {
       body = (await c.req.json()) as Record<string, unknown>;
     } catch {
+      fields.errorType = "bad_request";
       return c.json({ error: { message: "Invalid JSON body", type: "bad_request" } }, 400);
     }
 
     const model = typeof body.model === "string" ? body.model : null;
+    fields.model = model ?? undefined;
+    fields.stream = body.stream === true;
+
     if (!model) {
+      fields.errorType = "bad_request";
       return c.json(
         { error: { message: "Missing or invalid 'model' field", type: "bad_request" } },
         400,
       );
     }
     if (!allowedModels.has(model)) {
+      fields.errorType = "model_not_allowed";
       return c.json(
         {
           error: {
@@ -91,6 +109,7 @@ export function createServer(deps: ServerDeps): Hono<{ Variables: AuthVars }> {
 
     const messages = Array.isArray(body.messages) ? (body.messages as CountableMessage[]) : null;
     if (!messages || messages.length === 0) {
+      fields.errorType = "bad_request";
       return c.json(
         { error: { message: "'messages' must be a non-empty array", type: "bad_request" } },
         400,
@@ -98,7 +117,10 @@ export function createServer(deps: ServerDeps): Hono<{ Variables: AuthVars }> {
     }
 
     const inputTokens = deps.tokenCounter.countMessages(messages);
+    fields.inputTokens = inputTokens;
+
     if (inputTokens > deps.config.maxInputTokens) {
+      fields.errorType = "input_too_large";
       return c.json(
         {
           error: {
@@ -116,10 +138,14 @@ export function createServer(deps: ServerDeps): Hono<{ Variables: AuthVars }> {
     const result = await deps.proxy.chatCompletions(body, stream);
 
     if (result.kind === "error") {
+      fields.errorType = result.status === 504 ? "upstream_timeout" : "upstream_error";
       return c.json({ error: { message: result.message, type: "upstream_error" } }, result.status as 502 | 504);
     }
 
     if (result.kind === "stream") {
+      // For streams we cannot count output tokens here (would require buffering and parsing
+      // each delta-chunk). Leave outputTokens as null in the access log.
+      fields.outputTokens = null;
       return new Response(result.body, {
         status: result.status,
         headers: {
@@ -130,8 +156,17 @@ export function createServer(deps: ServerDeps): Hono<{ Variables: AuthVars }> {
       });
     }
 
+    const completionTokens = extractCompletionTokens(result.body);
+    if (completionTokens != null) fields.outputTokens = completionTokens;
     return c.json(result.body as object, result.status as 200);
   });
 
   return app;
+}
+
+function extractCompletionTokens(body: unknown): number | null {
+  if (!body || typeof body !== "object") return null;
+  const usage = (body as { usage?: { completion_tokens?: number } }).usage;
+  if (!usage || typeof usage.completion_tokens !== "number") return null;
+  return usage.completion_tokens;
 }
