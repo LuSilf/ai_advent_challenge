@@ -27,6 +27,16 @@ export function createServer(deps: ServerDeps): Hono<{ Variables: Vars }> {
 
   app.use("*", createAccessLogMiddleware(deps.logSink));
 
+  const indexHtmlUrl = new URL("./static/index.html", import.meta.url);
+  app.get("/", () =>
+    new Response(Bun.file(indexHtmlUrl), {
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-cache",
+      },
+    }),
+  );
+
   app.get("/health", async (c) => {
     const ping = await deps.proxy.ping();
     if (!ping.ok) {
