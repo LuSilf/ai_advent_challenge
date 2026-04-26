@@ -12,12 +12,14 @@
     "rag-citation-eval": "bun run src/rag-citation-eval.ts",
     "day25-scenarios": "bun run scripts/day25/run-scenarios.ts",
     "day26-local": "bun run scripts/day26/run-queries.ts",
-    "bot": "bun run src/bot.ts"
+    "bot": "bun run src/bot.ts",
+    "server": "bun run src/server.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "cron-parser": "^5.5.0",
     "grammy": "^1.42.0",
+    "hono": "^4.12.15",
     "openai": "^6.29.0",
     "picocolors": "^1.1.1",
     "sqlite-vec": "^0.1.9"
