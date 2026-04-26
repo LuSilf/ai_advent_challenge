@@ -3,12 +3,14 @@ import type { ServerConfig } from "./server-config";
 import { OllamaProxy } from "./proxy/ollama-proxy";
 import { ApiKeyAuth } from "./auth/api-key-auth";
 import { RateLimiter } from "./rate-limit/rate-limiter";
+import { TokenCounter, type CountableMessage } from "./validation/token-counter";
 
 export type ServerDeps = {
   config: ServerConfig;
   proxy: OllamaProxy;
   auth: ApiKeyAuth;
   rateLimiter: RateLimiter;
+  tokenCounter: TokenCounter;
 };
 
 type AuthVars = { keyId: string };
@@ -57,12 +59,57 @@ export function createServer(deps: ServerDeps): Hono<{ Variables: AuthVars }> {
     return c.json({ object: "list", data }, 200);
   });
 
+  const allowedModels = new Set(deps.config.allowedModels);
+
   app.post("/v1/chat/completions", async (c) => {
     let body: Record<string, unknown>;
     try {
       body = (await c.req.json()) as Record<string, unknown>;
     } catch {
       return c.json({ error: { message: "Invalid JSON body", type: "bad_request" } }, 400);
+    }
+
+    const model = typeof body.model === "string" ? body.model : null;
+    if (!model) {
+      return c.json(
+        { error: { message: "Missing or invalid 'model' field", type: "bad_request" } },
+        400,
+      );
+    }
+    if (!allowedModels.has(model)) {
+      return c.json(
+        {
+          error: {
+            message: `Model '${model}' is not allowed. Allowed models: ${deps.config.allowedModels.join(", ")}`,
+            type: "model_not_allowed",
+            allowed: deps.config.allowedModels,
+          },
+        },
+        400,
+      );
+    }
+
+    const messages = Array.isArray(body.messages) ? (body.messages as CountableMessage[]) : null;
+    if (!messages || messages.length === 0) {
+      return c.json(
+        { error: { message: "'messages' must be a non-empty array", type: "bad_request" } },
+        400,
+      );
+    }
+
+    const inputTokens = deps.tokenCounter.countMessages(messages);
+    if (inputTokens > deps.config.maxInputTokens) {
+      return c.json(
+        {
+          error: {
+            message: `Input too large: ${inputTokens} tokens exceeds limit of ${deps.config.maxInputTokens}`,
+            type: "input_too_large",
+            limit: deps.config.maxInputTokens,
+            got: inputTokens,
+          },
+        },
+        413,
+      );
     }
 
     const stream = body.stream === true;

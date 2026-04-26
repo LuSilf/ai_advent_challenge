@@ -7,6 +7,7 @@ export type ServerConfig = {
   apiKeys: Map<string, string>;
   rateLimitCapacity: number;
   rateLimitRefillPerSec: number;
+  maxInputTokens: number;
 };
 
 const DEFAULT_HOST = "0.0.0.0";
@@ -16,6 +17,7 @@ const DEFAULT_TIMEOUT_MS = 180_000;
 const DEFAULT_ALLOWED_MODELS = ["llama3.2:3b", "qwen2.5-coder:7b"];
 const DEFAULT_RATE_CAPACITY = 10;
 const DEFAULT_RATE_REFILL_PER_SEC = 1;
+const DEFAULT_MAX_INPUT_TOKENS = 6000;
 
 export type EnvReader = (name: string) => string | undefined;
 
@@ -33,6 +35,7 @@ export function loadServerConfig(env: EnvReader, fail: (message: string) => neve
     DEFAULT_RATE_REFILL_PER_SEC,
     fail,
   );
+  const maxInputTokens = readPositiveInt(env, "LLM_SERVICE_MAX_INPUT_TOKENS", DEFAULT_MAX_INPUT_TOKENS, fail);
 
   return {
     host,
@@ -43,6 +46,7 @@ export function loadServerConfig(env: EnvReader, fail: (message: string) => neve
     apiKeys,
     rateLimitCapacity,
     rateLimitRefillPerSec,
+    maxInputTokens,
   };
 }
 

@@ -225,4 +225,25 @@ describe("loadServerConfig", () => {
     expect(() => loadServerConfig(env, fail)).toThrow();
     expect(messages[0]).toMatch(/LLM_SERVICE_RATE_REFILL_PER_SEC/);
   });
+
+  test("maxInputTokens defaults to 6000", () => {
+    const env = envFrom({});
+    const { fail } = collectingFail();
+    const cfg = loadServerConfig(env, fail);
+    expect(cfg.maxInputTokens).toBe(6000);
+  });
+
+  test("maxInputTokens override applies", () => {
+    const env = envFrom({ LLM_SERVICE_MAX_INPUT_TOKENS: "8192" });
+    const { fail } = collectingFail();
+    const cfg = loadServerConfig(env, fail);
+    expect(cfg.maxInputTokens).toBe(8192);
+  });
+
+  test("fails on non-positive maxInputTokens", () => {
+    const env = envFrom({ LLM_SERVICE_MAX_INPUT_TOKENS: "0" });
+    const { fail, messages } = collectingFail();
+    expect(() => loadServerConfig(env, fail)).toThrow();
+    expect(messages[0]).toMatch(/LLM_SERVICE_MAX_INPUT_TOKENS/);
+  });
 });
