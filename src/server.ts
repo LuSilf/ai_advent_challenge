@@ -1,5 +1,6 @@
 import { loadServerConfig } from "./presentation/http/server-config";
 import { OllamaProxy } from "./presentation/http/proxy/ollama-proxy";
+import { ApiKeyAuth } from "./presentation/http/auth/api-key-auth";
 import { createServer } from "./presentation/http/server";
 
 function fail(message: string): never {
@@ -9,7 +10,8 @@ function fail(message: string): never {
 
 const config = loadServerConfig((name) => process.env[name], fail);
 const proxy = new OllamaProxy({ baseUrl: config.ollamaBaseUrl, timeoutMs: config.requestTimeoutMs });
-const app = createServer({ config, proxy });
+const auth = new ApiKeyAuth(config.apiKeys);
+const app = createServer({ config, proxy, auth });
 
 const server = Bun.serve({
   hostname: config.host,
@@ -29,3 +31,4 @@ process.once("SIGTERM", () => shutdown("SIGTERM"));
 
 console.log(`[server] listening on http://${config.host}:${config.port}`);
 console.log(`[server] proxying to Ollama at ${config.ollamaBaseUrl} (timeout=${config.requestTimeoutMs}ms)`);
+console.log(`[server] api keys=${config.apiKeys.size}, allowed models=${config.allowedModels.join(",")}`);

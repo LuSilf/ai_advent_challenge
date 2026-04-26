@@ -1,7 +1,14 @@
 import { describe, test, expect } from "bun:test";
 import { loadServerConfig } from "./server-config";
 
+const REQUIRED_ENV: Record<string, string> = { LLM_SERVICE_API_KEYS: "alice:sk-aaa" };
+
 function envFrom(map: Record<string, string | undefined>) {
+  const merged = { ...REQUIRED_ENV, ...map };
+  return (name: string) => merged[name];
+}
+
+function envWithoutRequired(map: Record<string, string | undefined>) {
   return (name: string) => map[name];
 }
 
@@ -14,7 +21,7 @@ function collectingFail(): { fail: (message: string) => never; messages: string[
   return { fail, messages };
 }
 
-describe("loadServerConfig (phase 1)", () => {
+describe("loadServerConfig", () => {
   test("returns defaults when only mandatory env is set", () => {
     const env = envFrom({});
     const { fail } = collectingFail();
@@ -24,6 +31,8 @@ describe("loadServerConfig (phase 1)", () => {
     expect(cfg.ollamaBaseUrl).toBe("http://localhost:11434");
     expect(cfg.requestTimeoutMs).toBe(180_000);
     expect(cfg.allowedModels).toEqual(["llama3.2:3b", "qwen2.5-coder:7b"]);
+    expect(cfg.apiKeys.size).toBe(1);
+    expect(cfg.apiKeys.get("alice")).toBe("sk-aaa");
   });
 
   test("overrides apply from env", () => {
@@ -109,5 +118,78 @@ describe("loadServerConfig (phase 1)", () => {
     const { fail, messages } = collectingFail();
     expect(() => loadServerConfig(env, fail)).toThrow();
     expect(messages[0]).toMatch(/LLM_SERVICE_ALLOWED_MODELS/);
+  });
+
+  test("apiKeys: parses multi-key CSV", () => {
+    const env = envFrom({ LLM_SERVICE_API_KEYS: "personal:sk-xxx,wife:sk-yyy" });
+    const { fail } = collectingFail();
+    const cfg = loadServerConfig(env, fail);
+    expect(cfg.apiKeys.size).toBe(2);
+    expect(cfg.apiKeys.get("personal")).toBe("sk-xxx");
+    expect(cfg.apiKeys.get("wife")).toBe("sk-yyy");
+  });
+
+  test("apiKeys: trims whitespace around tokens", () => {
+    const env = envFrom({ LLM_SERVICE_API_KEYS: " a : sk-1 , b : sk-2 " });
+    const { fail } = collectingFail();
+    const cfg = loadServerConfig(env, fail);
+    expect(cfg.apiKeys.get("a")).toBe("sk-1");
+    expect(cfg.apiKeys.get("b")).toBe("sk-2");
+  });
+
+  test("apiKeys: secret may contain colons (only first colon splits)", () => {
+    const env = envFrom({ LLM_SERVICE_API_KEYS: "alice:sk-pre:fix:tail" });
+    const { fail } = collectingFail();
+    const cfg = loadServerConfig(env, fail);
+    expect(cfg.apiKeys.get("alice")).toBe("sk-pre:fix:tail");
+  });
+
+  test("apiKeys: ignores empty CSV tokens", () => {
+    const env = envFrom({ LLM_SERVICE_API_KEYS: "a:sk-1,,b:sk-2," });
+    const { fail } = collectingFail();
+    const cfg = loadServerConfig(env, fail);
+    expect(cfg.apiKeys.size).toBe(2);
+  });
+
+  test("fails when LLM_SERVICE_API_KEYS is missing", () => {
+    const env = envWithoutRequired({});
+    const { fail, messages } = collectingFail();
+    expect(() => loadServerConfig(env, fail)).toThrow();
+    expect(messages[0]).toMatch(/LLM_SERVICE_API_KEYS/);
+  });
+
+  test("fails when LLM_SERVICE_API_KEYS is empty/whitespace", () => {
+    const env = envWithoutRequired({ LLM_SERVICE_API_KEYS: "   " });
+    const { fail, messages } = collectingFail();
+    expect(() => loadServerConfig(env, fail)).toThrow();
+    expect(messages[0]).toMatch(/LLM_SERVICE_API_KEYS/);
+  });
+
+  test("fails on malformed key (no colon)", () => {
+    const env = envWithoutRequired({ LLM_SERVICE_API_KEYS: "no-colon-here" });
+    const { fail, messages } = collectingFail();
+    expect(() => loadServerConfig(env, fail)).toThrow();
+    expect(messages[0]).toMatch(/LLM_SERVICE_API_KEYS/);
+  });
+
+  test("fails on key with empty keyId", () => {
+    const env = envWithoutRequired({ LLM_SERVICE_API_KEYS: ":sk-secret" });
+    const { fail, messages } = collectingFail();
+    expect(() => loadServerConfig(env, fail)).toThrow();
+    expect(messages[0]).toMatch(/LLM_SERVICE_API_KEYS/);
+  });
+
+  test("fails on key with empty secret", () => {
+    const env = envWithoutRequired({ LLM_SERVICE_API_KEYS: "alice:" });
+    const { fail, messages } = collectingFail();
+    expect(() => loadServerConfig(env, fail)).toThrow();
+    expect(messages[0]).toMatch(/LLM_SERVICE_API_KEYS/);
+  });
+
+  test("fails on duplicate keyId", () => {
+    const env = envWithoutRequired({ LLM_SERVICE_API_KEYS: "alice:sk-1,alice:sk-2" });
+    const { fail, messages } = collectingFail();
+    expect(() => loadServerConfig(env, fail)).toThrow();
+    expect(messages[0]).toMatch(/LLM_SERVICE_API_KEYS/);
   });
 });

@@ -1,14 +1,18 @@
 import { Hono } from "hono";
 import type { ServerConfig } from "./server-config";
 import { OllamaProxy } from "./proxy/ollama-proxy";
+import { ApiKeyAuth } from "./auth/api-key-auth";
 
 export type ServerDeps = {
   config: ServerConfig;
   proxy: OllamaProxy;
+  auth: ApiKeyAuth;
 };
 
-export function createServer(deps: ServerDeps): Hono {
-  const app = new Hono();
+type AuthVars = { keyId: string };
+
+export function createServer(deps: ServerDeps): Hono<{ Variables: AuthVars }> {
+  const app = new Hono<{ Variables: AuthVars }>();
 
   app.get("/health", async (c) => {
     const ping = await deps.proxy.ping();
@@ -16,6 +20,15 @@ export function createServer(deps: ServerDeps): Hono {
       return c.json({ status: "degraded", ollama: "down" }, 503);
     }
     return c.json({ status: "ok", ollama: "up", models: ping.models ?? [] }, 200);
+  });
+
+  app.use("/v1/*", async (c, next) => {
+    const result = deps.auth.authenticate(c.req.header("Authorization"));
+    if (!result) {
+      return c.json({ error: { message: "Unauthorized: missing or invalid Bearer token", type: "unauthorized" } }, 401);
+    }
+    c.set("keyId", result.keyId);
+    await next();
   });
 
   app.get("/v1/models", (c) => {

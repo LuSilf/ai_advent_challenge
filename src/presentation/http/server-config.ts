@@ -4,6 +4,7 @@ export type ServerConfig = {
   ollamaBaseUrl: string;
   requestTimeoutMs: number;
   allowedModels: string[];
+  apiKeys: Map<string, string>;
 };
 
 const DEFAULT_HOST = "0.0.0.0";
@@ -20,8 +21,41 @@ export function loadServerConfig(env: EnvReader, fail: (message: string) => neve
   const ollamaBaseUrl = (readString(env, "OLLAMA_BASE_URL") ?? DEFAULT_OLLAMA_BASE_URL).replace(/\/$/, "");
   const requestTimeoutMs = readPositiveInt(env, "LLM_SERVICE_TIMEOUT_MS", DEFAULT_TIMEOUT_MS, fail);
   const allowedModels = readAllowedModels(env, fail);
+  const apiKeys = readApiKeys(env, fail);
 
-  return { host, port, ollamaBaseUrl, requestTimeoutMs, allowedModels };
+  return { host, port, ollamaBaseUrl, requestTimeoutMs, allowedModels, apiKeys };
+}
+
+function readApiKeys(env: EnvReader, fail: (message: string) => never): Map<string, string> {
+  const raw = readString(env, "LLM_SERVICE_API_KEYS");
+  if (!raw) {
+    fail("Missing required env: LLM_SERVICE_API_KEYS (format: keyId:secret,keyId:secret)");
+  }
+  const out = new Map<string, string>();
+  for (const part of raw.split(",")) {
+    const token = part.trim();
+    if (!token) continue;
+    const colonIdx = token.indexOf(":");
+    if (colonIdx === -1) {
+      fail(`Invalid LLM_SERVICE_API_KEYS entry "${token}": missing ':' separator (expected keyId:secret).`);
+    }
+    const keyId = token.slice(0, colonIdx).trim();
+    const secret = token.slice(colonIdx + 1).trim();
+    if (!keyId) {
+      fail(`Invalid LLM_SERVICE_API_KEYS entry "${token}": empty keyId.`);
+    }
+    if (!secret) {
+      fail(`Invalid LLM_SERVICE_API_KEYS entry "${token}": empty secret.`);
+    }
+    if (out.has(keyId)) {
+      fail(`Invalid LLM_SERVICE_API_KEYS: duplicate keyId "${keyId}".`);
+    }
+    out.set(keyId, secret);
+  }
+  if (out.size === 0) {
+    fail("Invalid LLM_SERVICE_API_KEYS: no valid keys parsed.");
+  }
+  return out;
 }
 
 function readAllowedModels(env: EnvReader, fail: (message: string) => never): string[] {
