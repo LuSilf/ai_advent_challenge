@@ -1,6 +1,7 @@
 import { loadServerConfig } from "./presentation/http/server-config";
 import { OllamaProxy } from "./presentation/http/proxy/ollama-proxy";
 import { ApiKeyAuth } from "./presentation/http/auth/api-key-auth";
+import { RateLimiter } from "./presentation/http/rate-limit/rate-limiter";
 import { createServer } from "./presentation/http/server";
 
 function fail(message: string): never {
@@ -11,7 +12,11 @@ function fail(message: string): never {
 const config = loadServerConfig((name) => process.env[name], fail);
 const proxy = new OllamaProxy({ baseUrl: config.ollamaBaseUrl, timeoutMs: config.requestTimeoutMs });
 const auth = new ApiKeyAuth(config.apiKeys);
-const app = createServer({ config, proxy, auth });
+const rateLimiter = new RateLimiter({
+  capacity: config.rateLimitCapacity,
+  refillPerSec: config.rateLimitRefillPerSec,
+});
+const app = createServer({ config, proxy, auth, rateLimiter });
 
 const server = Bun.serve({
   hostname: config.host,
@@ -32,3 +37,6 @@ process.once("SIGTERM", () => shutdown("SIGTERM"));
 console.log(`[server] listening on http://${config.host}:${config.port}`);
 console.log(`[server] proxying to Ollama at ${config.ollamaBaseUrl} (timeout=${config.requestTimeoutMs}ms)`);
 console.log(`[server] api keys=${config.apiKeys.size}, allowed models=${config.allowedModels.join(",")}`);
+console.log(
+  `[server] rate-limit capacity=${config.rateLimitCapacity} refill=${config.rateLimitRefillPerSec}/s`,
+);

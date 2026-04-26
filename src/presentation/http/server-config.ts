@@ -5,6 +5,8 @@ export type ServerConfig = {
   requestTimeoutMs: number;
   allowedModels: string[];
   apiKeys: Map<string, string>;
+  rateLimitCapacity: number;
+  rateLimitRefillPerSec: number;
 };
 
 const DEFAULT_HOST = "0.0.0.0";
@@ -12,6 +14,8 @@ const DEFAULT_PORT = 8080;
 const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434";
 const DEFAULT_TIMEOUT_MS = 180_000;
 const DEFAULT_ALLOWED_MODELS = ["llama3.2:3b", "qwen2.5-coder:7b"];
+const DEFAULT_RATE_CAPACITY = 10;
+const DEFAULT_RATE_REFILL_PER_SEC = 1;
 
 export type EnvReader = (name: string) => string | undefined;
 
@@ -22,8 +26,34 @@ export function loadServerConfig(env: EnvReader, fail: (message: string) => neve
   const requestTimeoutMs = readPositiveInt(env, "LLM_SERVICE_TIMEOUT_MS", DEFAULT_TIMEOUT_MS, fail);
   const allowedModels = readAllowedModels(env, fail);
   const apiKeys = readApiKeys(env, fail);
+  const rateLimitCapacity = readPositiveNumber(env, "LLM_SERVICE_RATE_CAPACITY", DEFAULT_RATE_CAPACITY, fail);
+  const rateLimitRefillPerSec = readPositiveNumber(
+    env,
+    "LLM_SERVICE_RATE_REFILL_PER_SEC",
+    DEFAULT_RATE_REFILL_PER_SEC,
+    fail,
+  );
 
-  return { host, port, ollamaBaseUrl, requestTimeoutMs, allowedModels, apiKeys };
+  return {
+    host,
+    port,
+    ollamaBaseUrl,
+    requestTimeoutMs,
+    allowedModels,
+    apiKeys,
+    rateLimitCapacity,
+    rateLimitRefillPerSec,
+  };
+}
+
+function readPositiveNumber(env: EnvReader, name: string, defaultValue: number, fail: (message: string) => never): number {
+  const raw = readString(env, name);
+  if (!raw) return defaultValue;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    fail(`Invalid ${name} value: ${raw}. Must be a positive number.`);
+  }
+  return parsed;
 }
 
 function readApiKeys(env: EnvReader, fail: (message: string) => never): Map<string, string> {

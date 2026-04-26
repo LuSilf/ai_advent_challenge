@@ -2,11 +2,13 @@ import { Hono } from "hono";
 import type { ServerConfig } from "./server-config";
 import { OllamaProxy } from "./proxy/ollama-proxy";
 import { ApiKeyAuth } from "./auth/api-key-auth";
+import { RateLimiter } from "./rate-limit/rate-limiter";
 
 export type ServerDeps = {
   config: ServerConfig;
   proxy: OllamaProxy;
   auth: ApiKeyAuth;
+  rateLimiter: RateLimiter;
 };
 
 type AuthVars = { keyId: string };
@@ -28,6 +30,21 @@ export function createServer(deps: ServerDeps): Hono<{ Variables: AuthVars }> {
       return c.json({ error: { message: "Unauthorized: missing or invalid Bearer token", type: "unauthorized" } }, 401);
     }
     c.set("keyId", result.keyId);
+    await next();
+  });
+
+  app.use("/v1/*", async (c, next) => {
+    const decision = deps.rateLimiter.tryConsume(c.get("keyId"));
+    if (!decision.ok) {
+      const retryAfterSec = Math.ceil(decision.retryAfterMs / 1000);
+      c.header("Retry-After", String(Math.max(1, retryAfterSec)));
+      return c.json(
+        {
+          error: { message: "Rate limit exceeded", type: "rate_limit", retryAfterMs: decision.retryAfterMs },
+        },
+        429,
+      );
+    }
     await next();
   });
 

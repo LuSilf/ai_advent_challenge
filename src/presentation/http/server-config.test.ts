@@ -192,4 +192,37 @@ describe("loadServerConfig", () => {
     expect(() => loadServerConfig(env, fail)).toThrow();
     expect(messages[0]).toMatch(/LLM_SERVICE_API_KEYS/);
   });
+
+  test("rateLimit defaults to 10 capacity / 1 rps", () => {
+    const env = envFrom({});
+    const { fail } = collectingFail();
+    const cfg = loadServerConfig(env, fail);
+    expect(cfg.rateLimitCapacity).toBe(10);
+    expect(cfg.rateLimitRefillPerSec).toBe(1);
+  });
+
+  test("rateLimit overrides apply", () => {
+    const env = envFrom({
+      LLM_SERVICE_RATE_CAPACITY: "5",
+      LLM_SERVICE_RATE_REFILL_PER_SEC: "0.5",
+    });
+    const { fail } = collectingFail();
+    const cfg = loadServerConfig(env, fail);
+    expect(cfg.rateLimitCapacity).toBe(5);
+    expect(cfg.rateLimitRefillPerSec).toBe(0.5);
+  });
+
+  test("fails on non-positive rate capacity", () => {
+    const env = envFrom({ LLM_SERVICE_RATE_CAPACITY: "0" });
+    const { fail, messages } = collectingFail();
+    expect(() => loadServerConfig(env, fail)).toThrow();
+    expect(messages[0]).toMatch(/LLM_SERVICE_RATE_CAPACITY/);
+  });
+
+  test("fails on non-positive refill", () => {
+    const env = envFrom({ LLM_SERVICE_RATE_REFILL_PER_SEC: "-0.1" });
+    const { fail, messages } = collectingFail();
+    expect(() => loadServerConfig(env, fail)).toThrow();
+    expect(messages[0]).toMatch(/LLM_SERVICE_RATE_REFILL_PER_SEC/);
+  });
 });
