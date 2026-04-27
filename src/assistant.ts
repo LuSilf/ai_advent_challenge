@@ -189,8 +189,8 @@ const handlers = {
   async onQuit(): Promise<void> {
     console.log(pc.dim("[assistant] до встречи."));
     await shutdown();
-    process.exit(0);
   },
 };
 
 await runAssistantRepl({ handlers });
+await shutdown();
