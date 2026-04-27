@@ -195,7 +195,9 @@ export function initDb(dbPath: string): void {
       chunk_index INTEGER NOT NULL,
       char_start INTEGER NOT NULL,
       char_end INTEGER NOT NULL,
-      text TEXT NOT NULL
+      text TEXT NOT NULL,
+      line_start INTEGER,
+      line_end INTEGER
     );
 
     CREATE INDEX IF NOT EXISTS idx_chunks_strategy_source ON chunks(strategy, source);
@@ -217,6 +219,18 @@ export function initDb(dbPath: string): void {
       embedding float[768]
     );
   `);
+
+  // Миграция: добавить line_start/line_end в существующие БД, созданные до day31.
+  const chunkColumns = db
+    .query<{ name: string }, []>("PRAGMA table_info(chunks)")
+    .all();
+  const columnNames = new Set(chunkColumns.map((c) => c.name));
+  if (!columnNames.has("line_start")) {
+    db.exec("ALTER TABLE chunks ADD COLUMN line_start INTEGER");
+  }
+  if (!columnNames.has("line_end")) {
+    db.exec("ALTER TABLE chunks ADD COLUMN line_end INTEGER");
+  }
 
   // Предзаполнение моделей
   const seedModels: Model[] = [

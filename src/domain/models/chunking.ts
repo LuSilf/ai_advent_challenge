@@ -10,6 +10,8 @@ export type Chunk = {
   charStart: number;
   charEnd: number;
   text: string;
+  lineStart?: number;
+  lineEnd?: number;
 };
 
 export type ChunkWithVector = Chunk & {

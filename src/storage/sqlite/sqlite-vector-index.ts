@@ -17,6 +17,8 @@ type ChunkRow = {
   char_start: number;
   char_end: number;
   text: string;
+  line_start: number | null;
+  line_end: number | null;
 };
 
 function rowToChunk(row: ChunkRow): Chunk {
@@ -30,6 +32,8 @@ function rowToChunk(row: ChunkRow): Chunk {
     charStart: row.char_start,
     charEnd: row.char_end,
     text: row.text,
+    lineStart: row.line_start ?? undefined,
+    lineEnd: row.line_end ?? undefined,
   };
 }
 
@@ -43,8 +47,8 @@ export class SqliteVectorIndex implements VectorIndex {
 
     const db = getDb();
     const insertChunk = db.prepare(
-      `INSERT INTO chunks (strategy, source, title, section, chunk_index, char_start, char_end, text)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO chunks (strategy, source, title, section, chunk_index, char_start, char_end, text, line_start, line_end)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     const insertVector = db.prepare(
       `INSERT INTO chunk_vectors (chunk_id, embedding) VALUES (?, ?)`
@@ -60,7 +64,9 @@ export class SqliteVectorIndex implements VectorIndex {
           c.chunkIndex,
           c.charStart,
           c.charEnd,
-          c.text
+          c.text,
+          c.lineStart ?? null,
+          c.lineEnd ?? null,
         );
         const chunkId = Number(res.lastInsertRowid);
         insertVector.run(chunkId, vectorToBlob(c.embedding));
