@@ -14,7 +14,9 @@
     "day26-local": "bun run scripts/day26/run-queries.ts",
     "bot": "bun run src/bot.ts",
     "server": "bun run src/server.ts",
-    "day30-load": "bun run scripts/day30/load-test.ts"
+    "day30-load": "bun run scripts/day30/load-test.ts",
+    "assistant": "bun run src/assistant.ts",
+    "assistant:reindex": "bun run src/assistant.ts reindex"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
