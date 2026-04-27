@@ -242,6 +242,120 @@ describe("AssistantOrchestrator (RAG without tool-use)", () => {
     }
   });
 
+  test("tool-loop: tool_call → tool_result → second turn → final", async () => {
+    const toolCalls = [{ id: "call_1", name: "git_branch", arguments: "{}" }];
+    const llm = new ScriptedLLM([
+      [{ kind: "tool_call", calls: toolCalls }, { kind: "done", finishReason: "tool_calls" }],
+      [
+        { kind: "delta", text: "Вы на ветке master." },
+        { kind: "done", finishReason: "stop" },
+      ],
+    ]);
+    let executed = 0;
+    const orchestrator = new AssistantOrchestrator({
+      llmClient: llm,
+      embedder: new StubEmbedder(),
+      vectorIndex: new StubVectorIndex([]),
+      model: "m",
+      topK: 5,
+      systemPromptHeader: "h",
+      toolLoopMax: 5,
+      tools: [{ name: "git_branch", description: "branch", parameters: { type: "object", properties: {} } }],
+      toolExecutor: async (call) => {
+        executed += 1;
+        expect(call.name).toBe("git_branch");
+        return { content: "master", isError: false };
+      },
+    });
+    const events = await collect(orchestrator, "ветка?");
+    expect(executed).toBe(1);
+    const kinds = events.map((e) => e.kind);
+    expect(kinds).toContain("tool_call");
+    expect(kinds).toContain("tool_result");
+    const final = events.find((e) => e.kind === "final");
+    expect(final?.kind).toBe("final");
+    if (final?.kind === "final") {
+      expect(final.text).toContain("master");
+    }
+    expect(llm.capturedRequests.length).toBe(2);
+    const secondReq = llm.capturedRequests[1]!;
+    expect(secondReq.messages.some((m) => m.role === "tool")).toBe(true);
+  });
+
+  test("tool-loop respects toolLoopMax (LLM keeps calling tools)", async () => {
+    const callForever: Array<Array<any>> = [];
+    for (let i = 0; i < 10; i++) {
+      callForever.push([
+        { kind: "tool_call", calls: [{ id: `c${i}`, name: "git_branch", arguments: "{}" }] },
+        { kind: "done", finishReason: "tool_calls" },
+      ]);
+    }
+    const llm = new ScriptedLLM(callForever);
+    let executed = 0;
+    const orchestrator = new AssistantOrchestrator({
+      llmClient: llm,
+      embedder: new StubEmbedder(),
+      vectorIndex: new StubVectorIndex([]),
+      model: "m",
+      topK: 5,
+      systemPromptHeader: "h",
+      toolLoopMax: 3,
+      tools: [{ name: "git_branch", description: "b", parameters: { type: "object", properties: {} } }],
+      toolExecutor: async () => {
+        executed += 1;
+        return { content: "main", isError: false };
+      },
+    });
+    await collect(orchestrator, "q");
+    expect(executed).toBe(3);
+  });
+
+  test("tool error is propagated as tool_result with isError=true", async () => {
+    const llm = new ScriptedLLM([
+      [{ kind: "tool_call", calls: [{ id: "c", name: "broken", arguments: "{}" }] }, { kind: "done", finishReason: "tool_calls" }],
+      [{ kind: "delta", text: "ok" }, { kind: "done", finishReason: "stop" }],
+    ]);
+    const orchestrator = new AssistantOrchestrator({
+      llmClient: llm,
+      embedder: new StubEmbedder(),
+      vectorIndex: new StubVectorIndex([]),
+      model: "m",
+      topK: 5,
+      systemPromptHeader: "h",
+      toolLoopMax: 5,
+      tools: [{ name: "broken", description: "b", parameters: { type: "object", properties: {} } }],
+      toolExecutor: async () => ({ content: "boom", isError: true }),
+    });
+    const events = await collect(orchestrator, "q");
+    const result = events.find((e) => e.kind === "tool_result");
+    expect(result?.kind).toBe("tool_result");
+    if (result?.kind === "tool_result") {
+      expect(result.isError).toBe(true);
+      expect(result.result).toBe("boom");
+    }
+  });
+
+  test("tools[] are forwarded to llmClient.stream", async () => {
+    const llm = new ScriptedLLM([[{ kind: "done", finishReason: "stop" }]]);
+    const tools = [
+      { name: "git_branch", description: "b", parameters: { type: "object", properties: {} } },
+      { name: "list_files", description: "l", parameters: { type: "object", properties: {} } },
+    ];
+    const orchestrator = new AssistantOrchestrator({
+      llmClient: llm,
+      embedder: new StubEmbedder(),
+      vectorIndex: new StubVectorIndex([]),
+      model: "m",
+      topK: 5,
+      systemPromptHeader: "h",
+      toolLoopMax: 5,
+      tools,
+      toolExecutor: async () => ({ content: "", isError: false }),
+    });
+    await collect(orchestrator, "q");
+    expect(llm.capturedRequests[0]!.tools).toEqual(tools);
+  });
+
   test("topK is forwarded to vectorIndex.search", async () => {
     let receivedK: number | undefined;
     const vi: VectorIndex = {

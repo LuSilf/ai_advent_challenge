@@ -10,8 +10,10 @@ import {
   AssistantOrchestrator,
   type AssistantHistoryEntry,
 } from "./domain/services/assistant-orchestrator";
+import { McpClientService, type McpConnection } from "./domain/services/mcp-client-service";
 import { runAssistantRepl } from "./presentation/repl/assistant-repl";
 import { buildDocsIndexer, runReindex } from "./presentation/repl/assistant-reindex";
+import type { AssistantToolDefinition, AssistantToolCall } from "./domain/ports/assistant-llm";
 
 function fail(message: string): never {
   console.error(pc.red(message));
@@ -20,8 +22,10 @@ function fail(message: string): never {
 
 const SYSTEM_PROMPT_HEADER = [
   "Ты — AI-ассистент разработчика проекта ai-advent-challenge на Bun/TypeScript.",
-  "Тебе доступен RAG-контекст из README и исходников проекта (см. ниже).",
-  "Отвечай по-русски. Будь точен и краток. Если упоминаешь код — указывай файл/строки.",
+  "У тебя есть RAG-контекст из README и исходников проекта (см. ниже)",
+  "и MCP-инструменты для git и файловой системы (git_branch, git_status, git_log, git_diff, list_files).",
+  "Если вопрос про состояние репозитория (ветка, изменения, коммиты, файлы) — используй tools.",
+  "Отвечай по-русски. Будь точен и краток.",
 ].join(" ");
 
 const EMBEDDING_DIMENSION = 768;
@@ -59,6 +63,42 @@ const embedder = new OllamaEmbedder({
   dimension: EMBEDDING_DIMENSION,
 });
 const vectorIndex = new SqliteVectorIndex();
+
+const mcpService = new McpClientService();
+let mcpConnection: McpConnection | null = null;
+let availableTools: AssistantToolDefinition[] = [];
+
+try {
+  mcpConnection = await mcpService.connect({
+    name: "day31-project-tools",
+    command: "bun",
+    args: ["run", "scripts/day31/mcp-server.ts"],
+    cwd: config.projectRoot,
+  });
+  const mcpTools = await mcpService.listToolsFromConnection(mcpConnection);
+  availableTools = mcpTools.map((t) => ({
+    name: t.name,
+    description: t.description,
+    parameters: (t.inputSchema as Record<string, unknown>) ?? { type: "object", properties: {} },
+  }));
+  console.log(pc.dim(`[mcp] connected, ${availableTools.length} tools available`));
+} catch (err) {
+  console.error(pc.yellow(`[mcp] failed to start MCP server: ${err instanceof Error ? err.message : String(err)}`));
+  console.error(pc.yellow("[mcp] continuing without MCP tools"));
+}
+
+const toolExecutor = mcpConnection
+  ? async (call: AssistantToolCall) => {
+      let parsed: Record<string, unknown> = {};
+      try {
+        parsed = call.arguments.trim().length > 0 ? (JSON.parse(call.arguments) as Record<string, unknown>) : {};
+      } catch (err) {
+        return { content: `invalid JSON in tool arguments: ${err instanceof Error ? err.message : String(err)}`, isError: true };
+      }
+      return mcpService.callTool(mcpConnection!, call.name, parsed);
+    }
+  : undefined;
+
 const orchestrator = new AssistantOrchestrator({
   llmClient,
   embedder,
@@ -67,9 +107,28 @@ const orchestrator = new AssistantOrchestrator({
   topK: config.topK,
   systemPromptHeader: SYSTEM_PROMPT_HEADER,
   toolLoopMax: config.toolLoopMax,
+  tools: availableTools.length > 0 ? availableTools : undefined,
+  toolExecutor,
 });
 
 const history: AssistantHistoryEntry[] = [];
+
+let shuttingDown = false;
+async function shutdown(): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  if (mcpConnection) {
+    try {
+      await mcpService.disconnect(mcpConnection);
+    } catch {
+      // best-effort
+    }
+  }
+}
+
+process.on("SIGTERM", () => {
+  void shutdown().then(() => process.exit(0));
+});
 
 const handlers = {
   async onHelp(question: string): Promise<void> {
@@ -78,6 +137,13 @@ const handlers = {
     for await (const event of orchestrator.ask(question, history)) {
       if (event.kind === "retrieval") {
         process.stdout.write(pc.dim(`[retrieval] ${event.hits.length} chunks\n`));
+      } else if (event.kind === "tool_call") {
+        const argsPretty = event.args.length > 100 ? event.args.slice(0, 97) + "..." : event.args;
+        process.stdout.write(pc.dim(`→ ${event.name}(${argsPretty})\n`));
+      } else if (event.kind === "tool_result") {
+        const head = event.result.replace(/\n/g, " ").slice(0, 200);
+        const marker = event.isError ? pc.red("← error: ") : pc.dim("← ");
+        process.stdout.write(marker + pc.dim(head) + (event.result.length > 200 ? pc.dim("...") : "") + "\n");
       } else if (event.kind === "token") {
         process.stdout.write(event.delta);
         answer += event.delta;
@@ -107,7 +173,14 @@ const handlers = {
     await runReindex(indexer, process.stdout);
   },
   async onTools(): Promise<void> {
-    console.log(pc.yellow("[stub] /tools — MCP не подключён, ждите phase 4"));
+    if (availableTools.length === 0) {
+      console.log(pc.yellow("[tools] MCP не подключён"));
+      return;
+    }
+    console.log(pc.bold("Доступные MCP-инструменты:"));
+    for (const t of availableTools) {
+      console.log(`  ${pc.green(t.name)} — ${t.description}`);
+    }
   },
   async onClear(): Promise<void> {
     history.length = 0;
@@ -115,6 +188,7 @@ const handlers = {
   },
   async onQuit(): Promise<void> {
     console.log(pc.dim("[assistant] до встречи."));
+    await shutdown();
     process.exit(0);
   },
 };
