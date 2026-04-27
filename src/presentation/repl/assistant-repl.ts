@@ -28,25 +28,12 @@ export async function runAssistantRepl(options: ReplOptions): Promise<void> {
     terminal: process.stdout.isTTY,
   });
 
-  let stopped = false;
-
-  const stop = async () => {
-    if (stopped) return;
-    stopped = true;
-    rl.close();
-    await options.handlers.onQuit();
-  };
+  let quitRequested = false;
 
   rl.on("SIGINT", () => {
     output.write("\n");
-    void stop();
-  });
-
-  rl.on("close", () => {
-    if (!stopped) {
-      stopped = true;
-      void options.handlers.onQuit();
-    }
+    quitRequested = true;
+    rl.close();
   });
 
   output.write(
@@ -57,7 +44,6 @@ export async function runAssistantRepl(options: ReplOptions): Promise<void> {
   rl.prompt();
 
   for await (const line of rl) {
-    if (stopped) break;
     const command = parseAssistantCommand(line);
     if (command) {
       try {
@@ -65,12 +51,19 @@ export async function runAssistantRepl(options: ReplOptions): Promise<void> {
       } catch (err) {
         output.write(pc.red(`Ошибка: ${err instanceof Error ? err.message : String(err)}\n`));
       }
+      if (command.kind === "quit") {
+        quitRequested = true;
+        rl.close();
+        return;
+      }
     }
-    if (stopped) break;
     rl.prompt();
   }
 
-  await stop();
+  // EOF (Ctrl+D / end of pipe). Treat as quit.
+  if (!quitRequested) {
+    await options.handlers.onQuit();
+  }
 }
 
 async function dispatchCommand(
