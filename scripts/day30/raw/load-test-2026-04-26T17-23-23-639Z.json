@@ -1,0 +1,146 @@
+{
+  "generatedAt": "2026-04-26T17:24:47.997Z",
+  "baseUrl": "http://localhost:8080",
+  "model": "llama3.2:3b",
+  "hardware": "CPU: unknown CPU | unknown RAM | GPU: no GPU",
+  "health": {
+    "ok": true,
+    "ollama": "up"
+  },
+  "smoke": {
+    "pass": true,
+    "status": 200,
+    "latencyMs": 505
+  },
+  "ladder": [
+    {
+      "n": 1,
+      "latencies": [
+        421
+      ],
+      "okCount": 1,
+      "errorCount": 0,
+      "errorStatuses": [],
+      "totalMs": 422,
+      "p50": 421,
+      "p95": 421,
+      "p99": 421,
+      "mean": 421
+    },
+    {
+      "n": 2,
+      "latencies": [
+        251,
+        372
+      ],
+      "okCount": 2,
+      "errorCount": 0,
+      "errorStatuses": [],
+      "totalMs": 372,
+      "p50": 251,
+      "p95": 372,
+      "p99": 372,
+      "mean": 311
+    },
+    {
+      "n": 5,
+      "latencies": [
+        380,
+        269,
+        594,
+        486,
+        706
+      ],
+      "okCount": 5,
+      "errorCount": 0,
+      "errorStatuses": [],
+      "totalMs": 706,
+      "p50": 486,
+      "p95": 706,
+      "p99": 706,
+      "mean": 487
+    },
+    {
+      "n": 10,
+      "latencies": [
+        743,
+        635,
+        1293,
+        1078,
+        523,
+        855,
+        1402,
+        1184,
+        1509,
+        963
+      ],
+      "okCount": 10,
+      "errorCount": 0,
+      "errorStatuses": [],
+      "totalMs": 1510,
+      "p50": 963,
+      "p95": 1509,
+      "p99": 1509,
+      "mean": 1018
+    }
+  ],
+  "rateLimit": {
+    "pass": true,
+    "total": 15,
+    "status200": 10,
+    "status429": 5,
+    "statuses": [
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      429,
+      429,
+      429,
+      429,
+      429
+    ]
+  },
+  "maxContext": {
+    "pass": true,
+    "status": 413,
+    "body": {
+      "error": {
+        "message": "Input too large: 20008 tokens exceeds limit of 6000",
+        "type": "input_too_large",
+        "limit": 6000,
+        "got": 20008
+      }
+    }
+  },
+  "badAuth": {
+    "pass": true,
+    "status": 401,
+    "body": {
+      "error": {
+        "message": "Unauthorized: missing or invalid Bearer token",
+        "type": "unauthorized"
+      }
+    }
+  },
+  "badModel": {
+    "pass": true,
+    "status": 400,
+    "body": {
+      "error": {
+        "message": "Model 'definitely-not-a-real-model:0.0' is not allowed. Allowed models: llama3.2:3b, qwen2.5-coder:7b",
+        "type": "model_not_allowed",
+        "allowed": [
+          "llama3.2:3b",
+          "qwen2.5-coder:7b"
+        ]
+      }
+    }
+  }
+}
